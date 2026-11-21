@@ -1369,7 +1369,8 @@ function renderCharts() {
       { name: "Upload", color: css("--c-cabin"), points: h["starlink.up_mbps"] },
     ];
     $("#legend-net").innerHTML = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
-    timeChart($("#chart-net"), { series, area: true, fmt: v => `${Math.round(v)} Mbps` });
+    timeChart($("#chart-net"), { series, area: true,
+      fmt: v => `${+v.toFixed(Math.abs(v) >= 10 ? 0 : Math.abs(v) >= 1 ? 1 : 2)} Mbps` });   // small scales keep decimals (not "0, 0, 0")
   }
   if (view === "climate") {
     const h = hist.temp || {};
