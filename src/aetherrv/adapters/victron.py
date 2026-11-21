@@ -67,6 +67,7 @@ class VictronAdapter:
         self._cmd_lock = asyncio.Lock()
         self.port = port
         self.portal: str | None = None
+        self._subscribed = False            # data topics subscribed on the CURRENT connection
         self._tanks: dict[str, dict] = {}
         self._vecan: dict[str, dict] = {}
         self._batts: dict[str, dict] = {}
@@ -92,6 +93,8 @@ class VictronAdapter:
                 async with aiomqtt.Client(self.host, self.port, identifier="aetherrv", username=self.username,
                                           password=self.password, tls_context=tls_ctx) as c:
                     self._client = c
+                    # Clean session: subscriptions die with the connection, so re-subscribe on every connect.
+                    self._subscribed = False
                     self.state.set("victron.connected", True)
                     backoff = 2.0
                     await c.subscribe("N/+/system/0/Serial")
@@ -232,10 +235,14 @@ class VictronAdapter:
             value = json.loads(payload).get("value")
         except (ValueError, AttributeError, TypeError):
             return
-        if rest == "system/0/Serial" and self.portal is None:
-            self.portal = portal
-            self.state.set("victron.portal", portal)
-            log.info("victron portal id %s", portal)
+        if rest == "system/0/Serial" and not self._subscribed and self.portal in (None, portal):
+            self._subscribed = True
+            if self.portal is None:
+                self.portal = portal
+                self.state.set("victron.portal", portal)
+                log.info("victron portal id %s", portal)
+            else:
+                log.info("victron reconnected; re-subscribing")
             await c.subscribe(f"N/{portal}/system/0/#")
             await c.subscribe(f"N/{portal}/battery/#")
             await c.subscribe(f"N/{portal}/tank/+/Level")

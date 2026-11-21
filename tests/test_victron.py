@@ -52,3 +52,19 @@ def test_battery_collection_and_kind():
     bl = {b["instance"]: b for b in a.batteries()}
     assert bl["512"]["kind"] == "bms" and bl["512"]["active_alarms"] == {"LowVoltage": 1}
     assert bl["0"]["kind"] == "monitor" and bl["0"]["Soc"] == 85.8 and "Some/Other/Path" not in bl["0"]
+
+
+async def test_resubscribes_after_reconnect():
+    """Clean-session MQTT: after a reconnect the data topics must be subscribed again (they were not → no data)."""
+    class C:
+        def __init__(self): self.subs = []
+        async def subscribe(self, t): self.subs.append(t)
+        async def publish(self, t, p=b""): pass
+    s = State(); a = VictronAdapter(s, "x")
+    for _ in range(2):                                  # first connection, then a reconnect
+        c = C(); a._subscribed = False                  # what run() does on each connect
+        await a._on_message(c, "N/abc123/system/0/Serial", b'{"value": "abc123"}')
+        assert "N/abc123/battery/#" in c.subs
+    c = C(); a._subscribed = False                      # a different Cerbo on the same address is ignored
+    await a._on_message(c, "N/zzz999/system/0/Serial", b'{"value": "zzz999"}')
+    assert c.subs == [] and s.get("victron.portal") == "abc123"
