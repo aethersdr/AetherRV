@@ -505,3 +505,4 @@ Sections 1–31 use the old names. Mapping:
 - **2026-11-21, freezer Ruuvi back as "FRZ"** (instance 22; the Cerbo types it as "fridge", no humidity). Pi config: `freezer_temp = "FRZ"`.
   - **Bug fixed:** a configured sensor name that is missing used to fall back to the first sensor of the same type, so FRZ showed as the *fridge*. Configured names are now strict, and a missing one shows "—".
   - The fridge tag (still "Fridge Temp" in the config) is not on the Cerbo yet.
+- **2026-11-21, fridge Ruuvi back as "FRG"** (instance 23, typed "fridge"). Pi config: `fridge_temp = "FRG"`. All four Ruuvis now report: IAT, OAT, FRZ, FRG.
