@@ -456,6 +456,11 @@ Sections 1–31 use the old names. Mapping:
 - **Pi config.** /etc/aetherrv/aetherrv.toml hosts changed to the new subnet (Cerbo ×2, MCS7 ×2, IPG100). Backup: aetherrv.toml.pre-110-20261121.
 - **DHCP leases.** The old leases had to be cleared by power-cycling or renewing; until then, devices had no gateway and the Pi dropped off Tailscale.
 - **socketcand after the Cerbo reboot.** The setting was still 1, but nothing was listening on 29536. It probably started before DHCP. Toggling MQTT `Settings/Services/Socketcand` 1→0→1 (owner OK) brought it back; N2K is at ~57 fps.
+- **Starlink dish reachable (2026-11-21).** On fw 8.6.1, WAN 1 had no separate Starlink toggle. The **Management IP Address** field appears only after "Click here for other DHCP settings" in the WAN 1 dialog; the owner set it to 192.168.100.100/24.
+  - NAT over Starlink is unchanged: the WAN keeps its DHCP CGNAT address and gateway.
+  - The Pi then reached 192.168.100.1 (ping, :80, :9200 gRPC). `[device.starlink]` is enabled (backup aetherrv.toml.pre-starlink-20261121).
+  - Live: CONNECTED, ~37 ms, 1.35 % obstructed, 10 GPS sats. The dish reports update_state REBOOT_REQUIRED (a pending dish firmware update).
+  - IPv6 was considered and rejected: the dish gRPC is IPv4 192.168.100.1 only.
 - **Still open.**
-  - Starlink 192.168.100.1:9200 still times out. WAN 1 Starlink is Standby and traffic leaves on WAN 4 (home Wi-Fi). Next steps: a WAN 1 Management IP (192.168.100.100/24), or retest with Starlink active. IPv6 doesn't help: the dish gRPC is IPv4 .1 only.
-  - The IPG100 is not on .110 after its power-cycle (static .100.5 on the device?). The owner will check later.
+  - The IPG100 is not on the new subnet after its power-cycle (static .100.5 on the device?). The owner will check later.
+  - The old 192.168.100.0/24 route on the home router is to be removed from the home LAN (owner approved).
