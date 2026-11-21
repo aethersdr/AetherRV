@@ -470,7 +470,7 @@ Sections 1–31 use the old names. Mapping:
 - The dish's `get_obstruction_map` returns a 123×123 grid of SNR quality: −1 = no data, 0 = obstructed … 1 = clear. With it come `min_elevation_deg` 10, `max_theta_deg` 80 (the grid's inscribed circle is 80° from zenith) and `map_reference_frame`.
 - **Frame.** This dish reports 2 = FRAME_UT (mobile/roam plans): the map is in the dish's own frame, with its bottom edge toward the dish's boresight (`direction_azimuth`). FRAME_EARTH (1, fixed plans) has true north up.
   - The UI rotates the image by azimuth − 180° so the view is north-up, and marks the facing direction with a small amber triangle.
-  - Source: secondary (research write-ups on Starlink obstruction maps). Check against the Starlink app's map.
+  - Source: secondary (research write-ups). **The owner verified it against the Starlink app on 2026-11-21: it matches.**
 - **Backend.** The Starlink adapter reads the map once a minute (read-only; `reset_obstruction_map` is never called). It packs one byte per cell (255 = no data, else round(snr × 254)) as base64 into the `starlink.obstruction_map` state key, about 20 KB. The key isn't recorded in history.
 - **UI.** The Network → Starlink card draws the map once per new map into a cached canvas image. It's shown as a dark sky dome: clear cells blue, obstructed red, dashed rings at 60° and 30° elevation, N/E/S/W labels and the % obstructed caption. The old % ring is the fallback when there is no map.
 - Also fixed: daylight could show "8 h 60 m" (rounding the minutes separately from the hours).
