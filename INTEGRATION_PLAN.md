@@ -513,3 +513,10 @@ Sections 1–31 use the old names. Mapping:
 - **2026-11-21, Network chart follows the active WAN.** The Peplink `status.traffic` returns live per-WAN bandwidth (kbps, "overall" down/up). Each 15 s WAN poll records the active WAN's throughput as `wan.down_mbps` / `wan.up_mbps`: one continuous history series, whichever WAN carries the traffic.
   - The chart title follows the active WAN live (e.g. "WWAN on 5 GHz throughput").
   - Without the Peplink API it falls back to the Starlink dish series.
+
+## 38. Waveshare 2-CH CAN FD HAT installed (2026-11-21)
+
+- **Owner-approved boot change:** `/boot/config.txt` gets the wiki's stacking lines after the CAN HAT+ block: `dtoverlay=mcp251xfd,spi0-0,interrupt=25` and `dtoverlay=mcp251xfd,spi1-0,interrupt=24`. The FD HAT stays in its default "A" (dual-SPI) mode. Backup: `/boot/config.txt.pre-canfd.bak`.
+- **No pin conflicts:** the HAT+ uses SPI1 CE1/CE2 with INT 22/13; the FD HAT uses SPI0 CE0 with INT 25 and SPI1 CE0 with INT 24.
+- **Stable names:** `10-fd0.link` (Path platform-1f00050000.spi-cs-0) and `10-fd1.link` (platform-1f00054000.spi-cs-0). `30-fd*.network` sets ListenOnly=yes at a 250k classic placeholder; FD data rate is not enabled.
+- **Not active yet:** waiting for the owner to confirm the FD HAT's VIO jumper is on 3.3V (the wiki doesn't state the factory default), then reboot and verify that `fd0`/`fd1` come up.
