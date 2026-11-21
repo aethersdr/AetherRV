@@ -3,6 +3,8 @@
 A touchscreen console for a camper van, running on a Raspberry Pi 5: power, climate, network and switching on one
 screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
 
+![AetherRV home screen on the van's 10.1" touchscreen](docs/screenshots/home.png)
+
 - **Energy:** a Victron Cerbo GX over MQTT shows battery, solar, shore, alternator, inverter and loads as an
   animated flow, with history. It controls MultiPlus mode, shore current limit and MPPT on/off.
 - **Climate:** Rixens MCS7 hydronic heat over its local HTTP API shows setpoint, fan, heat sources, hot water,
