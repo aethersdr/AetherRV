@@ -342,7 +342,9 @@ function renderClimate() {
   const heaters = [
     { id: "rixens", name: "Rixens MCS7", sub: live ? `Hydronic · ${esc(R("heater_state") || "")}` : "Hydronic heat", state: rState,
       buttons: live ? ["furnace", "electric", "engine"].filter(k => k === "furnace" || avail[k]).map(k => ({ k, on: srcs.includes(k), st: R(k) })) : [],
-      chips: live ? [["Hot water", R("hot_water")], ["Preheat", R("preheat")], ...(avail.floor ? [["Floor", R("floor") !== "off"]] : [])] : [],
+      // Hot water / pre-heat show as badges under the flame (same icons as the Home quick tiles); status only here.
+      modes: live ? [["Hot water", "drop", R("hot_water")], ["Preheat", "thermo", R("preheat")]] : [],
+      chips: live && avail.floor ? [["Floor", R("floor") !== "off"]] : [],
       kv: rState == null ? [] : live ? [
         ["Coolant", fluidPill(R)],
         ["Battery", R("battery_v") == null ? "—" : `${num(R("battery_v"), 1)} V`],
@@ -372,7 +374,8 @@ function renderClimate() {
     const status = h.state == null ? `Not connected · ${ids(h.id)} CAN IDs seen`
       : { heating: "Heating", off: "Off", standby: "Standby", idle: "Idle", error: "ERROR", "no data": "No data" }[h.state] || h.state;
     return `<div class="card heater ${on ? "on" : ""} ${h.kv.length || h.buttons.length ? "" : "compact"}">
-      <div class="badge">${icon(on ? "flame" : h.state == null ? "can" : "flame")}</div>
+      <div class="badge-col"><div class="badge">${icon(on ? "flame" : h.state == null ? "can" : "flame")}</div>
+        ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}<span>${k}</span></div>`).join("")}</div>
       <div><h3>${h.name}</h3><div class="sub">${h.sub} · ${status}</div>
         ${h.kv.length ? `<div class="kv">${h.kv.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("")}</div>` : ""}
         ${h.burner && h.burner.length ? `<div class="burner">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
