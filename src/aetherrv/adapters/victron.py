@@ -189,11 +189,13 @@ class VictronAdapter:
         self.state.set("victron.tanks", [dict(v) for _, v in sorted(self._tanks.items())])
 
     def _pick(self, want, kind: str) -> dict | None:
+        """A configured sensor (Custom name or instance) is used ONLY if it is present. The by-type fallback
+        applies only when the role isn't configured; otherwise e.g. a freezer tag that the Cerbo types as
+        "fridge" would be shown as the fridge while the real fridge tag is missing."""
         if want is not None:
             w = str(want).strip().lower()
-        for inst, t in sorted(self._temps.items()):
-            if want is not None and (inst == w or str(t.get("name", "")).strip().lower() == w):
-                return t
+            return next((t for inst, t in sorted(self._temps.items())
+                         if inst == w or str(t.get("name", "")).strip().lower() == w), None)
         return next((t for _, t in sorted(self._temps.items()) if t.get("type") == kind), None)
 
     def _on_temp(self, rest: str, value) -> None:
@@ -219,6 +221,8 @@ class VictronAdapter:
                 self.state.set(f"climate.{role}.temp", t.get("temp"))
                 if t.get("humidity") is not None:
                     self.state.set(f"climate.{role}.humidity", t["humidity"])
+            elif want is not None:     # configured sensor not (or no longer) on the Cerbo: show "—", not a stand-in
+                self.state.set(f"climate.{role}.temp", None)
 
     async def _keepalive(self, c: aiomqtt.Client) -> None:
         while True:

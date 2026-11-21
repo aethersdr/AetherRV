@@ -502,3 +502,6 @@ Sections 1–31 use the old names. Mapping:
   - Humidity is averaged too. A sensor drops out when stale: the Ruuvi after 15 min without a value (the Cerbo only republishes on change) or with the Cerbo disconnected; the MCS7 60 s after its last poll. The other sensor is then used alone.
   - The Climate dial shows "average of front X° · back Y°".
   - First reading: front 20.0 °C, back 15.5 °C, so the cabin shows 17.7 °C (64 °F). Display only: the MCS7 still regulates on its own sensor.
+- **2026-11-21, freezer Ruuvi back as "FRZ"** (instance 22; the Cerbo types it as "fridge", no humidity). Pi config: `freezer_temp = "FRZ"`.
+  - **Bug fixed:** a configured sensor name that is missing used to fall back to the first sensor of the same type, so FRZ showed as the *fridge*. Configured names are now strict, and a missing one shows "—".
+  - The fridge tag (still "Fridge Temp" in the config) is not on the Cerbo yet.

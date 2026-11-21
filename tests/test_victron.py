@@ -68,3 +68,12 @@ async def test_resubscribes_after_reconnect():
     c = C(); a._subscribed = False                      # a different Cerbo on the same address is ignored
     await a._on_message(c, "N/zzz999/system/0/Serial", b'{"value": "zzz999"}')
     assert c.subs == [] and s.get("victron.portal") == "abc123"
+
+
+def test_configured_sensor_missing_is_not_replaced_by_type_fallback():
+    # A freezer Ruuvi the Cerbo types as "fridge" must not stand in for the (missing) configured fridge tag.
+    s = State()
+    a = VictronAdapter(s, "x", fridge_temp="Fridge Temp", freezer_temp="FRZ")
+    feed(a, "22", TemperatureType=5, CustomName="FRZ", Temperature=-17.0)
+    assert s.get("climate.freezer.temp") == -17.0
+    assert s.get("climate.fridge.temp") is None
