@@ -69,9 +69,9 @@ const FLOW = {
   inv: { x: 500, y: 565, w: 236, h: 124 },
   nodes: [
     { id: "solar", label: "Solar", ic: "panel", key: "victron.pv.power", color: "--c-solar", x: 110, y: 105, to: "hub", side: "in" },
-    { id: "alt", label: "Alternator", ic: "engine", key: "victron.alternator.power", color: "--c-alt", x: 110, y: 320, to: "hub", side: "in" },
+    { id: "alt", label: "Alternator", ic: "engine", key: "energy.alternator.power", color: "--c-alt", x: 110, y: 320, to: "hub", side: "in" },
     { id: "shore", label: "Shore", ic: "plug", key: "victron.ac.shore", color: "--c-shore", x: 110, y: 565, to: "inv", side: "in" },
-    { id: "dc", label: "DC loads", ic: "dcload", key: "victron.dc.load", color: "--c-load", x: 890, y: 175, to: "hub", side: "out" },
+    { id: "dc", label: "DC loads", ic: "dcload", key: "energy.dc.load", color: "--c-load", x: 890, y: 175, to: "hub", side: "out" },
     { id: "ac", label: "AC loads", ic: "outlet", key: "victron.ac.load", color: "--c-load", x: 890, y: 565, to: "inv", side: "out" },
   ],
 };
@@ -157,6 +157,10 @@ function updateFlow() {
     const active = (w != null && w >= 3) || live;
     g.classList.toggle("idle", !active);
     document.getElementById(`v-${n.id}`).textContent = w == null ? "—" : fmtW(w);
+    if (n.id === "alt") {                                     // WS500 charge stage, when the regulator is charging
+      const st = S["energy.alternator.source"] === "n2k" && S["alternator.online"] ? S["alternator.state"] : null;
+      document.getElementById("l-alt").textContent = st && st !== "not charging" ? `Alternator · ${st[0].toUpperCase() + st.slice(1)}` : "Alternator";
+    }
     setEdge(`e-${n.id}`, active, (w ?? 0) < 3 && live ? 6 : speedBucket(w ?? 0));
     if (w > 0) (n.side === "in" ? (inW += w) : (outW += w));
   }
@@ -309,9 +313,9 @@ function renderEnergy() {
   ].map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join("");
   const stats = [
     ["panel", "--c-solar", fmtW(S["victron.pv.power"]), "Solar", S["victron.pv.power"]],
-    ["engine", "--c-alt", fmtW(S["victron.alternator.power"]), "Alternator", S["victron.alternator.power"]],
+    ["engine", "--c-alt", fmtW(S["energy.alternator.power"]), "Alternator", S["energy.alternator.power"]],
     ["plug", "--c-shore", fmtW(S["victron.ac.shore"]), "Shore", S["victron.ac.shore"]],
-    ["dcload", "--c-load", fmtW(S["victron.dc.load"]), "DC loads", S["victron.dc.load"]],
+    ["dcload", "--c-load", fmtW(S["energy.dc.load"]), "DC loads", S["energy.dc.load"]],
     ["outlet", "--c-load", fmtW(S["victron.ac.load"]), "AC loads", S["victron.ac.load"]],
     ["thermo", "--ink-2", fmtT(S["victron.battery.temp"]), "Battery temp", S["victron.battery.temp"] == null ? 0 : 99],
   ];
@@ -1284,7 +1288,7 @@ async function fetchHist(name, keys, since, points = 360) {
 }
 async function loadHistory() {
   if (view === "home") await fetchHist("home", ["victron.battery.soc"], 86400);
-  if (view === "energy") await fetchHist("power", ["victron.pv.power", "victron.dc.load", "victron.ac.load"], span.power);
+  if (view === "energy") await fetchHist("power", ["victron.pv.power", "energy.dc.load", "victron.ac.load"], span.power);
   if (view === "climate") await fetchHist("temp", ["climate.cabin.temp", "climate.outside.temp"], span.temp);
   if (view === "network") await fetchHist("net", ["starlink.down_mbps", "starlink.up_mbps"], span.net);
   renderCharts();
@@ -1309,7 +1313,7 @@ function renderCharts() {
     const h = hist.power || {};
     const series = [
       { name: "Solar", color: css("--c-solar"), points: h["victron.pv.power"] },
-      { name: "Consumption", color: css("--c-load"), points: sumSeries(h["victron.dc.load"], h["victron.ac.load"]) },
+      { name: "Consumption", color: css("--c-load"), points: sumSeries(h["energy.dc.load"], h["victron.ac.load"]) },
     ];
     $("#legend-power").innerHTML = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
     timeChart($("#chart-power"), { series, area: true, fmt: v => fmtW(v) });

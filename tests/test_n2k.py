@@ -161,3 +161,40 @@ def test_same_instance_from_two_sources_does_not_collide():
     a.on_frame(can.Message(arbitration_id=n2k_id(127501, 226, priority=3), data=encode_127501(0, [0, 1]), is_extended_id=True))
     ids = {x["id"]: x["state"] for x in a.switch_list()}
     assert ids == {"0.1@225": "on", "0.1@226": "off", "0.2@226": "on"}
+
+
+def _frame(pgn, src, data, prio=6):
+    import can
+    return can.Message(arbitration_id=(prio << 26) | (pgn << 8) | src, data=data, is_extended_id=True)
+
+
+def test_ws500_alternator_from_real_frames():
+    """Frames as the van's Wakespeed WS500 (src 128) sends them while charging (127506/127507 and the
+    inst-49 127508 are captured verbatim; the inst-0 127508 is modelled on the captured ones)."""
+    from aetherrv.adapters.n2k import N2kAdapter
+    from aetherrv.state import State
+    a = N2kAdapter(State())
+    for pgn, hexes in [
+        (127506, ["C00B443101FFFFFF", "C1FFFFFFFFFFFFFF"]),            # fast packet: inst 49, DC type 1 = alternator
+        (127507, ["E006310011FDFFFF"]),                                # charger status (fast, 1 frame): bulk, enabled
+        (127508, ["315F05FF7F0F6444"]),                                # inst 49: 13.75 V, current n/a, temp
+        (127508, ["005F05CC05FFFF44"]),                                # inst 0: 13.75 V, 148.4 A
+    ]:
+        for h in hexes:
+            a.on_frame(_frame(pgn, 128, bytes.fromhex(h)))
+    alt = a.alternator()
+    assert alt["source"] == 128 and alt["voltage"] == 13.75 and alt["current"] == 148.4
+    assert alt["power"] == round(13.75 * 148.4) and alt["state"] == "bulk" and alt["online"]
+
+
+def test_energy_derive_fills_in_alternator_and_fixes_dc_load():
+    from aetherrv.energy import derive
+    from aetherrv.state import State
+    s = State()
+    s.set("victron.alternator.power", None); s.set("victron.dc.load", -1844.0); s.set("alternator.power", 1856)
+    derive(s)
+    assert s.get("energy.alternator.power") == 1856 and s.get("energy.alternator.source") == "n2k"
+    assert s.get("energy.dc.load") == 12.0
+    s.set("victron.alternator.power", 900)                     # a Cerbo-known alternator wins, DC load untouched
+    derive(s)
+    assert s.get("energy.alternator.power") == 900 and s.get("energy.dc.load") == -1844.0

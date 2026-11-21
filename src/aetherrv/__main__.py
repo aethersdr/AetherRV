@@ -15,6 +15,7 @@ from aiohttp import web
 from .adapters.capture_only import CaptureOnlyAdapter
 from .adapters.demo import DemoAdapter
 from .adapters.n2k import N2kAdapter
+from .energy import run_derive
 from .adapters.netmon import NetMon
 from .adapters.nmea_gps import NmeaGps
 from .adapters.peplink import PeplinkAdapter, PeplinkClient
@@ -217,6 +218,7 @@ async def amain(cfg: dict) -> None:
                                                         float(cfg.get("capture_keep_days", 14)),
                                                         float(cfg.get("capture_max_gb", 20))), name="prune"))
     tasks.append(asyncio.create_task(publish_bus_stats(buses, gate, state), name="stats"))
+    tasks.append(asyncio.create_task(run_derive(state), name="energy"))
     try:
         await asyncio.gather(*tasks)
     finally:

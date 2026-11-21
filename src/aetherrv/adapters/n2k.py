@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import struct
 import time
 from dataclasses import dataclass
 
@@ -163,6 +164,28 @@ def decode_126996(data: bytes) -> dict:
 
 
 # ── Adapter ──────────────────────────────────────────────────────────────────
+# Alternator regulators (e.g. Wakespeed WS500) announce themselves with 127506 DC type 1 = Alternator.
+CHARGER_STATE = {0: "not charging", 1: "bulk", 2: "absorption", 3: "overcharge", 4: "equalise", 5: "float",
+                 6: "no float", 7: "constant VI", 8: "disabled", 9: "fault"}
+DC_TYPE_ALTERNATOR = 1
+
+
+def decode_127508(data: bytes) -> dict:
+    """Battery Status (single frame): instance, voltage 0.01 V, current 0.1 A (signed), temperature 0.01 K."""
+    inst = data[0]
+    v, a, t = struct.unpack_from("<HhH", data, 1)
+    return {"instance": inst, "voltage": None if v == 0xFFFF else round(v * 0.01, 2),
+            "current": None if a == 0x7FFF else round(a * 0.1, 1),
+            "temp": None if t == 0xFFFF else round(t * 0.01 - 273.15, 1)}
+
+
+def decode_127507(data: bytes) -> dict:
+    """Charger Status: charger instance, battery instance, operating state (low nibble), enabled (2 bits)."""
+    en = data[3] & 0x03
+    return {"instance": data[0], "battery": data[1], "state": CHARGER_STATE.get(data[2] & 0x0F),
+            "enabled": None if en == 3 else bool(en)}
+
+
 class N2kAdapter:
     device = "n2k"
 
@@ -182,6 +205,11 @@ class N2kAdapter:
         # Populated passively: we never send ISO Requests (listen-only), so names and products
         # appear when a device powers up or another device (IPG100, DSM) requests them.
         self.devices: dict[int, dict] = {}
+        # Alternator regulator(s): source → alternator DC instance (from 127506 DC type = alternator),
+        # plus that source's latest 127508 readings per instance and 127507 charger state.
+        self.alt_inst: dict[int, int] = {}
+        self.dc_status: dict[tuple[int, int], dict] = {}
+        self.charger: dict[tuple[int, int], dict] = {}
 
     def on_frame(self, msg: can.Message) -> None:
         if msg.is_error_frame or not msg.is_extended_id:
@@ -215,6 +243,17 @@ class N2kAdapter:
             self.devices.setdefault(nid.source, {"source": nid.source, "first": time.time(), "last": time.time()}).update(decode_126996(data))
         elif nid.pgn == 126993:
             self.devices.setdefault(nid.source, {"source": nid.source, "first": time.time(), "last": time.time()})["heartbeat"] = time.time()
+        elif nid.pgn == 127506 and len(data) >= 3:
+            if data[2] == DC_TYPE_ALTERNATOR:
+                self.alt_inst[nid.source] = data[1]
+        elif nid.pgn == 127508 and len(data) >= 7:
+            r = decode_127508(data)
+            r["seen"] = time.time()
+            self.dc_status[(nid.source, r["instance"])] = r
+        elif nid.pgn == 127507 and len(data) >= 4:
+            r = decode_127507(data)
+            r["seen"] = time.time()
+            self.charger[(nid.source, r["instance"])] = r
         elif nid.pgn == 127501:
             inst, states = decode_127501(data)
             # Key by (source, instance): several devices (e.g. Victron relays/alarms) may all use instance 0.
@@ -283,6 +322,31 @@ class N2kAdapter:
             })
         return out
 
+    ALT_STALE = 10.0  # s; the WS500 sends 127508 about once a second
+
+    def alternator(self, now: float | None = None) -> dict | None:
+        """Alternator readings from the first regulator seen (READ-ONLY, decoded from its broadcasts).
+
+        The WS500 puts voltage + temperature on its alternator instance (127508, e.g. 49) but the
+        current on instance 0, so the current is taken from any of that source's instances.
+        NOTE: which current that is depends on where the regulator's shunt is wired (alternator output
+        vs battery). It is used as alternator current; see INTEGRATION_PLAN.
+        """
+        now = time.time() if now is None else now
+        for src, inst in sorted(self.alt_inst.items()):
+            fresh = {i: r for (s, i), r in self.dc_status.items() if s == src and now - r["seen"] <= self.ALT_STALE}
+            own = fresh.get(inst) or {}
+            volts = own.get("voltage") or next((r["voltage"] for r in fresh.values() if r["voltage"] is not None), None)
+            amps = own.get("current")
+            if amps is None:
+                amps = next((r["current"] for _, r in sorted(fresh.items()) if r["current"] is not None), None)
+            ch = self.charger.get((src, inst))
+            state = ch["state"] if ch and now - ch["seen"] <= self.ALT_STALE else None
+            return {"source": src, "voltage": volts, "current": amps,
+                    "power": None if volts is None or amps is None else round(volts * amps),
+                    "state": state, "temp": own.get("temp"), "online": bool(fresh)}
+        return None
+
     def summary(self) -> list[dict]:
         return [
             {"pgn": pgn, "name": PGN_NAMES.get(pgn, ""), "count": e["count"],
@@ -297,6 +361,10 @@ class N2kAdapter:
             self.state.set("n2k.sources", sorted({s for r in rows for s in r["sources"]}))
             self.state.set("n2k.commands", list(self.commands))
             self.state.set("n2k.devices", self.device_list())
+            alt = self.alternator()
+            if alt is not None:
+                for k, v in alt.items():
+                    self.state.set(f"alternator.{k}", v)
             if self.banks:
                 self.state.set("switches.source", "n2k")
                 self.state.set("switches.list", self.switch_list())
