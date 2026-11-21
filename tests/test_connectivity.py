@@ -5,7 +5,7 @@ from aiohttp import web
 
 from aetherrv.adapters.peplink import (PeplinkClient, active_wan, normalize_allowance, normalize_location,
                                        normalize_wans)
-from aetherrv.adapters.starlink import normalize
+from aetherrv.adapters.starlink import encode_obstruction_map, normalize
 
 # Shapes follow the Peplink Router API doc (fw 8.6.0) examples / object tables.
 WAN_RESP = {
@@ -72,6 +72,16 @@ def test_starlink_normalize():
     assert normalize({"state": "OBSTRUCTED"}, {}, {})["starlink.online"] is False
 
 
+def test_starlink_obstruction_map_encoding():
+    import base64
+    m = encode_obstruction_map(2, 3, [-1.0, 0.0, 1.0, 0.5, 1.7, -0.2], 10.0, 80.0, 2)
+    assert (m["rows"], m["cols"], m["frame"], m["min_el"], m["max_theta"]) == (2, 3, "dish", 10.0, 80.0)
+    assert list(base64.b64decode(m["data"])) == [255, 0, 254, 127, 254, 255]
+    assert encode_obstruction_map(1, 1, [1.0], frame=1)["frame"] == "earth"
+    with pytest.raises(ValueError):
+        encode_obstruction_map(2, 2, [1.0])
+
+
 @pytest.fixture
 async def fake_router(aiohttp_server):
     calls = {"grant": 0}
@@ -114,6 +124,16 @@ async def test_client_bad_secret(fake_router):
         await c.get("status.wan.connection")
     await c.close()
 
+
+
+def test_starlink_obstruction_map_encoding():
+    import base64
+    m = encode_obstruction_map(2, 3, [-1.0, 0.0, 1.0, 0.5, 1.7, -0.2], 10.0, 80.0, 2)
+    assert (m["rows"], m["cols"], m["frame"], m["min_el"], m["max_theta"]) == (2, 3, "dish", 10.0, 80.0)
+    assert list(base64.b64decode(m["data"])) == [255, 0, 254, 127, 254, 255]
+    assert encode_obstruction_map(1, 1, [1.0], frame=1)["frame"] == "earth"
+    with pytest.raises(ValueError):
+        encode_obstruction_map(2, 2, [1.0])
 
 
 @pytest.fixture

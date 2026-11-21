@@ -1208,27 +1208,71 @@ $("#set-body").addEventListener("click", async e => {
   }
 });
 
+// Starlink sky map: the dish's obstruction grid (one byte per cell, see adapters/starlink.py) drawn once per new
+// map into a cached image. On mobile/roam plans the grid is in the dish's frame (bottom edge = the way the dish
+// faces), so the image is rotated by the dish azimuth to put north up; the rings and compass stay fixed.
+const skyCache = { data: null, url: "" };
+function skyImage(m) {
+  if (skyCache.data === m.data) return skyCache.url;
+  const raw = atob(m.data), n = m.rows, k = 4, size = n * k, c0 = n / 2;
+  const cv = document.createElement("canvas"); cv.width = cv.height = size;
+  const g = cv.getContext("2d");
+  for (let r = 0; r < m.rows; r++) for (let c = 0; c < m.cols; c++) {
+    const v = raw.charCodeAt(r * m.cols + c);
+    if (v === 255 || Math.hypot(c + 0.5 - c0, r + 0.5 - c0) > c0) continue;
+    const q = v / 254;
+    g.fillStyle = q >= 0.95 ? "rgba(96,165,250,.85)" : `rgba(248,72,72,${(0.45 + 0.55 * (1 - q)).toFixed(2)})`;
+    g.fillRect(c * k + 0.4, r * k + 0.4, k - 0.8, k - 0.8);
+  }
+  skyCache.data = m.data; skyCache.url = cv.toDataURL();
+  return skyCache.url;
+}
+function skyMap(m, az, size = 300) {
+  if (!m?.data || !m.rows) return "";
+  const maxT = m.max_theta || 80, R = size / 2 - 18, cx = size / 2;
+  const rot = m.frame === "dish" ? (az ?? 180) - 180 : 0;
+  const rr = el => (90 - el) / maxT * R;                       // elevation ring radius
+  const compass = m.frame === "unknown" ? "" : [["N", 0], ["E", 90], ["S", 180], ["W", 270]].map(([l, a]) => {
+    const x = cx + Math.sin(a * Math.PI / 180) * (R + 10), y = cx - Math.cos(a * Math.PI / 180) * (R + 10);
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}">${l}</text>`; }).join("");
+  const facing = az == null || m.frame === "unknown" ? "" :
+    `<path class="facing" transform="rotate(${az.toFixed(1)} ${cx} ${cx})" d="M${cx} ${cx - R + 9}l-6 -10h12z"/>`;
+  return `<div class="sky" style="width:${size}px;height:${size}px">
+    <div class="sky-disc" style="inset:${cx - R}px"><img alt="" src="${skyImage(m)}" style="transform:rotate(${rot.toFixed(1)}deg)"></div>
+    <svg viewBox="0 0 ${size} ${size}" aria-hidden="true">
+      <circle cx="${cx}" cy="${cx}" r="${R}" class="edge"/>
+      ${[60, 30].map(el => `<circle cx="${cx}" cy="${cx}" r="${rr(el).toFixed(1)}" class="ring"/>`).join("")}
+      <circle cx="${cx}" cy="${cx}" r="2.5" class="zen"/>${compass}${facing}
+    </svg></div>`;
+}
+
 function renderNetwork() {
   const on = S["starlink.online"], reach = S["starlink.reachable"];
   const slAlerts = (S["starlink.alerts"] || []);
+  const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
   $("#sl-card").innerHTML = reach == null ? `<div class="card-h"><h2>Starlink</h2></div><div class="muted">Not enabled.</div>` : `
     <div class="card-h"><h2>Starlink</h2><span class="pill ${on ? "ok-pill" : "bad-pill"}">${icon(on ? "check" : "alert")}${on ? "Online" : reach ? esc(String(S["starlink.state"] || "").replace(/_/g, " ").toLowerCase()) : "Unreachable"}</span></div>
-    <div class="sl-main">
-      <div class="sl-speeds">
-        <div><span class="arrow">↓</span><b>${mbps(S["starlink.down_mbps"])}</b><small>Mbps down</small></div>
-        <div><span class="arrow up">↑</span><b>${mbps(S["starlink.up_mbps"])}</b><small>Mbps up</small></div>
+    <div class="sl-body">
+      <div class="sl-left">
+        <div class="sl-speeds">
+          <div><span class="arrow">↓</span><b>${mbps(S["starlink.down_mbps"])}</b><small>Mbps down</small></div>
+          <div><span class="arrow up">↑</span><b>${mbps(S["starlink.up_mbps"])}</b><small>Mbps up</small></div>
+        </div>
+        <div class="kv-row sl-kv">
+          <div><b>${num(S["starlink.latency_ms"])} ms</b><span>latency</span></div>
+          <div><b>${S["starlink.drop_rate"] == null ? "—" : (S["starlink.drop_rate"] * 100).toFixed(1) + "%"}</b><span>ping drop</span></div>
+          <div><b>${dur(S["starlink.uptime"])}</b><span>uptime</span></div>
+          <div><b>${S["starlink.gps_sats"] ?? "—"}</b><span>GPS sats</span></div>
+        </div>
+        ${slAlerts.length ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}</div>` : ""}
+        <div class="muted small">${esc(S["starlink.software"] || "")}</div>
       </div>
-      <div class="sl-obs">${ring(Math.min(100, S["starlink.obstructed_pct"] ?? 0) , { size: 150, stroke: 14, color: (S["starlink.obstructed_pct"] ?? 0) > 5 ? "var(--warning)" : "var(--c-shore)" })}
-        <div class="center"><b>${num(S["starlink.obstructed_pct"], 1)}%</b><small>obstructed</small></div></div>
-    </div>
-    <div class="kv-row">
-      <div><b>${num(S["starlink.latency_ms"])} ms</b><span>latency</span></div>
-      <div><b>${S["starlink.drop_rate"] == null ? "—" : (S["starlink.drop_rate"] * 100).toFixed(1) + "%"}</b><span>ping drop</span></div>
-      <div><b>${dur(S["starlink.uptime"])}</b><span>uptime</span></div>
-      <div><b>${S["starlink.gps_sats"] ?? "—"}</b><span>GPS sats</span></div>
-    </div>
-    ${slAlerts.length ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}</div>` : ""}
-    <div class="muted small">${esc(S["starlink.software"] || "")}</div>`;
+      ${map?.data ? `<figure class="sl-sky">${skyMap(map, S["starlink.azimuth"])}
+        <figcaption><b class="${(obs ?? 0) > 5 ? "warn-text" : ""}">${num(obs, 1)}%</b> obstructed
+          <span class="sky-key"><i class="clear"></i>Clear <i class="blocked"></i>Obstructed</span></figcaption></figure>`
+      : `<div class="sl-obs">${ring(Math.min(100, obs ?? 0), { size: 150, stroke: 14, color: (obs ?? 0) > 5 ? "var(--warning)" : "var(--c-shore)" })}
+        <div class="center"><b>${num(obs, 1)}%</b><small>obstructed</small></div></div>`}
+    </div>`;
 
   const wans = S["peplink.wans"] || [];
   const cw = wans.find(w => w.cellular);
@@ -1269,7 +1313,7 @@ function renderNetwork() {
       const len = st.set - st.rise;
       return `<div class="daybar"><i style="left:${pct(st.rise)}%;width:${pct(st.set) - pct(st.rise)}%"></i><b style="left:${pct(Date.now())}%"></b></div>
         <div class="sun-row"><div><b>${hm(st.rise)}</b><span>sunrise</span></div><div><b>${hm(st.set)}</b><span>sunset</span></div>
-        <div><b>${Math.floor(len / 3600000)} h ${Math.round(len % 3600000 / 60000)} m</b><span>daylight</span></div></div>`;
+        <div><b>${(m => `${Math.floor(m / 60)} h ${m % 60} m`)(Math.round(len / 60000))}</b><span>daylight</span></div></div>`;
     })() : "");
 }
 

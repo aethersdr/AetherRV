@@ -2,17 +2,19 @@
 
 Uses `starlink_grpc.status_data()`, which resolves the dish protobufs by server reflection
 (nothing to compile). The library is synchronous, so each poll runs in a worker thread.
-Control calls (reboot, stow, sleep, GPS config) exist in the library and are deliberately
-NOT used.
+Control calls (reboot, stow, sleep, GPS config, reset obstruction map) exist in the library and
+are deliberately NOT used. The obstruction map is read once a minute (get_obstruction_map).
 
 Not available: location (removed from gRPC for most plans in May 2026). Use the Peplink GPS.
-Behind the Peplink: firmware 8.4.0+ reportedly routes 192.168.100.1 automatically; older
-firmware needs a WAN "Management IP" (e.g. 192.168.100.100/24) on the Starlink WAN.
+Behind the Peplink: give the Starlink WAN a "Management IP" (e.g. 192.168.100.100/24); on fw 8.6.1
+that field is under "Click here for other DHCP settings" in the WAN dialog. The van LAN must not
+overlap 192.168.100.0/24.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import time
 
@@ -68,6 +70,21 @@ def normalize(status: dict, obstruction: dict, alerts: dict) -> dict:
     return out
 
 
+FRAMES = {1: "earth", 2: "dish"}   # MapReferenceFrame: FRAME_EARTH (fixed plans, top = north), FRAME_UT (mobile/roam:
+                                   # bottom edge = the direction the dish faces, i.e. direction_azimuth)
+
+
+def encode_obstruction_map(rows: int, cols: int, snr, min_el: float | None = None, max_theta: float | None = None,
+                           frame: int | None = None) -> dict:
+    """Pack the dish's sky map (rows×cols SNR quality, -1 = no data, 0 = obstructed … 1 = clear) into one byte per
+    cell, base64: 255 = no data, else round(snr × 254). 123×123 → ~20 KB of state, refreshed about once a minute."""
+    if rows * cols != len(snr):
+        raise ValueError(f"obstruction map {rows}x{cols} but {len(snr)} cells")
+    raw = bytes(255 if v is None or v < 0 else round(min(1.0, float(v)) * 254) for v in snr)
+    return {"rows": rows, "cols": cols, "min_el": min_el, "max_theta": max_theta,
+            "frame": FRAMES.get(frame or 0, "unknown"), "data": base64.b64encode(raw).decode("ascii")}
+
+
 def _r(v, n):
     return None if v is None else round(float(v), n)
 
@@ -75,18 +92,30 @@ def _r(v, n):
 class StarlinkAdapter:
     device = "starlink"
 
+    MAP_EVERY = 60.0   # seconds between obstruction-map fetches (the map only accumulates slowly)
+
     def __init__(self, state: State, target: str = "192.168.100.1:9200", interval: float = 5.0) -> None:
         self.state = state
         self.target = target
         self.interval = interval
         self._ctx = None
+        self._map_at = 0.0
 
     def _poll(self) -> dict:
         import starlink_grpc  # imported lazily so the backend still runs if grpc is missing
         if self._ctx is None:
             self._ctx = starlink_grpc.ChannelContext(target=self.target)
         st, obs, alerts, *_ = starlink_grpc.status_data(context=self._ctx)
-        return normalize(st, obs, alerts)
+        out = normalize(st, obs, alerts)
+        if time.monotonic() - self._map_at >= self.MAP_EVERY:
+            self._map_at = time.monotonic()
+            try:
+                m = starlink_grpc.get_obstruction_map(context=self._ctx)
+                out["starlink.obstruction_map"] = encode_obstruction_map(
+                    m.num_rows, m.num_cols, list(m.snr), m.min_elevation_deg, m.max_theta_deg, m.map_reference_frame)
+            except Exception as e:  # older firmware / reflection mismatch: the rest of the card still works
+                log.debug("starlink obstruction map failed: %s", e)
+        return out
 
     async def run(self) -> None:
         backoff = self.interval

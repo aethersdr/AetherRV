@@ -761,3 +761,27 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-cabin) 55%, var(--line)); }
 .heater.on .badge.mode:not(.on) { color: var(--muted); background: var(--surface-2); }
 .heater.on .badge.mode .ic { animation: none; }
+
+/* Starlink card: stats on the left, the dish's sky / obstruction map on the right */
+.sl-body { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+.sl-left { flex: 1 1 340px; min-width: 0; display: grid; gap: 14px; align-content: start; }
+.sl-left .sl-speeds { margin: 6px 0 4px; }
+.sl-kv { grid-template-columns: repeat(2, 1fr); row-gap: 16px; }
+.sl-sky { margin: -6px 0 0; flex: none; display: grid; justify-items: center; gap: 6px; }
+.sl-sky figcaption { font-size: 15px; color: var(--muted); text-align: center; display: grid; gap: 4px; }
+.sl-sky figcaption b { font-size: 22px; color: var(--ink); }
+.sl-sky figcaption b.warn-text { color: var(--warning); }
+.sky-key { font-size: 13px; display: inline-flex; gap: 6px; align-items: center; justify-content: center; }
+.sky-key i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.sky-key i.clear { background: rgb(96 165 250); } .sky-key i.blocked { background: rgb(248 72 72); margin-left: 8px; }
+.sky { position: relative; max-width: 100%; }
+.sky-disc { position: absolute; border-radius: 50%; overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, #142036 0%, #0b1322 70%, #070c16 100%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06), 0 0 24px rgb(37 99 235 / .12); }
+.sky-disc img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+.sky svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.sky .edge { fill: none; stroke: color-mix(in srgb, var(--muted) 60%, transparent); stroke-width: 1.5; }
+.sky .ring { fill: none; stroke: rgb(255 255 255 / .45); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.sky .zen { fill: rgb(255 255 255 / .5); }
+.sky text { fill: var(--muted); font-size: 13px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+.sky .facing { fill: #fbbf24; opacity: .9; }
