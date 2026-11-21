@@ -1267,7 +1267,7 @@ function renderNetwork() {
         ${slAlerts.length ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}</div>` : ""}
         <div class="muted small">${esc(S["starlink.software"] || "")}</div>
       </div>
-      ${map?.data ? `<figure class="sl-sky">${skyMap(map, S["starlink.azimuth"])}
+      ${map?.data ? `<figure class="sl-sky">${skyMap(map, S["starlink.azimuth"], 360)}
         <figcaption><b class="${(obs ?? 0) > 5 ? "warn-text" : ""}">${num(obs, 1)}%</b> obstructed
           <span class="sky-key"><i class="clear"></i>Clear <i class="blocked"></i>Obstructed</span></figcaption></figure>`
       : `<div class="sl-obs">${ring(Math.min(100, obs ?? 0), { size: 150, stroke: 14, color: (obs ?? 0) > 5 ? "var(--warning)" : "var(--c-shore)" })}

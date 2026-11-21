@@ -785,3 +785,50 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sky .zen { fill: rgb(255 255 255 / .5); }
 .sky text { fill: var(--muted); font-size: 13px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
 .sky .facing { fill: #fbbf24; opacity: .9; }
+
+/* Network layout: Starlink fills the left column; Cellular and Location (compact) and WAN priority stack on the right */
+.net-grid { grid-template-rows: auto auto auto 1fr; }
+.net-grid > .sl-card { grid-column: 1; grid-row: 1 / 4; display: flex; flex-direction: column; }
+.net-grid > .cell-card { grid-column: 2; grid-row: 1; }
+.net-grid > #loc-card { grid-column: 2; grid-row: 2; }
+.net-grid > #wan-card { grid-column: 2; grid-row: 3; }
+.net-grid > .wide { grid-column: 1 / -1; grid-row: 4; }
+/* Starlink, full height: stats across the top, a large sky map below */
+.sl-card .sl-body { flex: 1; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 10px; }
+.sl-card .sl-left { flex: none; grid-template-columns: auto 1fr; align-items: center; column-gap: 40px; }
+.sl-card .sl-left > .chips-row, .sl-card .sl-left > .small { grid-column: 1 / -1; }
+.sl-card .sl-kv { border-top: none; padding-top: 0; }
+.sl-card .sl-sky { flex: 1; align-content: center; margin: 0; }
+/* Compact Cellular and Location cards */
+.cell-card .cell-main { margin: 0 0 8px; }
+.cell-card .cell-sig { gap: 16px; }
+.cell-card .cell-sig b { font-size: 34px; } .cell-card .cell-sig span { font-size: 16px; }
+.cell-card .bars { height: 46px; gap: 4px; } .cell-card .bars i { width: 10px; border-radius: 3px; }
+.cell-card .sl-obs { width: 96px; height: 96px; } .cell-card .sl-obs b { font-size: 18px; } .cell-card .sl-obs small { font-size: 11px; }
+.cell-card .kv-row, #loc-card .sun-row { padding-top: 10px; margin-top: 0; }
+.cell-card .kv-row b, #loc-card .sun-row b { font-size: 21px; }
+.cell-card .kv-row span, #loc-card .sun-row span { font-size: 13px; }
+#loc-card .loc { gap: 14px; margin-bottom: 4px; } #loc-card .loc .ic { width: 38px; height: 38px; }
+#loc-card .loc b { font-size: 24px; } #loc-card .loc span { font-size: 15px; }
+#loc-card .daybar { margin: 10px 0 0; }
+#loc-card .sun-row { margin-top: 10px; }
+/* Compact WAN rows */
+#wan-card .wans { gap: 6px; }
+#wan-card .wan { padding: 7px 14px; gap: 12px; border-radius: 12px; }
+#wan-card .wan b { font-size: 18px; } #wan-card .wan span { font-size: 14px; }
+#wan-card .wan .ic { width: 24px; height: 24px; }
+/* tighter still, so the throughput chart keeps its space */
+.cell-card .kv-row { grid-template-columns: auto auto 1fr auto; column-gap: 28px; }
+.cell-card .kv-row b { white-space: nowrap; }
+#wan-card .wan { padding: 5px 14px; }
+#wan-card .wan > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+#wan-card .wan > div b { display: inline; white-space: nowrap; }
+#wan-card .wan > div span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#wan-card .wan .pill { padding-block: 2px; }
+#loc-card .loc { margin-bottom: 0; } #loc-card .loc b { font-size: 22px; }
+#loc-card .daybar { margin-top: 8px; }
+#loc-card .sun-row { margin-top: 8px; padding-top: 8px; } #loc-card .sun-row b { font-size: 19px; }
+.cell-card .kv-row { padding-top: 8px; } .cell-card .kv-row b { font-size: 19px; }
+.sl-card .sl-left > .chips-row, .sl-card .sl-left > .small { grid-column: auto; }
+.sl-card .sl-left > .small { align-self: center; }
+.sl-card .sl-body { gap: 4px; }
