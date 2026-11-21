@@ -252,3 +252,13 @@ def test_starlink_alerts_quiet_after_requested_restart():
     assert list(r_starlink(s, DEFAULTS))
     s.set("starlink.restart_requested", _t.time())
     assert list(r_starlink(s, DEFAULTS)) == []
+
+
+def test_peplink_bandwidth_per_wan():
+    from aetherrv.adapters.peplink import normalize_bandwidth
+    r = {"bandwidth": {"timestamp": 1, "unit": "kbps",
+                       "1": {"name": "Starlink", "overall": {"download": 8, "upload": 13}},
+                       "4": {"name": "WWAN on 5 GHz", "overall": {"download": 497, "upload": 38}}},
+         "lifetime": {"unit": "MB"}}
+    assert normalize_bandwidth(r) == {1: {"down_mbps": 0.008, "up_mbps": 0.013}, 4: {"down_mbps": 0.497, "up_mbps": 0.038}}
+    assert normalize_bandwidth({}) == {}

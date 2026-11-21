@@ -44,6 +44,8 @@ TRACKED = [
     "starlink.down_mbps",
     "starlink.up_mbps",
     "starlink.latency_ms",
+    "wan.down_mbps",          # the Peplink's active WAN (Network chart)
+    "wan.up_mbps",
 ]
 
 SCHEMA = """

@@ -510,3 +510,6 @@ Sections 1–31 use the old names. Mapping:
   - A warm reading still raises "Fridge/Freezer warm" (after 10 min). The alert card gets a "Fridge is off" / "Freezer is off" button (with a confirmation), which sets prefs `fridge_off` / `freezer_off`.
   - That silences the rule, and the card shows "off · alerts resume when cold". `ColdRearm` clears it automatically once the unit is at or below its limit.
   - The console never infers "off" by itself (owner: no guessing).
+- **2026-11-21, Network chart follows the active WAN.** The Peplink `status.traffic` returns live per-WAN bandwidth (kbps, "overall" down/up). Each 15 s WAN poll records the active WAN's throughput as `wan.down_mbps` / `wan.up_mbps`: one continuous history series, whichever WAN carries the traffic.
+  - The chart title follows the active WAN live (e.g. "WWAN on 5 GHz throughput").
+  - Without the Peplink API it falls back to the Starlink dish series.

@@ -1263,7 +1263,13 @@ $("#sl-card").addEventListener("click", e => {
     () => control("install_update", true, "Starlink update", "starlink"));
 });
 
+// Network history chart: the Peplink's active WAN when the router API is on, else the Starlink dish.
+const netKeys = () => S["peplink.reachable"] != null ? ["wan.down_mbps", "wan.up_mbps"] : ["starlink.down_mbps", "starlink.up_mbps"];
+const netTitle = () => S["peplink.reachable"] == null ? "Starlink throughput"
+  : `${S["peplink.active"] || "Internet"} throughput`;
+
 function renderNetwork() {
+  $("#net-chart-title").textContent = netTitle();       // follows WAN failover live
   const on = S["starlink.online"], reach = S["starlink.reachable"];
   const slAlerts = (S["starlink.alerts"] || []);
   const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
@@ -1353,7 +1359,7 @@ async function loadHistory() {
   if (view === "home") await fetchHist("home", ["victron.battery.soc"], 86400);
   if (view === "energy") await fetchHist("power", ["victron.pv.power", "energy.dc.load", "victron.ac.load"], span.power);
   if (view === "climate") await fetchHist("temp", ["climate.cabin.temp", "climate.outside.temp"], span.temp);
-  if (view === "network") await fetchHist("net", ["starlink.down_mbps", "starlink.up_mbps"], span.net);
+  if (view === "network") await fetchHist("net", netKeys(), span.net);
   renderCharts();
 }
 setInterval(loadHistory, 60000);
@@ -1382,11 +1388,12 @@ function renderCharts() {
     timeChart($("#chart-power"), { series, area: true, fmt: v => fmtW(v) });
   }
   if (view === "network") {
-    const h = hist.net || {};
+    const h = hist.net || {}, [kd, ku] = netKeys();
     const series = [
-      { name: "Download", color: css("--c-out"), points: h["starlink.down_mbps"] },
-      { name: "Upload", color: css("--c-cabin"), points: h["starlink.up_mbps"] },
+      { name: "Download", color: css("--c-out"), points: h[kd] },
+      { name: "Upload", color: css("--c-cabin"), points: h[ku] },
     ];
+    $("#net-chart-title").textContent = netTitle();
     $("#legend-net").innerHTML = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
     timeChart($("#chart-net"), { series, area: true,
       fmt: v => `${+v.toFixed(Math.abs(v) >= 10 ? 0 : Math.abs(v) >= 1 ? 1 : 2)} Mbps` });   // small scales keep decimals (not "0, 0, 0")

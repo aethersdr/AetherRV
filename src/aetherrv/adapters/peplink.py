@@ -11,6 +11,7 @@ Credentials live in the root:aetherrv 0640 secrets file, never in the browser.
 Endpoints used:
   status.wan.connection            per-WAN status; cellular carrier/RAT/band/RSRP/RSRQ/SINR, SIM, roaming
   status.wan.connection.allowance  per-SIM monthly usage vs limit (MB)
+  status.traffic                   live per-WAN bandwidth (kbps, overall download/upload)
   info.location                    GPS (fw 8.0.1+)
 
 PRIVACY: responses contain IMSI/ICCID/IMEI/APN credentials. `normalize_wans` keeps an explicit
@@ -88,6 +89,20 @@ def normalize_wans(resp: dict) -> list[dict]:
         if wifi:
             row["wifi"] = {"ssid": wifi.get("ssid"), "strength": (wifi.get("signal") or {}).get("strength")}
         out.append(row)
+    return out
+
+
+def normalize_bandwidth(resp: dict) -> dict[int, dict]:
+    """status.traffic → {wan id: {"down_mbps", "up_mbps"}} from the live per-WAN "overall" bandwidth."""
+    bw = (resp or {}).get("bandwidth") or {}
+    scale = {"bps": 1e-6, "kbps": 1e-3, "mbps": 1.0}.get(str(bw.get("unit", "kbps")).lower(), 1e-3)
+    out = {}
+    for k, v in bw.items():
+        if k.isdigit() and isinstance(v, dict):
+            o = v.get("overall") or {}
+            if o.get("download") is not None or o.get("upload") is not None:
+                out[int(k)] = {"down_mbps": round((o.get("download") or 0) * scale, 3),
+                               "up_mbps": round((o.get("upload") or 0) * scale, 3)}
     return out
 
 
@@ -217,10 +232,19 @@ class PeplinkAdapter:
     async def _wan(self) -> None:
         wans = normalize_wans(await self.client.get("status.wan.connection"))
         act = active_wan(wans)
-        self.state.update({"peplink.reachable": True, "peplink.wans": wans,
-                           "peplink.active": act["name"] if act else None,
-                           "peplink.active_type": ("starlink" if act and act["starlink"] else act["type"]) if act else None,
-                           "peplink.updated": round(time.time(), 1)})
+        up: dict = {"peplink.reachable": True, "peplink.wans": wans,
+                    "peplink.active": act["name"] if act else None,
+                    "peplink.active_type": ("starlink" if act and act["starlink"] else act["type"]) if act else None,
+                    "peplink.updated": round(time.time(), 1)}
+        try:
+            bw = normalize_bandwidth(await self.client.get("status.traffic"))
+        except PeplinkError as e:
+            log.debug("peplink status.traffic failed: %s", e)
+            bw = {}
+        cur = bw.get(act["id"]) if act else None
+        # The active WAN's live throughput, recorded as one continuous history series (whichever WAN carries traffic).
+        up.update({"wan.down_mbps": cur["down_mbps"] if cur else None, "wan.up_mbps": cur["up_mbps"] if cur else None})
+        self.state.update(up)
 
     async def run(self) -> None:
         tick = 0
