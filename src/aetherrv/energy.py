@@ -3,7 +3,9 @@
 The Cerbo only knows an alternator if it appears as a DC source it recognises. A Wakespeed WS500 on
 NMEA 2000 is not one, so the Cerbo reports no alternator power and books the charging current as
 NEGATIVE DC load (its Dc/System/Power = known sources − battery power). When that happens and the
-N2K adapter has alternator readings, use them and add the alternator back into the DC load.
+N2K adapter has alternator readings, use them for the alternator, and take the DC load as the gap
+between the battery shunt and the regulator's current (owner's model, 2026-11-21):
+    DC load = (battery current − regulator current) × battery voltage
 """
 from __future__ import annotations
 
@@ -20,8 +22,12 @@ def derive(state: State) -> None:
         alt, src = cerbo_alt, "cerbo"
     elif n2k_alt is not None:
         alt, src = n2k_alt, "n2k"
-        if dc is not None:
-            dc = max(0.0, dc + n2k_alt)       # the Cerbo left the alternator out of its balance
+        i_batt, v_batt, i_alt = (state.get("victron.battery.current"), state.get("victron.battery.voltage"),
+                                 state.get("alternator.current"))
+        if None in (i_batt, v_batt, i_alt):
+            dc = None                          # the Cerbo's figure is wrong while charging; don't show it
+        else:
+            dc = max(0.0, (i_batt - i_alt) * v_batt)
     else:
         alt, src = None, None
     state.set("energy.alternator.power", alt)

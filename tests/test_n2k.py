@@ -191,10 +191,15 @@ def test_energy_derive_fills_in_alternator_and_fixes_dc_load():
     from aetherrv.energy import derive
     from aetherrv.state import State
     s = State()
-    s.set("victron.alternator.power", None); s.set("victron.dc.load", -1844.0); s.set("alternator.power", 1856)
+    s.set("victron.alternator.power", None); s.set("victron.dc.load", -1808.0); s.set("alternator.power", 1781)
+    s.set("victron.battery.current", 135.5); s.set("victron.battery.voltage", 13.67); s.set("alternator.current", 129.5)
     derive(s)
-    assert s.get("energy.alternator.power") == 1856 and s.get("energy.alternator.source") == "n2k"
-    assert s.get("energy.dc.load") == 12.0
+    assert s.get("energy.alternator.power") == 1781 and s.get("energy.alternator.source") == "n2k"
+    assert s.get("energy.dc.load") == round((135.5 - 129.5) * 13.67, 1)     # 82.0 W: shunt − regulator gap
+    s.set("alternator.current", None)                         # no regulator current → unknown, not the Cerbo's −1808
+    derive(s)
+    assert s.get("energy.dc.load") is None
+    s.set("alternator.current", 129.5)
     s.set("victron.alternator.power", 900)                     # a Cerbo-known alternator wins, DC load untouched
     derive(s)
-    assert s.get("energy.alternator.power") == 900 and s.get("energy.dc.load") == -1844.0
+    assert s.get("energy.alternator.power") == 900 and s.get("energy.dc.load") == -1808.0
