@@ -441,3 +441,21 @@ Sections 1–31 use the old names. Mapping:
 - **Fix: Victron MQTT reconnect.** Data topics were subscribed only the first time the portal ID was seen. After any reconnect (clean session) the console showed "connected" with no data. It now re-subscribes on every connect.
 - **Fix: watchdog crash loop.** A `socketcand` open to an unreachable Cerbo blocks for about 10 s on the event loop, which tripped `WatchdogSec=10` and restarted the backend every 26 s while the van LAN was down. The open now runs in a worker thread.
 - **Peplink LAN moved to .254 (owner, 2026-11-21).** This freed 192.168.100.1 for the Starlink dish. Afterwards the Cerbo (MQTT and socketcand) and the MCS7 worked. The IPG100 and MCS-Panel stayed on the LAN but did not answer, which points to the old .1 gateway (static, or lease not yet renewed). The dish at 192.168.100.1:9200 still timed out from the Pi: the Peplink keeps 192.168.100.0/24 as its connected LAN, and Pi traffic arrives on a different WAN than Starlink. The Starlink adapter stays off.
+
+## 34. Van LAN renumbered to <van-lan>.0/24; Pi moved into the van (2026-11-21)
+
+- **Why.** Starlink's dish is fixed at 192.168.100.1. That address sat inside the van LAN, so the Peplink kept it on its LAN side. Moving the Peplink's own LAN IP to .254 didn't help: from the Pi in the van, .1 gave no ARP reply, and a /32 route via .254 also failed.
+  - A side effect of the old setup: the Peplink hands out NTP server .1, so systemd-networkd (RoutesToNTP) put an on-link route to it.
+- **Change (owner, Peplink UI).** The LAN is now <van-lan>.1/24 (a new /24 off 192.168.100.x). New addresses:
+  - AetherPIII end0: DHCP reservation at <van-lan>.110.
+  - Cerbo .6, MCS7 .111, oneax .10, IC-705 .100.
+  - GPS Forwarding now unicasts to the Pi UDP 10110. Verified: 12 satellites, fix.
+- **RB5009 (home).** Route `<van-lan>.0/24 via <peplink-wan>` added. DHCP option 121 `van-route` now carries the new /24 + the old /24 + default.
+  - Backup: deploy/network-backups/rb5009-export-pre-110-route-20261121.rsc (gitignored).
+  - The RB5009 resets SSH from the van subnet, so manage it from the home LAN. Verified from home: the van AP answers.
+- **Pi config.** /etc/aetherrv/aetherrv.toml hosts changed to the new subnet (Cerbo ×2, MCS7 ×2, IPG100). Backup: aetherrv.toml.pre-110-20261121.
+- **DHCP leases.** The old leases had to be cleared by power-cycling or renewing; until then, devices had no gateway and the Pi dropped off Tailscale.
+- **socketcand after the Cerbo reboot.** The setting was still 1, but nothing was listening on 29536. It probably started before DHCP. Toggling MQTT `Settings/Services/Socketcand` 1→0→1 (owner OK) brought it back; N2K is at ~57 fps.
+- **Still open.**
+  - Starlink 192.168.100.1:9200 still times out. WAN 1 Starlink is Standby and traffic leaves on WAN 4 (home Wi-Fi). Next steps: a WAN 1 Management IP (192.168.100.100/24), or retest with Starlink active. IPv6 doesn't help: the dish gRPC is IPv4 .1 only.
+  - The IPG100 is not on .110 after its power-cycle (static .100.5 on the device?). The owner will check later.
