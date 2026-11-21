@@ -755,9 +755,8 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 
 /* Heater card: hot water / pre-heat badges stacked under the flame badge (status; lit when on) */
 .heater .badge-col { display: grid; gap: 12px; justify-items: center; align-content: center; }
-.heater .badge.mode { height: 84px; border-radius: 24px; grid-template-rows: auto auto; place-content: center; gap: 4px; }
-.heater .badge.mode .ic { width: 34px; height: 34px; justify-self: center; }
-.heater .badge.mode span { font-size: 14px; font-weight: 600; }
+.heater .badge.mode { height: 84px; border-radius: 24px; }
+.heater .badge.mode .ic { width: 52px; height: 52px; }
 .heater .badge.mode.on { color: var(--c-cabin); background: color-mix(in srgb, var(--c-cabin) 15%, var(--surface-2));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-cabin) 55%, var(--line)); }
 .heater.on .badge.mode:not(.on) { color: var(--muted); background: var(--surface-2); }
