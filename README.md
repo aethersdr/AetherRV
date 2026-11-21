@@ -5,6 +5,8 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
 
 ![AetherRV home screen on the van's 10.1" touchscreen](docs/screenshots/home.png)
 
+<img src="docs/screenshots/climate.png" width="49%" alt="Climate screen: setpoint dial, Rixens MCS7 status and temperature history"> <img src="docs/screenshots/weather.png" width="49%" alt="Weather screen: radar map with a 7-day forecast">
+
 - **Energy:** a Victron Cerbo GX over MQTT shows battery, solar, shore, alternator, inverter and loads as an
   animated flow, with history. It controls MultiPlus mode, shore current limit and MPPT on/off.
 - **Climate:** Rixens MCS7 hydronic heat over its local HTTP API shows setpoint, fan, heat sources, hot water,
