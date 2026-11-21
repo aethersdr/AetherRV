@@ -178,3 +178,77 @@ async def test_refuses_account_with_write_permission(fake_router_login):
     with pytest.raises(PeplinkError, match="write"):
         await c.get("status.wan.connection")
     await c.close()
+
+
+class FakeDish:
+    """Stand-in for DishOps: scripted status reads, counts reboot sends."""
+    def __init__(self, statuses, reboot_exc=None):
+        self.statuses, self.reboots, self.reboot_exc = list(statuses), 0, reboot_exc
+
+    def status(self):
+        s = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+        if isinstance(s, Exception):
+            raise s
+        return s
+
+    def reboot(self):
+        self.reboots += 1
+        if self.reboot_exc:
+            raise self.reboot_exc
+
+
+def _sl(ops, enabled=True):
+    from aetherrv.adapters.starlink import StarlinkAdapter
+    from aetherrv.state import State
+    from aetherrv.txgate import TxGate
+    return StarlinkAdapter(State(), gate=TxGate({"starlink": enabled}), ops=ops)
+
+
+PENDING = {"software_update_state": "REBOOT_REQUIRED", "uptime": 5000}
+
+
+async def test_starlink_install_blocked_without_tx_enabled():
+    ops = FakeDish([PENDING])
+    a = _sl(ops, enabled=False)
+    r = await a.command("install_update", client="test", poll=0)
+    assert not r["ok"] and ops.reboots == 0 and a.state.get("starlink.controls_ok") is False
+
+
+async def test_starlink_install_rejects_other_commands_and_no_pending_update():
+    ops = FakeDish([{"software_update_state": "IDLE", "uptime": 5000}])
+    a = _sl(ops)
+    assert not (await a.command("reboot", client="test", poll=0))["ok"]
+    r = await a.command("install_update", client="test", poll=0)
+    assert not r["ok"] and "no update" in r["detail"] and ops.reboots == 0
+
+
+async def test_starlink_install_sends_once_and_verifies_uptime_reset():
+    ops = FakeDish([PENDING, {"software_update_state": "REBOOT_REQUIRED", "uptime": 5003},
+                    {"software_update_state": "IDLE", "uptime": 12}])
+    a = _sl(ops)
+    r = await a.command("install_update", client="test", poll=0)
+    assert r["ok"] and ops.reboots == 1 and a.state.get("starlink.restart_requested")
+
+
+async def test_starlink_install_send_error_is_not_retried():
+    ops = FakeDish([PENDING, OSError("unreachable")], reboot_exc=RuntimeError("deadline"))
+    a = _sl(ops)
+    r = await a.command("install_update", client="test", poll=0, verify_timeout=1)
+    assert not r["ok"] and ops.reboots == 1
+
+
+async def test_starlink_install_unverified_when_dish_never_restarts():
+    ops = FakeDish([PENDING])
+    a = _sl(ops)
+    r = await a.command("install_update", client="test", poll=0.01, verify_timeout=0.05)
+    assert not r["ok"] and "did not restart" in r["detail"] and ops.reboots == 1
+
+
+def test_starlink_alerts_quiet_after_requested_restart():
+    import time as _t
+    from aetherrv.alerts import DEFAULTS, r_starlink
+    from aetherrv.state import State
+    s = State(); s.set("starlink.reachable", False)
+    assert list(r_starlink(s, DEFAULTS))
+    s.set("starlink.restart_requested", _t.time())
+    assert list(r_starlink(s, DEFAULTS)) == []

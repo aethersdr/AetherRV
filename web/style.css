@@ -832,3 +832,6 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-card .sl-left > .chips-row, .sl-card .sl-left > .small { grid-column: auto; }
 .sl-card .sl-left > .small { align-self: center; }
 .sl-card .sl-body { gap: 4px; }
+.sl-install { min-height: 48px; padding: 0 18px; font-size: 17px; color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 50%, var(--line)); }
+.sl-card .chips-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

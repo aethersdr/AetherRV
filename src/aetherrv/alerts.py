@@ -144,6 +144,8 @@ def r_rixens(s: State, c: dict):
 def r_starlink(s: State, c: dict):
     if s.get("starlink.reachable") is None:
         return                                   # adapter not enabled
+    if time.time() - (s.get("starlink.restart_requested") or 0) < 600:
+        return                                   # owner-requested restart (update install): expected outage
     if s.get("starlink.reachable") is False:
         yield Finding("starlink.unreachable", "warning", "Starlink dish unreachable",
                       "No gRPC response from 192.168.100.1 (powered off, stowed, or not routed by the Peplink).", "starlink")

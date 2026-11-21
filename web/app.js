@@ -447,7 +447,7 @@ function control(cmd, value, label, device = "rixens") {
   sendWS({ type: "control", device, cmd, value, id });
   render();
 }
-const canControlDev = d => CAN_CTL && (d === "victron" ? S["victron.controls_ok"] === true : S["climate.rixens.controls_ok"] === true);
+const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
 function askConfirm(title, detail, onYes) {
   $("#modal-t").textContent = title; $("#modal-d").textContent = detail; $("#modal").hidden = false;
   $("#modal-yes").onclick = () => { $("#modal").hidden = true; onYes(); };
@@ -1246,10 +1246,18 @@ function skyMap(m, az, size = 300) {
     </svg></div>`;
 }
 
+$("#sl-card").addEventListener("click", e => {
+  if (!e.target.closest("[data-sl=install]") || !canControlDev("starlink") || ctlPending) return;
+  askConfirm("Install the Starlink update?",
+    "The dish restarts to install the downloaded update. Starlink internet drops for a few minutes; if Starlink is the active connection, remote (Tailscale) access to this console drops too. A firmware install can't be undone.",
+    () => control("install_update", true, "Starlink update", "starlink"));
+});
+
 function renderNetwork() {
   const on = S["starlink.online"], reach = S["starlink.reachable"];
   const slAlerts = (S["starlink.alerts"] || []);
   const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
+  const updReady = on != null && S["starlink.update_state"] === "REBOOT_REQUIRED";
   $("#sl-card").innerHTML = reach == null ? `<div class="card-h"><h2>Starlink</h2></div><div class="muted">Not enabled.</div>` : `
     <div class="card-h"><h2>Starlink</h2><span class="pill ${on ? "ok-pill" : "bad-pill"}">${icon(on ? "check" : "alert")}${on ? "Online" : reach ? esc(String(S["starlink.state"] || "").replace(/_/g, " ").toLowerCase()) : "Unreachable"}</span></div>
     <div class="sl-body">
@@ -1264,7 +1272,8 @@ function renderNetwork() {
           <div><b>${dur(S["starlink.uptime"])}</b><span>uptime</span></div>
           <div><b>${S["starlink.gps_sats"] ?? "—"}</b><span>GPS sats</span></div>
         </div>
-        ${slAlerts.length ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}</div>` : ""}
+        ${slAlerts.length || updReady ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}
+          ${updReady && canControlDev("starlink") ? `<button class="btn-soft sl-install" data-sl="install" ${ctlPending ? "disabled" : ""}>${icon("download")}Install update</button>` : ""}</div>` : ""}
         <div class="muted small">${esc(S["starlink.software"] || "")}</div>
       </div>
       ${map?.data ? `<figure class="sl-sky">${skyMap(map, S["starlink.azimuth"], 360)}

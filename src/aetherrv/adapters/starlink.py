@@ -1,9 +1,16 @@
-"""Starlink dish adapter (local gRPC at 192.168.100.1:9200 via starlink-grpc-core). READ-ONLY.
+"""Starlink dish adapter (local gRPC at 192.168.100.1:9200 via starlink-grpc-core).
 
 Uses `starlink_grpc.status_data()`, which resolves the dish protobufs by server reflection
 (nothing to compile). The library is synchronous, so each poll runs in a worker thread.
-Control calls (reboot, stow, sleep, GPS config, reset obstruction map) exist in the library and
-are deliberately NOT used. The obstruction map is read once a minute (get_obstruction_map).
+The obstruction map is read once a minute (get_obstruction_map).
+
+ONE control exists: `install_update`, which reboots the dish ONLY while it reports a downloaded
+update waiting for a reboot (software_update_state == REBOOT_REQUIRED). It goes through TxGate
+(device "starlink", tx_enabled), reads fresh status first, sends exactly once on a brand-new gRPC
+channel (the library retries once on a *reused* channel, so the read and the send never share
+one), never retries, and verifies the reboot by the dish going away or its uptime resetting.
+Every other control call in the library (plain reboot, stow, sleep, GPS config, reset
+obstruction map) is deliberately NOT used.
 
 Not available: location (removed from gRPC for most plans in May 2026). Use the Peplink GPS.
 Behind the Peplink: give the Starlink WAN a "Management IP" (e.g. 192.168.100.100/24); on fw 8.6.1
@@ -16,9 +23,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import sqlite3
 import time
 
 from ..state import State
+from ..txgate import TxBlocked, TxGate
 
 log = logging.getLogger(__name__)
 
@@ -89,17 +98,109 @@ def _r(v, n):
     return None if v is None else round(float(v), n)
 
 
+class DishOps:
+    """The two dish calls a command needs. Each call opens its OWN fresh channel and closes it, so the
+    library's retry-on-reused-channel never applies (a send can't be repeated behind our back)."""
+
+    def __init__(self, target: str) -> None:
+        self.target = target
+
+    def status(self) -> dict:
+        import starlink_grpc
+        ctx = starlink_grpc.ChannelContext(target=self.target)
+        try:
+            st, *_ = starlink_grpc.status_data(context=ctx)
+            return st
+        finally:
+            ctx.close()
+
+    def reboot(self) -> None:
+        import starlink_grpc
+        ctx = starlink_grpc.ChannelContext(target=self.target)
+        try:
+            starlink_grpc.reboot(context=ctx)
+        finally:
+            ctx.close()
+
+
 class StarlinkAdapter:
     device = "starlink"
+    COMMANDS = ("install_update",)
 
     MAP_EVERY = 60.0   # seconds between obstruction-map fetches (the map only accumulates slowly)
 
-    def __init__(self, state: State, target: str = "192.168.100.1:9200", interval: float = 5.0) -> None:
+    def __init__(self, state: State, target: str = "192.168.100.1:9200", interval: float = 5.0,
+                 gate: TxGate | None = None, db: sqlite3.Connection | None = None, ops: DishOps | None = None) -> None:
         self.state = state
         self.target = target
         self.interval = interval
         self._ctx = None
         self._map_at = 0.0
+        self.gate, self.db = gate, db
+        self.ops = ops or DishOps(target)
+        self._cmd_lock = asyncio.Lock()
+        state.set("starlink.controls_ok", bool(gate and gate.is_enabled(self.device)))
+        if db is not None:
+            db.execute("CREATE TABLE IF NOT EXISTS command_log (t REAL, device TEXT, cmd TEXT, value TEXT, "
+                       "outcome TEXT, detail TEXT, client TEXT)")
+
+    def _log(self, cmd: str, value, outcome: str, detail: str, client: str) -> None:
+        log.warning("starlink command %s=%s from %s: %s %s", cmd, value, client, outcome, detail)
+        if self.db is not None:
+            try:
+                self.db.execute("INSERT INTO command_log VALUES (?,?,?,?,?,?,?)",
+                                (time.time(), self.device, cmd, str(value), outcome, detail, client))
+            except sqlite3.Error:
+                log.exception("command log write failed")
+
+    async def command(self, cmd: str, value=None, client: str = "kiosk", verify_timeout: float = 90.0,
+                      poll: float = 3.0) -> dict:
+        """install_update: reboot the dish to install a downloaded update. Fresh read → send once → verify."""
+        async with self._cmd_lock:
+            try:
+                if self.gate is None:
+                    raise TxBlocked("no gate")
+                self.gate.check(self.device, cmd)
+            except TxBlocked as e:
+                self._log(cmd, value, "blocked", str(e), client)
+                return {"ok": False, "detail": "control is disabled for the Starlink dish"}
+            if cmd not in self.COMMANDS:
+                self._log(cmd, value, "rejected", "not an allowed command", client)
+                return {"ok": False, "detail": f"command {cmd!r} is not allowed"}
+            try:
+                st = await asyncio.wait_for(asyncio.to_thread(self.ops.status), timeout=15)   # fresh, never the poll cache
+            except Exception as e:
+                self._log(cmd, value, "failed", f"status read: {e}", client)
+                return {"ok": False, "detail": "dish not reachable; nothing sent"}
+            upd = st.get("software_update_state")
+            if upd != "REBOOT_REQUIRED":
+                self._log(cmd, value, "rejected", f"software_update_state={upd}", client)
+                return {"ok": False, "detail": "no update is waiting to install"}
+            before, send_err = st.get("uptime"), None
+            try:
+                await asyncio.wait_for(asyncio.to_thread(self.ops.reboot), timeout=20)          # exactly once
+            except Exception as e:
+                # The dish may have received it (e.g. a deadline expiring as it goes down): verify, never resend.
+                send_err = e
+                log.info("starlink reboot call raised %s; verifying instead of retrying", e)
+            self.state.set("starlink.restart_requested", round(time.time(), 1))
+            deadline = time.monotonic() + verify_timeout
+            while time.monotonic() < deadline:
+                await asyncio.sleep(poll)
+                try:
+                    now = await asyncio.wait_for(asyncio.to_thread(self.ops.status), timeout=8)
+                except Exception:
+                    if send_err is not None:        # unreachable after a failed send: can't tell what happened
+                        self._log(cmd, value, "unverified", f"send raised {send_err}; dish unreachable since", client)
+                        return {"ok": False, "detail": "the request may not have reached the dish (not retried)"}
+                    self._log(cmd, value, "ok", f"dish went offline after the reboot request (uptime was {before}s)", client)
+                    return {"ok": True, "detail": "the dish is restarting to install the update (offline a few minutes)"}
+                up = now.get("uptime")
+                if before is not None and up is not None and up < before:
+                    self._log(cmd, value, "ok", f"uptime reset {before}s → {up}s", client)
+                    return {"ok": True, "detail": "the dish restarted and is installing the update"}
+            self._log(cmd, value, "unverified", f"no restart seen within {verify_timeout:.0f}s", client)
+            return {"ok": False, "detail": "the dish did not restart (not retried)"}
 
     def _poll(self) -> dict:
         import starlink_grpc  # imported lazily so the backend still runs if grpc is missing

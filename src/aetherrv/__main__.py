@@ -85,7 +85,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
                 log.warning("%s adapter disabled while DEMO data is enabled", kind)
                 continue
             if kind == "starlink":
-                adapters.append(StarlinkAdapter(state, d.get("target", "192.168.100.1:9200"), float(d.get("interval", 5))))
+                adapters.append(StarlinkAdapter(state, d.get("target", "192.168.100.1:9200"), float(d.get("interval", 5)),
+                                                gate=gate, db=history.db if history else None))
             else:
                 sec = load_secrets(cfg)
                 cid, csec = sec.get("peplink_client_id", ""), sec.get("peplink_client_secret", "")
@@ -200,7 +201,8 @@ async def amain(cfg: dict) -> None:
     vic = next((a for a in adapters if isinstance(a, VictronAdapter)), None)
     if vic is not None:
         vic.gate, vic.db = gate, history.db
-    controls = {"rixens": next((a for a in adapters if isinstance(a, RixensHttpAdapter)), None), "victron": vic}
+    controls = {"rixens": next((a for a in adapters if isinstance(a, RixensHttpAdapter)), None), "victron": vic,
+                "starlink": next((a for a in adapters if isinstance(a, StarlinkAdapter)), None)}
     admin = AdminClient(web_cfg.get("admin_socket", "/run/aetherrv-admin.sock"))
     prefs = Prefs(state, web_cfg.get("settings_path", "/var/lib/aetherrv/settings.json"))
     adapters.append(AutoTimezone(state, admin, prefs))
