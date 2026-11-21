@@ -734,3 +734,21 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .upks.held .upk { opacity: .65; }
 .uplog { background: #07090c; border: 1px solid var(--line); border-radius: 12px; padding: 14px; max-height: 360px; overflow-y: auto;
   font: 13px/1.45 "DejaVu Sans Mono", monospace; color: #b9c3cf; white-space: pre-wrap; }
+
+/* Climate view: dial card (fixed height, lines up with the Espar card's top section), refrigeration under it in
+   the left column (row 2), the MCS7 + Espar column spans both rows, temperature history spans the bottom. The dial scales to whatever height is left
+   above the controls; it is absolutely positioned so it never drives the row height. */
+.climate-grid { grid-template-rows: auto auto minmax(240px, 1fr); }
+.climate-grid > .dial-card { grid-column: 1; grid-row: 1; }
+.climate-grid > .heaters { grid-column: 2; grid-row: 1 / 3; grid-template-rows: 1fr; align-content: stretch; }
+/* Espar card grows down to the bottom of Refrigeration (room for MCS7-style details once it's connected) */
+.climate-grid > .heaters > .heater-list { grid-template-rows: auto 1fr; align-content: stretch; }
+.climate-grid .heater-list > .heater:last-child { align-items: start; }
+.climate-grid > .cold { grid-column: 1; grid-row: 2; }
+.climate-grid > .wide { grid-row: 3; }
+.dial-card { height: 555px; min-height: 0; display: flex; flex-direction: column; place-items: stretch; }
+.dial-area { position: relative; flex: 1 1 0; min-height: 0; margin-bottom: -40px; }
+.dial-area .dial-wrap { position: absolute; inset: 0; margin: 0 auto; width: auto; height: 100%; aspect-ratio: 1; }
+.dial-area .dial-center { inset: 0; height: auto; }
+.dial-card .dial-temp { font-size: 108px; }
+.dial-card .dial-ctl { position: static; }

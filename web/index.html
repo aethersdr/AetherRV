@@ -92,10 +92,12 @@
     <section class="view" data-view="climate">
       <div class="climate-grid">
         <div class="card dial-card">
-          <div class="dial-wrap" id="dial"></div>
-          <div class="dial-center">
-            <div class="dial-temp" id="dial-temp">—</div>
-            <div class="muted" id="dial-label">cabin</div>
+          <div class="dial-area">
+            <div class="dial-wrap" id="dial"></div>
+            <div class="dial-center">
+              <div class="dial-temp" id="dial-temp">—</div>
+              <div class="muted" id="dial-label">cabin</div>
+            </div>
           </div>
           <div class="dial-ctl">
             <div class="ctl-row">
@@ -111,7 +113,8 @@
             </div>
           </div>
         </div>
-        <div class="heaters"><div id="heaters" class="heater-list"></div><div class="card cold" id="cold"></div></div>
+        <div class="heaters"><div id="heaters" class="heater-list"></div></div>
+        <div class="card cold" id="cold"></div>
         <div class="card wide">
           <div class="card-h"><h2>Temperature</h2>
             <div class="seg range" id="range-temp"><button data-s="86400" class="on">24 h</button><button data-s="604800">7 d</button><button data-s="2592000">30 d</button></div></div>
