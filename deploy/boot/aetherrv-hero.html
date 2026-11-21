@@ -1,0 +1,145 @@
+<!doctype html>
+<!-- AetherRV boot hero (source). Render: tools/render_hero.sh → deploy/boot/plymouth/aetherrv/splash.png (1920×1200).
+     Chrome + colour tokens from aethersdr.com (docs/user/src/css/custom.css):
+       --aether-bg #060b13  --aether-ink #eaf2fb  --aether-ink-soft #c4d4e8  --aether-muted #8598b4
+       --aether-cyan #5de3ff  --aether-cyan-deep #3aa7ff  --aether-teal #7bf2dc
+       --aether-gradient linear-gradient(100deg, #3aa7ff 0%, #5de3ff 50%, #8ef7e6 100%) -->
+<html><head><meta charset="utf-8"><title>AetherRV hero</title>
+<style>
+  html, body { margin: 0; width: 1920px; height: 1200px; overflow: hidden; background: #060b13; }
+  svg { display: block; }
+  .word { font-family: "Inter Display", "Inter", sans-serif; font-weight: 300; font-size: 150px; letter-spacing: -2px; }
+  .tag { font-family: "Inter", sans-serif; font-weight: 500; font-size: 22px; letter-spacing: 11px; }
+  .axis { font-family: "Inter", sans-serif; font-weight: 400; font-size: 17px; letter-spacing: 1px; }
+</style></head>
+<body>
+<svg id="hero" width="1920" height="1200" viewBox="0 0 1920 1200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="sky" cx="50%" cy="62%" r="75%">
+      <stop offset="0" stop-color="#0d2236"/><stop offset=".45" stop-color="#081422"/><stop offset="1" stop-color="#060b13"/>
+    </radialGradient>
+    <linearGradient id="grad" x1="0" y1="0" x2="1" y2=".18">
+      <stop offset="0" stop-color="#3aa7ff"/><stop offset=".5" stop-color="#5de3ff"/><stop offset="1" stop-color="#8ef7e6"/>
+    </linearGradient>
+    <linearGradient id="gradV" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8ef7e6"/><stop offset=".55" stop-color="#5de3ff"/><stop offset="1" stop-color="#3aa7ff"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5de3ff" stop-opacity=".55"/><stop offset="1" stop-color="#3aa7ff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="pool" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#5de3ff" stop-opacity=".42"/><stop offset=".5" stop-color="#3aa7ff" stop-opacity=".12"/><stop offset="1" stop-color="#3aa7ff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowSoft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="warm" cx="50%" cy="60%" r="70%"><stop offset="0" stop-color="#ffcf7a" stop-opacity=".85"/><stop offset="1" stop-color="#ff9f43" stop-opacity=".15"/></radialGradient>
+    <clipPath id="below"><rect x="0" y="862" width="1920" height="338"/></clipPath>
+  </defs>
+
+  <rect width="1920" height="1200" fill="url(#sky)"/>
+  <g id="stars"></g>
+
+  <!-- flowing aurora strands (the aethersdr.com wave motif) -->
+  <g fill="none" stroke-linecap="round" opacity=".55">
+    <path d="M-40,610 C260,520 470,700 760,600 S1240,470 1500,560 S1840,640 1980,560" stroke="url(#grad)" stroke-width="1.6" opacity=".55"/>
+    <path d="M-40,650 C300,560 520,730 800,640 S1260,520 1520,600 S1860,690 1980,610" stroke="url(#grad)" stroke-width="1.2" opacity=".4"/>
+    <path d="M-40,690 C320,610 560,760 840,690 S1280,580 1540,650 S1880,730 1980,670" stroke="url(#grad)" stroke-width="1" opacity=".3"/>
+  </g>
+  <g id="dust"></g>
+
+  <!-- mountain ridgelines (wireframe), behind the van -->
+  <g fill="none" stroke-linejoin="round">
+    <path d="M0,820 L150,760 L260,790 L420,690 L560,760 L700,700 L820,770 L960,730 L1100,780 L1240,690 L1380,760 L1520,710 L1660,780 L1800,730 L1920,770 L1920,862 L0,862 Z"
+          fill="#07111c" stroke="#3aa7ff" stroke-opacity=".35" stroke-width="1.5"/>
+    <path d="M0,850 L120,810 L300,840 L460,780 L640,835 L800,795 L980,840 L1140,800 L1320,845 L1480,795 L1660,840 L1820,805 L1920,830 L1920,862 L0,862 Z"
+          fill="#081624" stroke="#5de3ff" stroke-opacity=".45" stroke-width="1.5"/>
+  </g>
+
+  <!-- horizon + perspective ground grid -->
+  <line x1="0" y1="862" x2="1920" y2="862" stroke="url(#grad)" stroke-width="2" opacity=".85"/>
+  <g id="grid" clip-path="url(#below)" stroke="#3aa7ff" fill="none"></g>
+  <ellipse cx="960" cy="880" rx="560" ry="70" fill="url(#pool)"/>
+
+  <!-- the van: high-roof camper van in glowing line art, facing right -->
+  <g id="van" transform="translate(624 582) scale(1.12)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18,212 L8,206 L8,52 Q8,30 30,28 L420,24 Q446,24 458,40 L520,118 Q530,128 548,131 L578,136 Q594,139 596,156 L598,196 Q598,212 584,212 L540,212
+             A46,46 0 0 0 448,212 L176,212 A46,46 0 0 0 84,212 Z" fill="#081524" stroke="none"/>
+    <circle cx="130" cy="214" r="36" fill="#060b13"/><circle cx="494" cy="214" r="36" fill="#060b13"/>
+    <g filter="url(#glow)" stroke="url(#grad)" stroke-width="4.2">
+      <!-- body: rear → roof → windshield → hood → bumper → rocker (with wheel arches) -->
+      <path d="M18,212 L8,206 L8,52 Q8,30 30,28 L420,24 Q446,24 458,40 L520,118 Q530,128 548,131 L578,136 Q594,139 596,156 L598,196 Q598,212 584,212 L540,212
+               A46,46 0 0 0 448,212 L176,212 A46,46 0 0 0 84,212 Z"/>
+      <!-- wheels -->
+      <circle cx="130" cy="214" r="36"/><circle cx="494" cy="214" r="36"/>
+    </g>
+    <g filter="url(#glowSoft)" stroke="#8ef7e6" stroke-width="2.2" opacity=".95">
+      <circle cx="130" cy="214" r="13"/><circle cx="494" cy="214" r="13"/>
+      <!-- cab door window + windshield edge -->
+      <path d="M432,46 L452,46 L506,116 L432,116 Z"/>
+      <!-- side windows -->
+      <rect x="300" y="56" width="104" height="54" rx="8"/>
+      <rect x="40" y="56" width="86" height="54" rx="8"/>
+      <!-- sliding door + cab door seams -->
+      <path d="M284,40 L284,206 M424,40 L424,206 M424,128 L548,132"/>
+      <!-- awning rail + entry light -->
+      <path d="M150,40 L276,40" stroke-width="3"/>
+      <!-- headlight + tail light -->
+      <path d="M582,150 L594,152" stroke-width="4"/>
+      <path d="M10,90 L10,130" stroke="#5de3ff" stroke-width="5"/>
+    </g>
+    <!-- roof: solar panels + vent fan -->
+    <g filter="url(#glowSoft)" stroke="#5de3ff" stroke-width="2">
+      <rect x="44" y="6" width="150" height="16" rx="2"/><rect x="204" y="6" width="150" height="16" rx="2"/>
+      <path d="M81,6 V22 M119,6 V22 M156,6 V22 M241,6 V22 M279,6 V22 M316,6 V22"/>
+      <rect x="370" y="10" width="34" height="14" rx="3"/>
+    </g>
+    <!-- warm cabin glow in the windows (somebody's home) -->
+    <g opacity=".5"><rect x="302" y="58" width="100" height="50" rx="7" fill="url(#warm)"/><rect x="42" y="58" width="82" height="50" rx="7" fill="url(#warm)"/></g>
+  </g>
+  <!-- reflection -->
+  <g opacity=".18" transform="translate(0 1724) scale(1 -1)" clip-path="url(#below)"><use href="#van"/></g>
+
+  <!-- mark: the wave "A" -->
+  <g transform="translate(960 196)" fill="none" stroke-linecap="round">
+    <g filter="url(#glow)">
+      <path d="M-128,74 C-70,74 -46,-96 0,-96 C46,-96 70,74 128,74" stroke="url(#gradV)" stroke-width="15"/>
+      <path d="M-230,34 C-150,-10 -80,78 -8,40 S120,-26 230,16" stroke="url(#grad)" stroke-width="7"/>
+    </g>
+    <path d="M0,112 C-12,128 -12,142 0,146 C12,142 12,128 0,112 Z" fill="#7bf2dc" filter="url(#glowSoft)"/>
+  </g>
+
+  <!-- wordmark + tagline -->
+  <text x="960" y="496" text-anchor="middle" class="word"><tspan fill="#eaf2fb">Aether</tspan><tspan fill="url(#grad)" font-weight="400">RV</tspan></text>
+  <text x="960" y="552" text-anchor="middle" class="tag" fill="#5de3ff">POWER · CLIMATE · CONTROL</text>
+
+  <!-- axis, as on the AetherSDR hero: a battery scale -->
+  <g class="axis" fill="#8598b4" text-anchor="middle" opacity=".8">
+    <line x1="360" y1="1140" x2="1560" y2="1140" stroke="#3aa7ff" stroke-opacity=".35"/>
+    <text x="360" y="1172">0</text><text x="660" y="1172">25</text><text x="960" y="1172">50</text><text x="1260" y="1172">75</text><text x="1560" y="1172">100 %</text>
+  </g>
+</svg>
+<script>
+  // Deterministic starfield + dust (same image every render).
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const NS = "http://www.w3.org/2000/svg", el = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const stars = document.getElementById("stars");
+  for (let i = 0; i < 900; i++) {
+    const y = rnd() * 840, x = rnd() * 1920, big = rnd() > .985;
+    stars.appendChild(el("circle", { cx: x, cy: y, r: big ? 1.6 + rnd() : .4 + rnd() * .8,
+      fill: rnd() > .8 ? "#5de3ff" : "#c4d4e8", opacity: (big ? .9 : .25 + rnd() * .5) * (1 - y / 1100) }));
+  }
+  const dust = document.getElementById("dust");
+  for (let i = 0; i < 260; i++) {
+    const t = rnd(), x = t * 1960 - 20, y = 600 + Math.sin(t * 9 + rnd()) * 55 + (rnd() - .5) * 90;
+    dust.appendChild(el("circle", { cx: x, cy: y, r: .6 + rnd() * 1.3, fill: rnd() > .5 ? "#5de3ff" : "#7bf2dc", opacity: .15 + rnd() * .45 }));
+  }
+  // Perspective grid below the horizon.
+  const g = document.getElementById("grid"), H = 862, VX = 960;
+  for (let i = -24; i <= 24; i++) g.appendChild(el("line", { x1: VX + i * 12, y1: H, x2: VX + i * 190, y2: 1200, "stroke-opacity": .22, "stroke-width": 1 }));
+  for (let k = 1; k <= 12; k++) { const y = H + Math.pow(k / 12, 2.1) * 338; g.appendChild(el("line", { x1: 0, y1: y, x2: 1920, y2: y, "stroke-opacity": .1 + k * .012, "stroke-width": 1 })); }
+</script>
+</body></html>

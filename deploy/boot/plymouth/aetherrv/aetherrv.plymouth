@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=AetherRV
+Description=AetherRV boot and shutdown splash (aethersdr.com chrome, RV themed)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/aetherrv
+ScriptFile=/usr/share/plymouth/themes/aetherrv/aetherrv.script

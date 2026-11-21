@@ -1,0 +1,4 @@
+[Match]
+Name=vcan0
+[Link]
+RequiredForOnline=no

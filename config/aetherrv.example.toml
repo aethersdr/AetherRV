@@ -1,0 +1,167 @@
+# AetherRV configuration — SAMPLE TEMPLATE. Copy to /etc/aetherrv/aetherrv.toml on the Pi (install.sh does this
+# if the file is missing) and fill in YOUR devices. Addresses below are documentation placeholders (192.0.2.x,
+# RFC 5737): replace every one marked  ← yours. Secrets never go here: they live in secrets_file.
+#
+# CAN bitrate and listen-only mode are set by systemd-networkd (/etc/systemd/network/30-*.network),
+# not here. All hat*/fd* interfaces are LISTEN-ONLY at the kernel level.
+
+capture = true
+secrets_file = "/etc/aetherrv/secrets.toml"   # root:aetherrv 0640; holds the Peplink API client
+capture_dir = "/var/lib/aetherrv/captures"
+capture_keep_days = 14      # raw candump logs are pruned after this
+capture_max_gb = 20         # …or oldest-first beyond this total
+
+# Chart history (SQLite). Ignored while demo data is enabled: demo history stays in memory.
+[history]
+path = "/var/lib/aetherrv/history.sqlite3"
+interval = 30          # seconds between samples
+retention_days = 30
+
+[web]
+host = "0.0.0.0"
+port = 8080
+static_dir = "/opt/aetherrv/web"
+
+# ── Buses ────────────────────────────────────────────────────────────────────
+# Physical port → bus assignment is TBD until the van is wired. Bench uses vcan0.
+[bus.bench]
+interface = "socketcan"
+channel = "vcan0"
+
+# NMEA 2000 backbone via the Cerbo GX's VE.Can port shared as "CAN-bus over TCP" (socketcand).
+# [bus.n2k_cerbo]
+# interface = "socketcand"
+# host = "192.0.2.6"          # ← yours: the Cerbo GX
+# port = 29536
+# channel = "can0"
+
+[bus.hat0]
+interface = "socketcan"
+channel = "hat0"
+
+[bus.hat1]
+interface = "socketcan"
+channel = "hat1"
+
+# ── Devices ──────────────────────────────────────────────────────────────────
+# tx_enabled stays false until the device's protocol is verified on THIS van and the owner
+# approves. TxGate refuses every write while it is false.
+
+[device.n2k]
+kind = "n2k"
+bus = "bench"          # → the N2K bus once wired
+tx_enabled = false
+
+# Name Maretron channels (PGN 127501 bank instance + 1-based channel). Channels that report
+# but aren't listed here appear as "Bank N · Ch M" under "Unassigned". Fill in from N2KView/DSM config.
+# icon: light | pump | fridge | fan | inverter | plug | dish | toggle
+# [[device.n2k.switch]]
+# bank = 0
+# channel = 1
+# name = "Cabin lights"
+# icon = "light"
+# group = "Lights"
+
+[device.espar]
+kind = "capture"       # Airtronic S2 D2L: capture-only until the frame map is verified
+bus = "hat0"           # placeholder
+tx_enabled = false
+
+[device.rixens]
+kind = "rixens"        # MCS7: decodes 0x724-0x726 per rixens-esphome (UNVERIFIED); 250 kbit/s
+bus = "hat1"           # placeholder
+tx_enabled = false
+
+[device.victron]
+kind = "victron"
+host = "venus.local"   # ← yours: Cerbo GX hostname or IP
+port = 1883            # 8883 with tls = true after Venus OS >= 3.80 pairing (tools/victron_pair.py)
+tls = false
+enabled = false        # true = use the real Cerbo even while demo data is on (demo then yields victron.*)
+# Temperatures from the Cerbo's temperature services (e.g. Ruuvi tags).
+# Each value is the sensor's Custom name on the Cerbo (case-insensitive) or its device instance.
+# If a name doesn't match, the first sensor of the matching type (room/outdoor/fridge/freezer) is used.
+cabin_temp = "Cabin"         # ← your sensors' Custom names on the Cerbo
+outside_temp = "Outside"
+fridge_temp = "Fridge"
+freezer_temp = "Freezer"
+
+# Refrigeration alarm thresholds, °C (UI shows a warning above these).
+[ui]
+fridge_max_c = 5.0      # 41 °F
+freezer_max_c = -12.0   # 10 °F
+tx_enabled = false
+
+# Rixens MCS7 Local HTTP API (Rixens "MCS Local API"). Controls: setpoint, fan, furnace/electric/engine
+# only, from the van touchscreen only. tx_enabled must be set true explicitly (Pi /etc config only).
+[device.rixens_http]
+kind = "rixens_http"
+enabled = false
+host = "192.0.2.111"       # ← yours: the MCS7 on your LAN (in its own AP mode: 10.10.10.10)
+interval = 5
+tx_enabled = false
+# Fuel flow = dosing-pump Hz × ml per stroke. 0.0313 = Eberspächer D5 full output (0.62 l/h) at the
+# 5.5 Hz observed during a cold-start warm-up. Re-calibrate by measuring fuel used over a known run.
+fuel_ml_per_pulse = 0.0313
+
+# Which sensor is "cabin temperature": "victron" (the cabin sensor via the Cerbo) or "rixens" (MCS7's own sensor).
+[climate]
+cabin_source = "victron"
+
+# Starlink dish: local gRPC (read-only). Behind the Peplink, fw >= 8.4.0 should route
+# the dish (192.168.100.1, the same on every Starlink) automatically; otherwise add a WAN "Management IP" on the Starlink WAN.
+[device.starlink]
+kind = "starlink"
+enabled = false        # true in the van
+target = "192.168.100.1:9200"
+interval = 5
+
+# Peplink MAX BR1 Pro 5G: local Router API with an api.read-only client.
+# Client ID/secret go in secrets_file as peplink_client_id / peplink_client_secret.
+[device.peplink]
+kind = "peplink"
+enabled = false        # true in the van
+host = ""              # ← yours: the router's LAN IP, e.g. "192.0.2.1"
+verify_tls = false     # router uses a self-signed certificate
+
+# NMEA 0183 over UDP from the Peplink's GPS Forwarding (receive-only).
+# LAN-broadcast forwarding (e.g. 192.0.2.255) only reaches hosts on that LAN; on the home LAN the
+# Peplink needs a unicast destination = this Pi.
+[gps]
+enabled = false
+port = 10110
+bind = "0.0.0.0"
+
+# Network health checks of van devices (ping + optional TCP connect; no login, no data).
+[netmon]
+interval = 60
+
+[[netmon.targets]]
+name = "IPG100"
+host = "192.0.2.5"         # ← yours
+tcp = 6544                 # N2KServer; a hung IPG100 often still answers ping
+fail_after = 2
+severity = "serious"
+hint = "Power-cycle the IPG100 to recover it."
+
+[[netmon.targets]]
+name = "Rixens MCS7"
+host = "192.0.2.111"       # ← yours
+tcp = 80
+fail_after = 3
+severity = "warning"
+
+# Alert thresholds (the fridge/freezer limits are under [ui]).
+[alerts]
+soc_warning = 20.0        # %
+soc_critical = 10.0       # %
+lfp_charge_min_c = 2.0    # warn when charging LiFePO4 at/below this battery temp
+data_warning_pct = 80     # cellular plan usage
+data_serious_pct = 95
+bms_expected_modules = 0  # batteries that should report via the BMS-Can (0 = don't check)
+starlink_offline_s = 180  # how long the dish may be offline/obstructed before alerting
+
+# Synthetic data for bench UI work. The UI shows a DEMO badge while it's active. Keep this false in the van.
+[device.demo]
+kind = "demo"
+enabled = false

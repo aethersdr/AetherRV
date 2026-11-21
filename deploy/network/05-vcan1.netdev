@@ -1,0 +1,4 @@
+# Bench-only virtual CAN bus #2 (Rixens synthetic traffic).
+[NetDev]
+Name=vcan1
+Kind=vcan

@@ -1,0 +1,16 @@
+# AetherRV splash: the hero centred (scaled to fit) on the aethersdr.com background, for boot + shutdown.
+Window.SetBackgroundTopColor(0.024, 0.043, 0.075);      # #060b13
+Window.SetBackgroundBottomColor(0.024, 0.043, 0.075);
+
+img = Image("splash.png");
+sw = Window.GetWidth() / img.GetWidth();
+sh = Window.GetHeight() / img.GetHeight();
+s = sw; if (sh < s) s = sh;
+if (s != 1) img = img.Scale(img.GetWidth() * s, img.GetHeight() * s);
+splash = Sprite(img);
+splash.SetX(Window.GetX() + (Window.GetWidth() - img.GetWidth()) / 2);
+splash.SetY(Window.GetY() + (Window.GetHeight() - img.GetHeight()) / 2);
+splash.SetZ(0);
+
+fun refresh_callback () { }
+Plymouth.SetRefreshFunction(refresh_callback);

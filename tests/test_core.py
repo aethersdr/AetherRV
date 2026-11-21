@@ -1,0 +1,188 @@
+import asyncio
+import time
+
+import can
+import pytest
+
+from aetherrv.adapters.capture_only import CaptureOnlyAdapter
+from aetherrv.adapters.n2k import N2kAdapter, parse_id
+from aetherrv.canbus import CanBus, replay
+from aetherrv.state import State
+from aetherrv.txgate import TxBlocked, TxGate
+
+
+def test_txgate_denies_by_default():
+    g = TxGate({"espar": False})
+    for dev in ("espar", "rixens", "unknown"):
+        with pytest.raises(TxBlocked):
+            g.check(dev, "test")
+    assert g.blocked_count == {"espar": 1, "rixens": 1, "unknown": 1}
+
+
+def test_txgate_requires_literal_true():
+    g = TxGate({"a": True, "b": "yes", "c": 1})  # type: ignore[dict-item]
+    g.check("a", "ok")
+    for d in ("b", "c"):
+        with pytest.raises(TxBlocked):
+            g.check(d, "x")
+
+
+@pytest.mark.parametrize("pgn,src", [(127501, 0x23), (130312, 0x10), (126208, 0x01)])
+def test_n2k_parse_pdu2_and_pdu1(pgn, src):
+    from tools_bench import n2k_id  # noqa: F401  (see conftest)
+    nid = parse_id(n2k_id(pgn, src, priority=3, dest=0x55))
+    assert (nid.pgn, nid.source, nid.priority) == (pgn & (0x3FF00 if ((pgn >> 8) & 0xFF) < 240 else 0x3FFFF), src, 3)
+    if ((pgn >> 8) & 0xFF) < 240:
+        assert nid.destination == 0x55
+    else:
+        assert nid.destination == 255
+
+
+def test_known_id_vector():
+    # 0x09F20123: priority 2, PGN 0x1F201 = 127489 (Engine Parameters, Dynamic), source 0x23
+    nid = parse_id(0x09F20123)
+    assert (nid.priority, nid.pgn, nid.source, nid.destination) == (2, 127489, 0x23, 255)
+    # 0x18EAFF01: priority 6, PGN 59904 (ISO Request, PDU1) to global 0xFF from 0x01
+    nid = parse_id(0x18EAFF01)
+    assert (nid.priority, nid.pgn, nid.source, nid.destination) == (6, 59904, 0x01, 0xFF)
+
+
+async def test_capture_roundtrip_and_pipeline(tmp_path):
+    """virtual bus → CanBus (captures + adapters) → capture file → replay → same frames."""
+    state = State()
+    cb = CanBus("t", "virtual", "vp-test", capture_dir=tmp_path)
+    n2k = N2kAdapter(state)
+    cap = CaptureOnlyAdapter("espar", state)
+    cb.add_handler(n2k.on_frame)
+    cb.add_handler(cap.on_frame)
+    task = asyncio.create_task(cb.run())
+    await asyncio.sleep(0.3)
+
+    tx = can.Bus(interface="virtual", channel="vp-test")
+    sent = [can.Message(arbitration_id=0x09F20123 + i, data=bytes([i] * 8), is_extended_id=True) for i in range(5)]
+    for m in sent:
+        tx.send(m)
+    await asyncio.sleep(0.5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    tx.shutdown()
+
+    assert cb.stats.frames == 5
+    assert {r["pgn"] for r in n2k.summary()} == {127489}
+    assert len(cap.summary()) == 5
+
+    logs = list(tmp_path.glob("t-*.log"))
+    assert len(logs) == 1
+    back = list(can.CanutilsLogReader(str(logs[0])))
+    assert [m.arbitration_id for m in back] == [m.arbitration_id for m in sent]
+    assert [bytes(m.data) for m in back] == [bytes(m.data) for m in sent]
+
+    rx = can.Bus(interface="virtual", channel="vp-replay")
+    out = can.Bus(interface="virtual", channel="vp-replay")
+    await replay(logs[0], out, speed=0)
+    got = [rx.recv(0.5) for _ in sent]
+    assert [m.arbitration_id for m in got] == [m.arbitration_id for m in sent]
+    rx.shutdown(); out.shutdown()
+
+
+async def test_state_pubsub():
+    s = State()
+    q = s.subscribe()
+    s.set("a", 1); s.set("a", 1); s.set("a", 2)
+    assert [q.get_nowait(), q.get_nowait()] == [{"a": 1}, {"a": 2}]
+    assert q.empty()
+
+
+async def test_canbus_send_is_gated():
+    cb = CanBus("g", "virtual", "vp-gate")
+    task = asyncio.create_task(cb.run())
+    await asyncio.sleep(0.2)
+    msg = can.Message(arbitration_id=0x123, data=b"\x01", is_extended_id=False)
+    with pytest.raises(TxBlocked):
+        cb.send("espar", msg, TxGate({"espar": False}))
+    cb.send("bench", msg, TxGate({"bench": True}))  # allowed path works
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+def test_history_samples_numeric_and_downsamples():
+    from aetherrv.history import History
+    s = State()
+    h = History(s, interval=1)
+    now = time.time()
+    for i in range(50):
+        s.set("victron.battery.soc", float(i))
+        s.set("victron.pv.power", True)  # bools are not samples
+        h.sample(now - 50 + i)
+    assert len(h.get("victron.battery.soc", since=100, max_points=1000, now=now)) == 50
+    assert h.get("victron.pv.power", now=now) == []
+    assert h.get("not.tracked", now=now) == []
+    ds = h.get("victron.battery.soc", since=60, max_points=10, now=now)
+    assert len(ds) <= 10
+    assert [p[1] for p in ds] == sorted(p[1] for p in ds)       # bucket means stay ordered
+    assert ds[0][1] < 5 and ds[-1][1] > 45
+
+
+def test_history_persists_and_prunes(tmp_path):
+    from aetherrv.history import History
+    db = tmp_path / "h.sqlite3"
+    s = State()
+    h = History(s, path=db, interval=30, retention_days=1)
+    now = time.time()
+    s.set("victron.battery.soc", 80.0)
+    h.sample(now - 2 * 86400)          # older than the 1-day retention
+    assert h.count() == 1
+    h.close()
+
+    h2 = History(State(), path=db, interval=30, retention_days=1)
+    assert h2.count() == 1                                      # survived a restart
+    assert h2.prune(now) == 1                                   # and ages out
+    h2.state.set("victron.battery.soc", 81.0)
+    h2.sample(now - 60)
+    h2.close()
+    h3 = History(State(), path=db, interval=30, retention_days=1)
+    assert [p[1] for p in h3.get("victron.battery.soc", since=3600, now=now)] == [81.0]
+    h3.close()
+
+
+
+def test_history_falls_back_when_db_unwritable(tmp_path):
+    import os
+    from aetherrv.history import History
+    db = tmp_path / "h.sqlite3"
+    db.write_bytes(b"")
+    os.chmod(db, 0o444)
+    os.chmod(tmp_path, 0o555)
+    try:
+        h = History(State(), path=db)
+        assert h.degraded and h.path == ":memory:"
+        h.state.set("victron.battery.soc", 50.0)
+        h.sample()
+        assert h.count() == 1
+    finally:
+        os.chmod(tmp_path, 0o755)
+
+
+
+async def test_ui_is_not_cached(aiohttp_client, tmp_path):
+    from aetherrv.web import make_app
+    (tmp_path / "index.html").write_text("<html></html>")
+    (tmp_path / "app.js").write_text("//")
+    c = await aiohttp_client(make_app(State(), tmp_path))
+    for path in ("/", "/static/app.js"):
+        r = await c.get(path)
+        assert r.status == 200 and r.headers.get("Cache-Control") == "no-cache"
+
+
+
+async def test_prune_captures(tmp_path):
+    import os
+    from aetherrv.canbus import prune_captures
+    old, new = tmp_path / "a.log", tmp_path / "b.log"
+    old.write_bytes(b"x" * 10); new.write_bytes(b"x" * 10)
+    os.utime(old, (time.time() - 20 * 86400,) * 2)
+    task = asyncio.create_task(prune_captures(tmp_path, keep_days=14, max_gb=20))
+    await asyncio.sleep(0.05); task.cancel()
+    assert not old.exists() and new.exists()

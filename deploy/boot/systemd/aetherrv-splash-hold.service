@@ -1,0 +1,13 @@
+# Keep the AetherRV shutdown splash on screen briefly (a visible power-down), as on the AetherSDR Maestro.
+[Unit]
+Description=Hold the AetherRV shutdown splash
+DefaultDependencies=no
+After=plymouth-poweroff.service plymouth-reboot.service plymouth-halt.service
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/sleep 3
+
+[Install]
+WantedBy=poweroff.target reboot.target halt.target
