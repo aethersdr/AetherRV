@@ -497,3 +497,4 @@ Sections 1–31 use the old names. Mapping:
 - **Pi:** `[device.starlink] tx_enabled = true` (owner approved; backup aetherrv.toml.pre-starlink-tx-20261121). Nothing was sent during development; the owner presses the button.
 
 - **2026-11-21:** the outside-air Ruuvi reappeared after a battery swap. On the Cerbo it is a generic temperature service named "OAT" (with humidity), and the Pi config now uses `outside_temp = "OAT"`. The other three Ruuvis are still missing.
+- **2026-11-21:** the inside Ruuvi is back as "IAT" (instance 20, with humidity). Pi config: `cabin_temp = "IAT"`, `[climate] cabin_source = "victron"` (it had been on the MCS7 sensor while the Ruuvi was dead). The two read about 6 °C apart: IAT about 21 °C, MCS7 sensor about 15.6 °C.
