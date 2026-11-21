@@ -126,7 +126,9 @@ class CanBus:
         backoff = 1.0
         while True:
             try:
-                self._bus = self._open()
+                # Off the event loop: a socketcand open to an unreachable host blocks for ~10 s, which would
+                # stall the whole backend and trip the systemd watchdog (WatchdogSec=10) → crash loop.
+                self._bus = await asyncio.to_thread(self._open)
                 self._open_capture()
                 self.connected = True
                 backoff = 1.0

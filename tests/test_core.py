@@ -186,3 +186,21 @@ async def test_prune_captures(tmp_path):
     task = asyncio.create_task(prune_captures(tmp_path, keep_days=14, max_gb=20))
     await asyncio.sleep(0.05); task.cancel()
     assert not old.exists() and new.exists()
+
+
+async def test_slow_bus_open_does_not_block_event_loop(monkeypatch):
+    """A socketcand open to an unreachable host blocks ~10 s; it must not stall the loop (systemd watchdog)."""
+    cb = CanBus("slow", "socketcand", "can0", host="192.0.2.1", port=29536)
+
+    def slow_open():
+        time.sleep(0.5)
+        raise OSError("No route to host")
+    monkeypatch.setattr(cb, "_open", slow_open)
+    task = asyncio.create_task(cb.run())
+    t0 = time.monotonic(); ticks = 0
+    while time.monotonic() - t0 < 0.4:
+        await asyncio.sleep(0.02); ticks += 1
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert ticks >= 10          # the loop kept running while the open was in progress
