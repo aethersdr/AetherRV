@@ -495,3 +495,5 @@ Sections 1–31 use the old names. Mapping:
 - **UI.** An "Install update" button on the Starlink card, shown only when an update is pending and control is enabled. It asks for confirmation, warning that the Starlink internet and remote access drop for a few minutes.
 - **Tests:** blocked without tx, other commands and no pending update rejected, exactly one send, a send error not retried, unverified when no restart, alerts quieted.
 - **Pi:** `[device.starlink] tx_enabled = true` (owner approved; backup aetherrv.toml.pre-starlink-tx-20261121). Nothing was sent during development; the owner presses the button.
+
+- **2026-11-21:** the outside-air Ruuvi reappeared after a battery swap. On the Cerbo it is a generic temperature service named "OAT" (with humidity), and the Pi config now uses `outside_temp = "OAT"`. The other three Ruuvis are still missing.
