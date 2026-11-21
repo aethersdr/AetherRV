@@ -481,3 +481,17 @@ Sections 1–31 use the old names. Mapping:
 - The owner created the read-only web user under System → Admin Security. Gotcha: Chrome autofills the "New Admin Password" boxes on that page; clear them before Save.
 - `tools/peplink_install_readonly_user.sh` confirmed `{'GET': 1, 'POST': 0}` and that `info.location` returns 200, then installed the credentials in the Pi's secrets.toml.
 - `[device.peplink]` is enabled (host = <peplink-lan>). The Network view's WAN priority and Cellular cards are now live. The active WAN is the home Wi-Fi WAN at P1; Starlink is P2 standby; Cellular is P3 standby. The field whitelist holds: no SIM identifiers in state.
+
+## 37. Starlink "Install update" control (2026-11-21, owner-approved)
+
+- **The command.** It's the first Starlink write, and the only one allowed: `install_update`. It reboots the dish, but only while the dish reports `software_update_state == REBOOT_REQUIRED` (a downloaded update waiting for a restart). It is not a general reboot.
+- **Safety path**, same as the other controls:
+  - TxGate device `starlink` (`tx_enabled`); controls only from the touchscreen or the owner's Tailscale devices.
+  - A fresh status read on its own gRPC channel.
+  - The reboot is sent exactly once on another brand-new channel. starlink_grpc's `call_with_channel` retries once on a reused channel, so the read and the send never share one, and the poller's channel is never used.
+  - Never retried. A send error is verified, not resent.
+  - Verified by the dish going offline or its uptime resetting within 90 s. Results go to `command_log`.
+  - Dish alerts are quiet for 10 min after an accepted request (`starlink.restart_requested`).
+- **UI.** An "Install update" button on the Starlink card, shown only when an update is pending and control is enabled. It asks for confirmation, warning that the Starlink internet and remote access drop for a few minutes.
+- **Tests:** blocked without tx, other commands and no pending update rejected, exactly one send, a send error not retried, unverified when no restart, alerts quieted.
+- **Pi:** `[device.starlink] tx_enabled = true` (owner approved; backup aetherrv.toml.pre-starlink-tx-20261121). Nothing was sent during development; the owner presses the button.
