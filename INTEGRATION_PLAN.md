@@ -474,3 +474,10 @@ Sections 1–31 use the old names. Mapping:
 - **Backend.** The Starlink adapter reads the map once a minute (read-only; `reset_obstruction_map` is never called). It packs one byte per cell (255 = no data, else round(snr × 254)) as base64 into the `starlink.obstruction_map` state key, about 20 KB. The key isn't recorded in history.
 - **UI.** The Network → Starlink card draws the map once per new map into a cached canvas image. It's shown as a dark sky dome: clear cells blue, obstructed red, dashed rings at 60° and 30° elevation, N/E/S/W labels and the % obstructed caption. The old % ring is the fallback when there is no map.
 - Also fixed: daylight could show "8 h 60 m" (rounding the minutes separately from the hours).
+
+## 36. Peplink router API enabled with the read-only web user (2026-11-21)
+
+- Creating an API client (`auth.client`) still returns 401 from the LAN side too, so the WAN path wasn't the cause.
+- The owner created the read-only web user under System → Admin Security. Gotcha: Chrome autofills the "New Admin Password" boxes on that page; clear them before Save.
+- `tools/peplink_install_readonly_user.sh` confirmed `{'GET': 1, 'POST': 0}` and that `info.location` returns 200, then installed the credentials in the Pi's secrets.toml.
+- `[device.peplink]` is enabled (host = <peplink-lan>). The Network view's WAN priority and Cellular cards are now live. The active WAN is the home Wi-Fi WAN at P1; Starlink is P2 standby; Cellular is P3 standby. The field whitelist holds: no SIM identifiers in state.
