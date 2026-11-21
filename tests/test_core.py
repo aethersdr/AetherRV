@@ -225,3 +225,21 @@ def test_cabin_average_of_front_ruuvi_and_rear_mcs7():
     s.set("victron.connected", False)
     derive_cabin(s, now + 120)
     assert s.get("climate.cabin.temp") is None and s.get("climate.cabin.source") is None
+
+
+def test_fridge_off_silences_warm_alert_and_rearms_when_cold(tmp_path):
+    from aetherrv.alerts import DEFAULTS, r_cold
+    from aetherrv.climate import ColdRearm
+    from aetherrv.settings import Prefs
+    from aetherrv.state import State
+    s = State(); prefs = Prefs(s, str(tmp_path / "settings.json"))
+    s.update({"ui.fridge_max_c": 5.0, "ui.freezer_max_c": -12.0, "climate.fridge.temp": 21.0, "climate.freezer.temp": 21.0})
+    assert {f.id for f in r_cold(s, DEFAULTS)} == {"cold.fridge", "cold.freezer"}      # warm → alerts, never guessed off
+    prefs.set("fridge_off", True)                                                       # owner: "fridge is off"
+    assert {f.id for f in r_cold(s, DEFAULTS)} == {"cold.freezer"}
+    rr = ColdRearm(s, prefs)
+    assert rr.check() == [] and s.get("settings.fridge_off") is True                    # still warm: stays off
+    s.set("climate.fridge.temp", 4.5)
+    assert rr.check() == ["fridge"] and s.get("settings.fridge_off") is False           # cold again: re-armed
+    s.set("climate.fridge.temp", 8.0)
+    assert "cold.fridge" in {f.id for f in r_cold(s, DEFAULTS)}

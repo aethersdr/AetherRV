@@ -8,9 +8,12 @@ The heater itself still regulates on the MCS7 sensor; this only changes what the
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 
 from .state import State
+
+log = logging.getLogger(__name__)
 
 FRONT_STALE = 15 * 60   # s. The Cerbo republishes a Ruuvi only when the value changes, so allow quiet spells.
 REAR_STALE = 60         # s since the last successful MCS7 poll (climate.rixens.updated)
@@ -49,3 +52,27 @@ async def run_cabin_average(state: State, period: float = 2.0) -> None:
     while True:
         derive_cabin(state)
         await asyncio.sleep(period)
+
+
+class ColdRearm:
+    """Fridge/freezer 'off' is only ever set by the owner (the switch on a warm alert). It is cleared
+    automatically once that unit is back at or below its limit, so warm alerts resume by themselves.
+    Nothing here ever decides a unit is off."""
+
+    def __init__(self, state: State, prefs, period: float = 10.0) -> None:
+        self.state, self.prefs, self.period = state, prefs, period
+
+    def check(self) -> list[str]:
+        rearmed = []
+        for role in ("fridge", "freezer"):
+            t, mx = self.state.get(f"climate.{role}.temp"), self.state.get(f"ui.{role}_max_c")
+            if self.state.get(f"settings.{role}_off") and t is not None and mx is not None and t <= mx:
+                self.prefs.set(f"{role}_off", False)
+                rearmed.append(role)
+        return rearmed
+
+    async def run(self) -> None:
+        while True:
+            for role in self.check():
+                log.info("%s is cold again: warm alerts re-armed", role)
+            await asyncio.sleep(self.period)

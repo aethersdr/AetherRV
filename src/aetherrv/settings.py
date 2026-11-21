@@ -26,7 +26,8 @@ from .state import State
 log = logging.getLogger(__name__)
 
 SOCK = "/run/aetherrv-admin.sock"
-PREFS_DEFAULT = {"screen_off_min": 10, "auto_timezone": True}
+PREFS_DEFAULT = {"screen_off_min": 10, "auto_timezone": True,
+                 "fridge_off": False, "freezer_off": False}   # set from a warm alert; cleared automatically once cold
 PREFS_LIMITS = {"screen_off_min": (0, 240)}          # 0 = never
 
 

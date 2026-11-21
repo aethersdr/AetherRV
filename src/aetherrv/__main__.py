@@ -15,7 +15,7 @@ from aiohttp import web
 from .adapters.capture_only import CaptureOnlyAdapter
 from .adapters.demo import DemoAdapter
 from .adapters.n2k import N2kAdapter
-from .climate import run_cabin_average
+from .climate import ColdRearm, run_cabin_average
 from .energy import run_derive
 from .adapters.netmon import NetMon
 from .adapters.nmea_gps import NmeaGps
@@ -208,6 +208,7 @@ async def amain(cfg: dict) -> None:
     admin = AdminClient(web_cfg.get("admin_socket", "/run/aetherrv-admin.sock"))
     prefs = Prefs(state, web_cfg.get("settings_path", "/var/lib/aetherrv/settings.json"))
     adapters.append(AutoTimezone(state, admin, prefs))
+    adapters.append(ColdRearm(state, prefs))
     runner = web.AppRunner(make_app(state, static, history, alerts, controls, admin=admin, prefs=prefs,
                                     auth=RemoteAuth(admin)))
     await runner.setup()

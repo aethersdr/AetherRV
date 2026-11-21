@@ -201,6 +201,7 @@ $("#ic-freezer").innerHTML = icon("snow");
 function coldStatus(role) {
   const t = S[`climate.${role}.temp`], max = S[`ui.${role}_max_c`];
   if (t == null) return { cls: "", label: "no sensor" };
+  if (S[`settings.${role}_off`]) return { cls: "", label: "off · alerts resume when cold" };
   if (max != null && t > max) return { cls: "warn", label: `above ${fmtT(max)}` };
   return { cls: "ok", label: "ok" };
 }
@@ -779,7 +780,8 @@ function renderAlerts() {
       <div class="alert-ic">${icon(a.severity === "warning" ? "alert" : SRC_ICON[a.source] || "alert")}</div>
       <div class="alert-body"><div class="alert-sev">${icon("alert")}${SEV_LABEL[a.severity]}${a.acked ? " · acknowledged" : ""}</div>
         <h3>${esc(a.title)}</h3><p>${esc(a.detail)}</p><span class="muted">since ${ago(a.since)}</span></div>
-      ${a.acked ? "" : `<button class="btn-soft" data-ack="${esc(a.id)}">Acknowledge</button>`}
+      <div class="alert-btns">${/^cold\.(fridge|freezer)$/.test(a.id) && CAN_CTL ? `<button class="btn-soft" data-cold-off="${a.id.slice(5)}">${icon("toggle")}${a.id === "cold.fridge" ? "Fridge" : "Freezer"} is off</button>` : ""}
+      ${a.acked ? "" : `<button class="btn-soft" data-ack="${esc(a.id)}">Acknowledge</button>`}</div>
     </div>`).join("") :
     `<div class="all-clear">${icon("check")}<div><h3>All clear</h3><span class="muted">No active alerts.</span></div></div>`;
   const log = S["alerts.log"] || [];
@@ -788,7 +790,13 @@ function renderAlerts() {
      <td><span class="sev-t sev-${e.severity}">${esc(SEV_LABEL[e.severity] || e.severity)}</span></td><td>${esc(e.title)}</td></tr>`).join("")
     : `<tr><td class="empty">No alert history yet.</td></tr>`;
 }
-$("#alerts-list").addEventListener("click", e => { const b = e.target.closest("[data-ack]"); if (b) sendWS({ type: "ack", id: b.dataset.ack }); });
+$("#alerts-list").addEventListener("click", e => {
+  const b = e.target.closest("[data-ack]"); if (b) sendWS({ type: "ack", id: b.dataset.ack });
+  const o = e.target.closest("[data-cold-off]");
+  if (o) { const r = o.dataset.coldOff, L = r === "fridge" ? "Fridge" : "Freezer";
+    askConfirm(`${L} switched off?`, `Warm alerts for the ${r} stop now and turn back on by themselves once it's cold again (below ${fmtT(S[`ui.${r}_max_c`])}).`,
+      () => settingsAction("pref", { key: `${r}_off`, value: true }, `${L} off`)); }
+});
 $("#btn-ackall").addEventListener("click", () => sendWS({ type: "ack_all" }));
 $("#btn-sound").addEventListener("click", () => { soundOn = !soundOn; store.set("vp.sound", soundOn ? "1" : "0"); if (soundOn) playChime("serious"); renderAlerts(); });
 

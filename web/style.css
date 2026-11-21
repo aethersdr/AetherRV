@@ -836,3 +836,4 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
   border-color: color-mix(in srgb, var(--warning) 50%, var(--line)); }
 .sl-card .chips-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .dial-split { display: block; font-size: 15px; margin-top: 2px; opacity: .85; }
+.alert-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }

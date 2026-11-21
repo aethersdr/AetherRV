@@ -506,3 +506,7 @@ Sections 1–31 use the old names. Mapping:
   - **Bug fixed:** a configured sensor name that is missing used to fall back to the first sensor of the same type, so FRZ showed as the *fridge*. Configured names are now strict, and a missing one shows "—".
   - The fridge tag (still "Fridge Temp" in the config) is not on the Cerbo yet.
 - **2026-11-21, fridge Ruuvi back as "FRG"** (instance 23, typed "fridge"). Pi config: `fridge_temp = "FRG"`. All four Ruuvis now report: IAT, OAT, FRZ, FRG.
+- **2026-11-21, fridge/freezer off switch (owner design).** The fridge and freezer run only on trips.
+  - A warm reading still raises "Fridge/Freezer warm" (after 10 min). The alert card gets a "Fridge is off" / "Freezer is off" button (with a confirmation), which sets prefs `fridge_off` / `freezer_off`.
+  - That silences the rule, and the card shows "off · alerts resume when cold". `ColdRearm` clears it automatically once the unit is at or below its limit.
+  - The console never infers "off" by itself (owner: no guessing).

@@ -104,6 +104,8 @@ def r_bms(s: State, c: dict):
 
 def r_cold(s: State, c: dict):
     for role, label in (("fridge", "Fridge"), ("freezer", "Freezer")):
+        if s.get(f"settings.{role}_off"):
+            continue                 # the owner marked it switched off (from the alert); re-armed once it's cold again
         t, mx = _num(s.get(f"climate.{role}.temp")), _num(s.get(f"ui.{role}_max_c"))
         if t is not None and mx is not None and t > mx:
             yield Finding(f"cold.{role}", "warning", f"{label} warm: {t:.1f} °C", f"Above {mx:.0f} °C.", "ruuvi")
