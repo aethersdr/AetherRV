@@ -50,7 +50,7 @@ class VictronAdapter:
     TEMP_TYPE = {0: "battery", 1: "fridge", 2: "generic", 3: "room", 4: "outdoor", 5: "water heater", 6: "freezer"}
 
     def __init__(self, state: State, host: str, port: int = 1883,
-                 cabin_temp: str | int | None = None, outside_temp: str | int | None = None,
+                 cabin_temp: str | int | None = None, outside_temp: str | int | None = None, cabin_role: str = "cabin",
                  fridge_temp: str | int | None = None, freezer_temp: str | int | None = None,
                  username: str | None = None, password: str | None = None, tls: bool = False) -> None:
         self.state = state
@@ -76,7 +76,7 @@ class VictronAdapter:
         # role -> (configured sensor: device instance or Custom name, fallback TemperatureType).
         # Names match case-insensitively. If a role isn't configured, the first sensor of its type is used.
         self.roles = {
-            "cabin": (cabin_temp, "room"), "outside": (outside_temp, "outdoor"),
+            cabin_role: (cabin_temp, "room"), "outside": (outside_temp, "outdoor"),
             "fridge": (fridge_temp, "fridge"), "freezer": (freezer_temp, "freezer"),
         }
 

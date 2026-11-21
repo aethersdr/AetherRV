@@ -335,7 +335,9 @@ function renderClimate() {
   $("#dial").classList.toggle("draggable", canControl() && !ctlPending);
   $("#dial-temp").textContent = fmtT(cabin);
   const rh = S["climate.cabin.humidity"];
-  $("#dial-label").textContent = rh == null ? "cabin" : `cabin · ${Math.round(rh)}% RH`;
+  const fr = S["climate.cabin.front_temp"], bk = S["climate.cabin.rear_temp"];
+  $("#dial-label").innerHTML = esc(rh == null ? "cabin" : `cabin · ${Math.round(rh)}% RH`) +
+    (S["climate.cabin.source"] === "average" ? `<span class="dial-split">average of front ${fmtT(fr)} · back ${fmtT(bk)}</span>` : "");
   renderClimateControls();
   const ids = d => (S[`${d}.ids`] || []).length;
   const R = k => S[`climate.rixens.${k}`];

@@ -15,6 +15,7 @@ from aiohttp import web
 from .adapters.capture_only import CaptureOnlyAdapter
 from .adapters.demo import DemoAdapter
 from .adapters.n2k import N2kAdapter
+from .climate import run_cabin_average
 from .energy import run_derive
 from .adapters.netmon import NetMon
 from .adapters.nmea_gps import NmeaGps
@@ -65,7 +66,7 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
     demo_excludes = []
     if rixens_http_on:
         demo_excludes += ["climate.rixens.", "climate.cabin.setpoint"]
-    if cabin_source == "rixens":
+    if cabin_source in ("rixens", "average"):
         demo_excludes += ["climate.cabin.temp", "climate.cabin.humidity"]
     if cfg.get("gps", {}).get("enabled"):
         demo_excludes += ["location."]
@@ -110,7 +111,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
                 continue
             vsec = load_secrets(cfg)
             adapters.append(VictronAdapter(state, d["host"], d.get("port", 1883),
-                                           cabin_temp=d.get("cabin_temp") if cabin_source == "victron" else False, outside_temp=d.get("outside_temp"),
+                                           cabin_temp=d.get("cabin_temp") if cabin_source in ("victron", "average") else False, outside_temp=d.get("outside_temp"),
+                                           cabin_role="cabin_front" if cabin_source == "average" else "cabin",
                                            fridge_temp=d.get("fridge_temp"), freezer_temp=d.get("freezer_temp"),
                                            username=vsec.get("victron_mqtt_user"), password=vsec.get("victron_mqtt_password"),
                                            tls=bool(d.get("tls", False))))
@@ -221,6 +223,8 @@ async def amain(cfg: dict) -> None:
                                                         float(cfg.get("capture_max_gb", 20))), name="prune"))
     tasks.append(asyncio.create_task(publish_bus_stats(buses, gate, state), name="stats"))
     tasks.append(asyncio.create_task(run_derive(state), name="energy"))
+    if cfg.get("climate", {}).get("cabin_source") == "average":
+        tasks.append(asyncio.create_task(run_cabin_average(state), name="cabin-average"))
     try:
         await asyncio.gather(*tasks)
     finally:

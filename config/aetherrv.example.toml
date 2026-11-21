@@ -104,7 +104,9 @@ tx_enabled = false
 # 5.5 Hz observed during a cold-start warm-up. Re-calibrate by measuring fuel used over a known run.
 fuel_ml_per_pulse = 0.0313
 
-# Which sensor is "cabin temperature": "victron" (the cabin sensor via the Cerbo) or "rixens" (MCS7's own sensor).
+# Which sensor is "cabin temperature": "victron" (the cabin sensor via the Cerbo), "rixens" (MCS7's own sensor),
+# or "average" (the mean of both, e.g. a Ruuvi at the front and the MCS7 at the back; if one goes stale the
+# other is used alone). Display only: the heater always regulates on its own sensor.
 [climate]
 cabin_source = "victron"
 

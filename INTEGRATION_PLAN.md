@@ -498,3 +498,7 @@ Sections 1–31 use the old names. Mapping:
 
 - **2026-11-21:** the outside-air Ruuvi reappeared after a battery swap. On the Cerbo it is a generic temperature service named "OAT" (with humidity), and the Pi config now uses `outside_temp = "OAT"`. The other three Ruuvis are still missing.
 - **2026-11-21:** the inside Ruuvi is back as "IAT" (instance 20, with humidity). Pi config: `cabin_temp = "IAT"`, `[climate] cabin_source = "victron"` (it had been on the MCS7 sensor while the Ruuvi was dead). The two read about 6 °C apart: IAT about 21 °C, MCS7 sensor about 15.6 °C.
+- **2026-11-21, cabin = average (owner):** the Ruuvi (IAT) is at the front of the van and the MCS7 sensor is at the back by the bed, so the cabin reading is now their mean (`[climate] cabin_source = "average"`, new module `climate.py`).
+  - Humidity is averaged too. A sensor drops out when stale: the Ruuvi after 15 min without a value (the Cerbo only republishes on change) or with the Cerbo disconnected; the MCS7 60 s after its last poll. The other sensor is then used alone.
+  - The Climate dial shows "average of front X° · back Y°".
+  - First reading: front 20.0 °C, back 15.5 °C, so the cabin shows 17.7 °C (64 °F). Display only: the MCS7 still regulates on its own sensor.

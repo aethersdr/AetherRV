@@ -204,3 +204,24 @@ async def test_slow_bus_open_does_not_block_event_loop(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await task
     assert ticks >= 10          # the loop kept running while the open was in progress
+
+
+def test_cabin_average_of_front_ruuvi_and_rear_mcs7():
+    import time as _t
+    from aetherrv.climate import derive_cabin
+    from aetherrv.state import State
+    s = State(); now = _t.time()
+    s.update({"climate.cabin_front.temp": 21.2, "climate.cabin_front.humidity": 33.3, "victron.connected": True,
+              "climate.rixens.cabin_c": 15.6, "climate.rixens.cabin_rh": 42.5, "climate.rixens.live": True,
+              "climate.rixens.updated": now})
+    derive_cabin(s, now)
+    assert s.get("climate.cabin.temp") == 18.4 and s.get("climate.cabin.humidity") == 37.9
+    assert s.get("climate.cabin.source") == "average"
+    assert (s.get("climate.cabin.front_temp"), s.get("climate.cabin.rear_temp")) == (21.2, 15.6)
+    # MCS7 stale → front alone
+    derive_cabin(s, now + 120)
+    assert s.get("climate.cabin.temp") == 21.2 and s.get("climate.cabin.source") == "front"
+    # Cerbo gone too → nothing
+    s.set("victron.connected", False)
+    derive_cabin(s, now + 120)
+    assert s.get("climate.cabin.temp") is None and s.get("climate.cabin.source") is None
