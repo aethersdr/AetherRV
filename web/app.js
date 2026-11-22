@@ -222,6 +222,7 @@ const TANK_COLOR = { fresh: "--c-batt", grey: "--muted", black: "--c-alt", fuel:
 const TANK_LABEL = { fresh: "Water", grey: "Grey", black: "Black", fuel: "Fuel" };
 const tankName = t => (!t.name || /^tank\s*\d*$/i.test(t.name.trim())) ? (TANK_LABEL[t.type] || t.name || "Tank") : t.name;
 function renderHome() {
+  renderQuick();
   updateFlow();
   renderHeatQuick();
   $("#coolant-therm").innerHTML = coolantThermo(k => S[`climate.rixens.${k}`]);
@@ -450,7 +451,7 @@ function control(cmd, value, label, device = "rixens") {
   sendWS({ type: "control", device, cmd, value, id });
   render();
 }
-const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
+const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok", n2k: "n2k.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
 function askConfirm(title, detail, onYes) {
   $("#modal-t").textContent = title; $("#modal-d").textContent = detail; $("#modal").hidden = false;
   $("#modal-yes").onclick = () => { $("#modal").hidden = true; onYes(); };
@@ -642,23 +643,42 @@ invmSlider.addEventListener("change", () => {
 // ── Switches ─────────────────────────────────────────────────────────────────
 $("#sw-note").innerHTML = `${icon("alert")}<span id="sw-note-t"></span>`;
 function renderSwitches() {
-  const list = S["switches.list"] || [];
-  $("#sw-note-t").textContent = (S["switches.source"] === "n2k"
-    ? `Live from NMEA 2000 (PGN 127501). `
-    : "") + "Switch control is disabled until 126208 commands are verified on this van. Tapping a switch does nothing.";
-  const label = s => s.state === "error" ? "Fault" : s.state === "n/a" ? "Not reporting" : s.state === "stale" ? "No data" : s.on ? "On" : "Off";
-  const tile = s => `<button class="sw ${s.on ? "on" : ""} ${s.state === "error" ? "fault" : ""} ${s.state === "n/a" || s.state === "stale" ? "na" : ""}" data-sw="${esc(s.id)}">
+  const list = S["switches.list"] || [], live = canControlDev("n2k");
+  $("#sw-note-t").textContent = S["switches.source"] !== "n2k" ? "No switch banks decoded yet."
+    : live ? `Live: tap to switch. Keypad logic ${S["switching.automation"] ? "runs in AetherRV" : "is off"}.`
+    : "Live from NMEA 2000. Switch control is off (n2k tx_enabled is not set), so tapping does nothing.";
+  const label = s => s.state === "error" ? "Fault" : s.state === "n/a" ? "Not reporting" : s.state === "stale" ? "No data"
+    : (s.on ? (s.kind === "dimmer" && s.level != null && s.level < 100 ? `On · ${s.level}%` : "On") : "Off") + (s.blocked ? " · locked" : "");
+  const tile = s => `<div class="sw-cell"><button class="sw ${s.on ? "on" : ""} ${s.state === "error" ? "fault" : ""} ${s.state === "n/a" || s.state === "stale" ? "na" : ""} ${s.blocked ? "blocked" : ""}" data-sw="${esc(s.id)}">
       ${s.state === "error" ? icon("alert") : icon(s.icon || "toggle")}
-      <div><div class="name">${esc(s.name)}</div><div class="st"><i></i>${label(s)}${S["switches.source"] === "n2k" ? `<span class="sw-id">${esc(s.id)}</span>` : ""}</div></div></button>`;
+      <div><div class="name">${esc(s.name)}</div><div class="st"><i></i>${label(s)}${s.amps ? `<span class="sw-amps">${(+s.amps).toFixed(1)} A${s.rating_a ? ` / ${s.rating_a}` : ""}</span>` : ""}<span class="sw-id">ch ${s.channel}</span></div></div></button>
+      ${s.kind === "dimmer" && live ? `<input class="sw-dim" type="range" min="1" max="100" value="${s.level ?? 100}" data-dim="${s.channel}" aria-label="${esc(s.name)} brightness">` : ""}</div>`;
+  const inputs = S["switching.inputs"] || [];
   const groups = [...new Set(list.map(s => s.group || "Switches"))];
-  $("#switches").innerHTML = list.length ? groups.map(g => {
-    const items = list.filter(s => (s.group || "Switches") === g);
-    return `<div class="sw-group"><h3>${esc(g)} <span class="muted">· ${items.filter(s => s.on).length} on</span></h3>
-      <div class="switch-grid">${items.map(tile).join("")}</div></div>`;
-  }).join("") :
-    `<div class="switch-grid"><div class="empty-state">${icon("toggle")}<div>No switch banks decoded yet.<br>They appear here once Maretron PGN 127501 is decoded.</div></div></div>`;
+  $("#switches").innerHTML = (inputs.length ? `<div class="sw-group"><h3>Vehicle inputs</h3><div class="sw-inputs">${inputs.map(i =>
+      `<span class="sw-in ${i.on ? "on" : ""}">${icon(i.icon || "toggle")}<b>${esc(i.name)}</b><span>${i.on == null ? "—" : i.on ? "On" : "Off"}${i.volts != null ? ` · ${(+i.volts).toFixed(1)} V` : ""}</span></span>`).join("")}</div></div>` : "") +
+    (list.length ? groups.map(g => {
+      const items = list.filter(s => (s.group || "Switches") === g);
+      return `<div class="sw-group"><h3>${esc(g)} <span class="muted">· ${items.filter(s => s.on).length} on</span></h3>
+        <div class="switch-grid">${items.map(tile).join("")}</div></div>`;
+    }).join("") :
+    `<div class="switch-grid"><div class="empty-state">${icon("toggle")}<div>No switch banks decoded yet.</div></div></div>`);
 }
-$("#switches").addEventListener("click", e => { if (e.target.closest(".sw")) toast("Switch control is disabled (read-only mode)"); });
+function toggleSwitch(id) {
+  const s = (S["switches.list"] || []).find(x => x.id === id);
+  if (!s) return;
+  if (!canControlDev("n2k") || !s.channel) { toast("Switch control is off (view only)"); return; }
+  if (s.state === "stale" || s.state === "n/a") { toast(`${s.name}: no live status`, "bad"); return; }
+  if (s.blocked && !s.on) { toast(`${s.name} is locked out (safety)`, "bad"); return; }
+  control("set", { channel: s.channel, on: !s.on }, `${s.name} ${s.on ? "off" : "on"}`, "n2k");
+}
+$("#switches").addEventListener("click", e => { const b = e.target.closest(".sw"); if (b) toggleSwitch(b.dataset.sw); });
+let dimTimer = null;
+$("#switches").addEventListener("input", e => {
+  const r = e.target.closest(".sw-dim"); if (!r) return;
+  clearTimeout(dimTimer);
+  dimTimer = setTimeout(() => control("dim", { channel: +r.dataset.dim, level: +r.value }, `Brightness ${r.value}%`, "n2k"), 400);
+});
 
 // ── Systems ──────────────────────────────────────────────────────────────────
 const rateHist = {};
@@ -1466,11 +1486,20 @@ const QUICK_DEMO = [
 ];
 const quickOn = new Set();
 function renderQuick() {
+  const real = (S["switches.list"] || []).filter(s => s.home).slice(0, 9);
+  const tag = document.querySelector(".quick-card .demo-tag");
+  if (real.length) {
+    if (tag) { tag.textContent = canControlDev("n2k") ? "live" : "view only"; tag.classList.toggle("live-tag", canControlDev("n2k")); }
+    $("#quick-sw").innerHTML = real.map(s =>
+      `<button class="quick-btn${s.on ? " on" : ""}${s.state === "stale" ? " na" : ""}" data-sw="${esc(s.id)}">${icon(s.icon || "toggle")}<span>${esc(s.name)}</span></button>`).join("");
+    return;
+  }
   $("#quick-sw").innerHTML = QUICK_DEMO.map(([n, ic], i) =>
     `<button class="quick-btn${quickOn.has(i) ? " on" : ""}" data-i="${i}">${icon(ic)}<span>${esc(n)}</span></button>`).join("");
 }
 $("#quick-sw").addEventListener("click", ev => {
   const b = ev.target.closest(".quick-btn"); if (!b) return;
+  if (b.dataset.sw) { toggleSwitch(b.dataset.sw); return; }
   const i = +b.dataset.i; quickOn.has(i) ? quickOn.delete(i) : quickOn.add(i);
   renderQuick();
 });

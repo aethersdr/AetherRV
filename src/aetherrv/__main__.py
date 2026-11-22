@@ -15,6 +15,7 @@ from aiohttp import web
 from .adapters.capture_only import CaptureOnlyAdapter
 from .adapters.demo import DemoAdapter
 from .adapters.n2k import N2kAdapter
+from .switching import N2kNode, SwitchController
 from .climate import ColdRearm, run_cabin_average
 from .energy import run_derive
 from .adapters.netmon import NetMon
@@ -122,7 +123,7 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
             log.warning("device %s: bus %r not configured; skipping", dev, d.get("bus"))
             continue
         if kind == "n2k":
-            a = N2kAdapter(state, d.get("switch", []))
+            a = N2kAdapter(state, d.get("switch", []), show_unlabeled=bool(d.get("switching", {}).get("show_unlabeled", True)))
         elif kind == "rixens":
             a = RixensAdapter(dev, state, publish_climate=not rixens_http_on)   # CAN = fallback/inventory
         elif kind == "capture":
@@ -132,6 +133,13 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
             continue
         bus.add_handler(a.on_frame)
         adapters.append(a)
+        if kind == "n2k" and d.get("switching"):
+            # AetherRV-side switching logic + control of the load controller (gated by device.n2k tx_enabled).
+            sw = d["switching"]
+            node = N2kNode(bus, gate, preferred=int(sw.get("address", 150)), unique=int(sw.get("unique", 0x0AE7)))
+            bus.add_handler(node.on_frame)
+            ctl = SwitchController(state, a, node, gate, d, db=history.db if history else None)
+            adapters.append(ctl)
     gps = cfg.get("gps", {})
     if gps.get("enabled"):
         adapters.append(NmeaGps(state, int(gps.get("port", 10110)), gps.get("bind", "0.0.0.0"),
@@ -204,7 +212,8 @@ async def amain(cfg: dict) -> None:
     if vic is not None:
         vic.gate, vic.db = gate, history.db
     controls = {"rixens": next((a for a in adapters if isinstance(a, RixensHttpAdapter)), None), "victron": vic,
-                "starlink": next((a for a in adapters if isinstance(a, StarlinkAdapter)), None)}
+                "starlink": next((a for a in adapters if isinstance(a, StarlinkAdapter)), None),
+                "n2k": next((a for a in adapters if isinstance(a, SwitchController)), None)}
     admin = AdminClient(web_cfg.get("admin_socket", "/run/aetherrv-admin.sock"))
     prefs = Prefs(state, web_cfg.get("settings_path", "/var/lib/aetherrv/settings.json"))
     adapters.append(AutoTimezone(state, admin, prefs))

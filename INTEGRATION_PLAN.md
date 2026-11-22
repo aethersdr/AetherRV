@@ -520,3 +520,44 @@ Sections 1–31 use the old names. Mapping:
 - **No pin conflicts:** the HAT+ uses SPI1 CE1/CE2 with INT 22/13; the FD HAT uses SPI0 CE0 with INT 25 and SPI1 CE0 with INT 24.
 - **Stable names:** `10-fd0.link` (Path platform-1f00050000.spi-cs-0) and `10-fd1.link` (platform-1f00054000.spi-cs-0). `30-fd*.network` sets ListenOnly=yes at a 250k classic placeholder; FD data rate is not enabled.
 - **Live (owner confirmed VIO = 3.3V, rebooted 2026-11-21 14:50):** both MCP2518FDs initialized (40 MHz osc, CRC/ECC on) and were renamed to `fd0` (spi0.0) and `fd1` (spi1.0). `hat0`/`hat1` are unchanged. All four ports are UP LISTEN-ONLY ERROR-ACTIVE at 250k. After the reboot, the Cerbo, N2K, MCS7, Starlink, Peplink and GPS were all back. Nothing is wired to fd0/fd1 yet.
+
+## 39. CLMD16 switching: baseline, firmware 1.0.7.1, and the logic moved into AetherRV (2026-11-21)
+
+**Baseline on fw 1.0.3.66.** The owner toggled each channel from N2KAnalyzer (via the IPG100) and from the keypads while the bus was recorded. The baseline folder on the Pi holds the raw logs, one file per step, and CHANNEL-MAP.md.
+
+*Commands*
+- **Switch:** `126208` Command for PGN 127501: priority byte F8, pairs (1, bank instance), (N+1, 0/1). Raw frames: `600A010DF201F802` + `6101200201FFFFFF`. Setting a channel to its current state is a no-op.
+- **Dimmer:** `126208` Command for PGN 127500: pairs (2, connection = channel−1), (6, duty 0–100). Channel 12 followed a 100→1→100 sweep.
+- **Acknowledgement:** the CLMD16 always ACKs `0x44`, even when it ignores a command, so success is judged only from 127501/127500 status.
+
+*Status*
+- **127501:** sent every 1.5 s, and immediately on a change.
+- **127500:** per connection, [SID][conn][state 0 off / 2 on / 4 PWM][status][op][duty].
+- **127751:** connections 0–15 = outputs (V ×0.1, I ×0.01 A); 16–23 = the 8 wired inputs (voltage only). Input N is also bank indicator 16+N.
+
+*Inputs*
+- Input 2 = ignition.
+- Input 4 = reverse gear; it drove output 4 (reverse lights), which is why ch4 ignored remote commands.
+- Input 6 = dome light. It is PWM-faded, so the raw input chatters (~180 changes in 30 s).
+
+*Keypads*
+- The keypads send no commands. A CKM12 pulses its own bank-50 status bit, and the CLMD16 config mapped those bits to outputs.
+- Bindings: button 4→ch4, 7→ch14 (water pump), 9→ch7+ch16 (group), 10→ch10 (stereo), 11→ch9 (drawer locks, 10 s auto-off), 12→ch12 (cabin lights).
+- Ch11 was always on and refused remote control.
+
+**Firmware upgrade to 1.0.7.1**
+- The CLMD16 came back with a factory configuration: bank instance 0 and all outputs off. N2KAnalyzer 3.4.2.5's config restore crashed, and the owner could not find its backup.
+- The whole session is kept in the baseline folder, including the configuration read just before the flash.
+
+**Owner decision: the logic lives in AetherRV** (`aetherrv/switching.py`)
+- `N2kNode` claims address 150 (60928) and answers ISO requests for it.
+- `SwitchController` (device `n2k`):
+  - `set` / `dim` behind TxGate.
+  - Needs a fresh (≤3 s) 127501; sends exactly once via the Cerbo socketcand link.
+  - Verifies from status within 4 s, never retries, logs to command_log.
+- Keypad logic: acts on a rising edge of the bank-50 bit (0.6 s lockout), never on the first value seen after start. A toggle reads the first channel and sets the whole group alike.
+- Input follows are debounced (dome 1.5 s) and edge-only.
+- Ch9 (drawer locks) is `blocked` (refuses ON) until the owner puts its 10 s cut-off back into the CLMD16.
+- The README safety model now states this exception: with automation on, the keypads and reverse lights don't work while the Pi is down.
+- Tests: the encoder reproduces the captured N2KAnalyzer frames byte for byte.
+- Status: deployed read-only (`tx_enabled = false`). Next: the owner sets the bank back to 32 → approve n2k transmit → first live send on spare ch8 → keypads.

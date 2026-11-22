@@ -61,6 +61,30 @@ tx_enabled = false
 # name = "Cabin lights"
 # icon = "light"
 # group = "Lights"
+# kind = "dimmer"        # switch (default) | dimmer (127500 PWM duty)
+# rating_a = 12          # shown next to the live current
+# home = true            # also on the Home screen's quick buttons
+# blocked = true         # refuse ON (e.g. a solenoid whose cut-off timer isn't in the controller yet)
+# blocked_reason = "…"
+
+# Optional: switching control + logic in AetherRV (see README "Safety model"). Sending needs tx_enabled.
+# [device.n2k.switching]
+# controller = 0         # load controller's N2K source address (e.g. a CLMD16)
+# bank = 0               # its 127501 bank instance
+# address = 150          # AetherRV's preferred N2K address (claimed before sending)
+# automation = false     # run the keypad bindings / input follows below
+# show_unlabeled = false
+#
+# [[device.n2k.binding]]  # keypad button → toggle channels (a group sets them all alike)
+# keypad = 101           # keypad source address; its buttons arrive as a 127501 bank
+# button = 4
+# channels = [4]
+#
+# [[device.n2k.input]]    # controller's wired inputs (bank indicator 16+N, volts in 127751 connection 15+N)
+# input = 4
+# name = "Reverse"
+# follow = [4]           # outputs that follow this input
+# debounce_s = 0.3
 
 [device.espar]
 kind = "capture"       # Airtronic S2 D2L: capture-only until the frame map is verified

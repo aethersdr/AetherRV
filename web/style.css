@@ -837,3 +837,18 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-card .chips-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .dial-split { display: block; font-size: 15px; margin-top: 2px; opacity: .85; }
 .alert-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Switching (live N2K control) */
+.sw-cell { display: grid; gap: 8px; }
+.sw.blocked { opacity: .75; }
+.sw-amps { margin-left: 8px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sw-dim { width: 100%; accent-color: var(--c-solar); }
+.sw-inputs { display: flex; gap: 12px; flex-wrap: wrap; }
+.sw-in { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 14px; background: var(--surface-2);
+  border: 1px solid var(--line); font-size: 17px; }
+.sw-in .ic { width: 22px; height: 22px; color: var(--muted); }
+.sw-in span { color: var(--muted); }
+.sw-in.on { border-color: color-mix(in srgb, var(--good) 55%, var(--line)); }
+.sw-in.on .ic { color: var(--good); }
+.quick-btn.na { opacity: .5; }
+.demo-tag.live-tag { color: var(--good); border-color: color-mix(in srgb, var(--good) 50%, var(--line)); }

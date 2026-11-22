@@ -11,8 +11,9 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
   animated flow, with history. It controls MultiPlus mode, shore current limit and MPPT on/off.
 - **Climate:** Rixens MCS7 hydronic heat over its local HTTP API shows setpoint, fan, heat sources, hot water,
   engine pre-heat, burner diagnostics and fuel flow. Fridge and freezer temperatures come from Cerbo sensors.
-- **NMEA 2000:** digital switching status and the device list, via the Cerbo's `socketcand` or a CAN HAT. Switch
-  control is not enabled yet.
+- **NMEA 2000:** device list and digital switching (Carling/Maretron CLMD16 load controller and CKM12 keypads).
+  It shows on/off, dimmer level, per-channel current and the controller's wired inputs. It can switch and dim
+  (126208 commands, gated) and optionally run the keypad logic, via the Cerbo's `socketcand` or a CAN HAT.
 - **Network:** Starlink (local gRPC), Peplink router API, GPS (NMEA 0183 over UDP), device health checks, and a
   weather radar with a 7-day forecast for the van's position.
 - **Settings:** Wi-Fi (iwd), Tailscale, system updates, rename, screen auto-off, reboot. The time zone is set
@@ -26,8 +27,12 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
   verifies the result and never retries. Each command is logged.
 - **Who can control.** Controls and settings changes work only from the van's touchscreen (loopback) or from
   devices owned by the same Tailscale user as the console. Everything else is view-only.
-- **The devices stay in charge.** AetherRV never sends anything on its own. If the Pi dies, nothing in the van
-  changes.
+- **The devices stay in charge, with one deliberate exception.** Heat, power, Starlink and every other control
+  only act when a person asks. The exception is optional NMEA 2000 **switching logic**: keypad bindings, groups
+  and "output follows input" rules can run in AetherRV, with the load controller as a plain output box. When
+  enabled (`[device.n2k.switching] automation`), those keypads and input-driven outputs do nothing while the
+  Pi is off or restarting. Anything that must work without the Pi, such as a solenoid's cut-off timer, belongs
+  in the load controller's own configuration. Until it's there, that channel is `blocked` (it refuses ON).
 - **Root access is minimal.** The only root component is a small, socket-activated helper with a fixed list of
   validated actions. Wi-Fi passwords never appear in logs, the live state or command lines.
 

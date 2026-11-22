@@ -11,7 +11,12 @@ Implemented, from CANboat's canboat.json (v10.0.0) definitions:
     see which bank/channel a Maretron panel commands. Parameter pairs are kept as raw hex
     because their value widths still need checking against real Maretron traffic.
 
-Nothing here transmits. Switch control (126208 Command → 127501) is a later, gated step.
+This adapter only listens. Switch control (126208 Command → 127501/127500) lives in
+`aetherrv.switching`, behind TxGate; it subscribes to bank updates via `bank_listeners`.
+  * PGN 127500 Load Controller Connection State/Control (CLMD16, single frame):
+    [SID][connection][state 0 off/2 on/4 PWM][status][op][duty %][..]
+  * PGN 127751 DC Voltage/Current: [SID][connection][V uint16 ×0.1][I int24 ×0.01 A, 0xFFFFFF = n/a].
+    On the CLMD16, connections 0-15 are the outputs, 16-23 the wired inputs (voltage only).
 """
 
 from __future__ import annotations
@@ -189,8 +194,9 @@ def decode_127507(data: bytes) -> dict:
 class N2kAdapter:
     device = "n2k"
 
-    def __init__(self, state: State, switches: list[dict] | None = None) -> None:
+    def __init__(self, state: State, switches: list[dict] | None = None, show_unlabeled: bool = True) -> None:
         self.state = state
+        self.show_unlabeled = show_unlabeled     # False: only channels named in config (hides input indicators, keypads…)
         self._pgns: dict[int, dict] = {}
         self.fp = FastPacketAssembler()
         # bank instance → {"source": sa, "states": [...28], "seen": t}
@@ -201,6 +207,9 @@ class N2kAdapter:
             key = (int(sw["bank"]), int(sw["channel"])) + ((int(sw["source"]),) if "source" in sw else ())
             self.labels[key] = sw
         self.commands: list[dict] = []  # recent 126208 seen on the bus (newest last)
+        self.bank_listeners: list = []   # callables (source, instance, states, t) for every 127501
+        self.loads: dict[tuple[int, int], dict] = {}   # (source, connection) → 127500 state/duty
+        self.volts: dict[tuple[int, int], dict] = {}   # (source, connection) → 127751 volts/amps
         # source address → identity (from 60928 / 126996), last frame time, last heartbeat.
         # Populated passively: we never send ISO Requests (listen-only), so names and products
         # appear when a device powers up or another device (IPG100, DSM) requests them.
@@ -257,7 +266,22 @@ class N2kAdapter:
         elif nid.pgn == 127501:
             inst, states = decode_127501(data)
             # Key by (source, instance): several devices (e.g. Victron relays/alarms) may all use instance 0.
-            self.banks[(nid.source, inst)] = {"source": nid.source, "instance": inst, "states": states, "seen": time.time()}
+            now = time.time()
+            self.banks[(nid.source, inst)] = {"source": nid.source, "instance": inst, "states": states, "seen": now}
+            for cb in self.bank_listeners:
+                try:
+                    cb(nid.source, inst, states, now)
+                except Exception:
+                    log.exception("bank listener failed")
+        elif nid.pgn == 127500 and len(data) >= 6:
+            self.loads[(nid.source, data[1])] = {"state": data[2], "status": data[3], "duty": data[5],
+                                                 "seen": time.time()}
+        elif nid.pgn == 127751 and len(data) >= 7:
+            v = int.from_bytes(data[2:4], "little")
+            i = int.from_bytes(data[4:7], "little", signed=True)
+            self.volts[(nid.source, data[1])] = {"volts": None if v == 0xFFFF else round(v * 0.1, 1),
+                                                 "amps": None if i in (0x7FFFFF, -1) else round(i * 0.01, 2),
+                                                 "seen": time.time()}
         elif nid.pgn == 126208:
             h = decode_126208_header(data)
             h.update({"source": nid.source, "dest": nid.destination, "t": round(time.time(), 1)})
@@ -280,8 +304,8 @@ class N2kAdapter:
             shared = per_inst[inst] > 1                       # instance used by more than one source
             for ch, st in enumerate(b["states"], start=1):
                 lab = self.labels.get((inst, ch)) if not shared else (self.labels.get((inst, ch, src)) or None)
-                if st is None and lab is None:
-                    continue  # unused channel, not configured
+                if lab is None and (st is None or not self.show_unlabeled):
+                    continue  # unused or unconfigured channel
                 sid = f"{inst}.{ch}" + (f"@{src}" if shared else "")
                 out.append({
                     "id": sid,
@@ -292,6 +316,13 @@ class N2kAdapter:
                     "state": "stale" if stale else (st or "n/a"),
                     "source": src,
                     "age": round(now - b["seen"], 1),
+                    "bank": inst, "channel": ch,
+                    "kind": (lab or {}).get("kind", "switch"),
+                    "blocked": bool((lab or {}).get("blocked")),
+                    "home": bool((lab or {}).get("home")),
+                    "rating_a": (lab or {}).get("rating_a"),
+                    "level": (self.loads.get((src, ch - 1)) or {}).get("duty") if (lab or {}).get("kind") == "dimmer" else None,
+                    "amps": (self.volts.get((src, ch - 1)) or {}).get("amps") if ch <= 16 else None,
                 })
         return out
 
