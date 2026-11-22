@@ -45,6 +45,11 @@ const store = {
 const UNIT = store.get("vp.temp", "F");                      // US van: °F by default
 const tC = c => (c == null ? null : UNIT === "F" ? c * 9 / 5 + 32 : c);
 const fmtT = c => (c == null ? "—" : `${Math.round(tC(c))}°`);
+// Battery temps (°C): show the hottest, unless any reading is below 40 °F; then the coldest, so a heater that
+// isn't keeping up shows (LiFePO4 won't take a charge when too cold). → {c, cold} or null.
+const BATT_COLD_C = (40 - 32) * 5 / 9;
+const battT = vals => { const v = vals.filter(x => x != null); if (!v.length) return null;
+  const lo = Math.min(...v); return lo < BATT_COLD_C ? { c: lo, cold: true } : { c: Math.max(...v), cold: false }; };
 const fmtW = w => (w == null ? "—" : Math.abs(w) >= 1000 ? `${(w / 1000).toFixed(1)} kW` : `${Math.round(w)} W`);
 const num = (v, d = 0) => (v == null || isNaN(v) ? "—" : (+v).toFixed(d));
 const fmtTTG = s => { if (s == null || s <= 0) return "—"; const h = Math.floor(s / 3600); return h >= 48 ? `${Math.round(h / 24)} d` : `${h} h ${Math.round((s % 3600) / 60)} m`; };
@@ -477,14 +482,15 @@ function renderBattCard() {
   const withAh = ok.filter(b => b.remaining_ah != null);
   // Headline: available Ah ÷ capacity of the batteries reporting (same as the glyphs); shunt SoC as fallback.
   const bankPct = withAh.length ? withAh.reduce((a, b) => a + b.remaining_ah, 0) / (BATT_AH * withAh.length) * 100 : soc;
-  const tmax = (i0, i1) => { const v = ok.flatMap(b => (b.temps || []).slice(i0, i1)); return v.length ? fmtT(Math.max(...v)) : "—"; };
+  const tblk = (label, i0, i1) => { const t = battT(ok.flatMap(b => (b.temps || []).slice(i0, i1)));
+    return `<div title="${t?.cold ? "Coldest reading (below 40 °F)" : "Hottest reading"}"><span>${label}${t?.cold ? " · min" : ""}</span><b class="${t?.cold ? "t-cold" : ""}">${t ? fmtT(t.c) : "—"}</b></div>`; };
   const v3 = v => v == null ? "—" : `${v.toFixed(3)} V`;
   const row = b => b.ok ? `<tr>
       <td><b>${esc(b.name)}</b></td><td class="soc-c" style="color:${socColor(b.soc)}">${b.soc ?? "—"}%</td>
       <td>${(+b.voltage).toFixed(2)} V</td><td>${b.current == null ? "—" : (+b.current).toFixed(1) + " A"}</td>
       <td>${b.current == null ? "—" : fmtW(b.voltage * b.current)}</td><td>${b.cycles ?? "—"}</td>
       <td>${b.remaining_ah == null ? "—" : (+b.remaining_ah).toFixed(1)}<small>/${BATT_AH}</small></td>
-      <td title="${(b.temps || []).length >= 4 ? `T1 ${fmtT(b.temps[0])} · T2 ${fmtT(b.temps[1])} · ambient ${fmtT(b.temps[2])} · MOS ${fmtT(b.temps[3])}` : ""}">${(b.temps || []).length ? fmtT(Math.max(...b.temps.slice(0, 2))) : "—"}</td>
+      <td title="${(b.temps || []).length >= 4 ? `T1 ${fmtT(b.temps[0])} · T2 ${fmtT(b.temps[1])} · ambient ${fmtT(b.temps[2])} · MOS ${fmtT(b.temps[3])}` : ""}">${(t => t ? `<span class="${t.cold ? "t-cold" : ""}">${fmtT(t.c)}</span>` : "—")(battT((b.temps || []).slice(0, 2)))}</td>
       <td class="mos"><i class="${b.charge_fet ? "on" : "off"}" title="Charge MOS ${b.charge_fet ? "on" : "off"}">C</i><i class="${b.discharge_fet ? "on" : "off"}" title="Discharge MOS ${b.discharge_fet ? "on" : "off"}">D</i></td></tr>`
     : `<tr class="na"><td><b>${esc(b.name)}</b></td><td colspan="8" class="muted">${esc(b.error ? "no data · reconnecting" : "connecting…")}</td></tr>`;
   const card = $("#batt-card"), names = ble.map(b => b.name).join("|");
@@ -505,8 +511,8 @@ function renderBattCard() {
   $("#bc-cells").innerHTML = `
       <div><span>VAVG</span><b>${v3(avg)}</b></div><div><span>VDIFF</span><b class="${hi != null && hi - lo > .05 ? "warn" : ""}">${v3(hi == null ? null : hi - lo)}</b></div>
       <div><span>VLO</span><b>${v3(lo)}</b></div><div><span>VHI</span><b>${v3(hi)}</b></div>
-      <div><span>Cells T1/T2</span><b>${tmax(0, 2)}</b></div><div><span>Ambient</span><b>${tmax(2, 3)}</b></div>
-      <div><span>MOS</span><b>${tmax(3, 4)}</b></div><div><span>Battery (shunt)</span><b>${fmtT(S["victron.battery.temp"])}</b></div>`;
+      ${tblk("Cells T1/T2", 0, 2)}${tblk("Ambient", 2, 3)}
+      ${tblk("MOS", 3, 4)}<div><span>Battery (shunt)</span><b>${fmtT(S["victron.battery.temp"])}</b></div>`;
   $("#bc-rows").innerHTML = ble.map(row).join("");
 }
 
@@ -834,7 +840,7 @@ function renderBattModal() {
         <div class="battm-cell-h"><b>${esc(b.name)}</b><span>${b.ok ? (b.soc == null ? "—" : b.soc + "%") : "no data"}</span></div>
         ${b.ok ? `<div class="battm-cell-kv"><span>${(+b.voltage).toFixed(2)} V</span><span>${b.current == null ? "—" : (+b.current).toFixed(1) + " A"}</span>
           <span>${b.remaining_ah == null ? "—" : Math.round(b.remaining_ah) + " Ah"}</span><span>${b.cycles ?? "—"} cycles</span>
-          <span class="${(b.cell_delta_mv || 0) > 50 ? "warn" : ""}">Δ ${b.cell_delta_mv ?? "—"} mV</span><span>${b.temps && b.temps.length ? fmtT(Math.max(...b.temps)) + " max" : "—"}</span></div>
+          <span class="${(b.cell_delta_mv || 0) > 50 ? "warn" : ""}">Δ ${b.cell_delta_mv ?? "—"} mV</span><span>${(t => t ? `<b class="${t.cold ? "t-cold" : ""}">${fmtT(t.c)}</b> ${t.cold ? "min" : "max"}` : "—")(battT(b.temps || []))}</span></div>
           <div class="battm-cells">${(b.cells || []).map(c => `<i title="${c.toFixed(3)} V">${c.toFixed(3)}</i>`).join("")}</div>`
         : `<div class="muted small">${esc(b.error || "waiting for first read")}</div>`}</div>`;
     html += `<section class="battm-card battm-wide"><h4>${icon("battery")}Individual batteries<small>${S["batteries.ble.reporting"] ?? 0} of ${ble.length} via Bluetooth · total ${S["batteries.ble.current"] == null ? "—" : (+S["batteries.ble.current"]).toFixed(1) + " A"}</small></h4>

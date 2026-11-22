@@ -897,6 +897,8 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .bc-cells div { background: var(--surface-2); border-radius: 12px; padding: 8px 10px; display: grid; gap: 2px; }
 .bc-cells span { font-size: 12px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
 .bc-cells b { font-size: 17px; font-variant-numeric: tabular-nums; } .bc-cells b.warn { color: var(--warning); }
+.t-cold { color: #5db8ff; }   /* coldest battery reading shown (below 40 °F) */
+html.night .t-cold { color: var(--c-batt); }
 .bc-table { width: 100%; border-collapse: collapse; font-size: 16px; font-variant-numeric: tabular-nums; }
 .bc-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; padding: 0 6px 6px; }
 .bc-table td { padding: 7px 6px; border-top: 1px solid var(--line); white-space: nowrap; }
