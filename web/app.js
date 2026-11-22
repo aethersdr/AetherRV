@@ -303,6 +303,8 @@ $("#pwr-ctl").addEventListener("click", e => {
 
 // ── Battery bank card: Lynx shunt for the bank, EPOCH batteries over Bluetooth for each battery ──
 const BATT_AH = 460;                         // EPOCH B12460A nominal capacity per battery
+// Charge % from Ah: one decimal below 100 %, none at or above (a battery can read past its rated capacity).
+const fmtPct = p => p == null ? "—" : p >= 100 ? `${Math.round(p)}` : p.toFixed(1);
 // 3D battery-bank scene: each battery is a stack of four glowing discs (one per 25 %) on a shared platform,
 // wired in parallel by animated + / − buses. Built once per battery count, then updated in place every
 // second (rebuilding would restart the animations).
@@ -409,7 +411,7 @@ function updateBankScene(batts, bankAmps) {
       sf.setAttribute("cy", (yb - f * BS.dh).toFixed(1)); sf.setAttribute("fill", `url(#bg-top-${hue})`);
       sf.setAttribute("opacity", f > 0 && f < 1 ? .9 : 0);        // same 90 % alpha as the charged body
     }
-    $(`#bg-pct${i}`).textContent = soc == null ? "—" : `${soc.toFixed(1)}%`;
+    $(`#bg-pct${i}`).textContent = pct == null ? "—" : `${fmtPct(pct)}%`;
     $(`#bg-amp${i}`).textContent = b.ok && b.current != null ? `${(+b.current).toFixed(1)} A` : "";
     // Sparkline of this battery's current over 2 min, scaled to its own range (≥ 0.4 A) so small swings show.
     const h = bankHist[b.name] || [], x0 = cx - 78, x1 = cx + 34, yTop = BS.h - 32, yBot = BS.h - 6;
@@ -431,6 +433,9 @@ function renderBattCard() {
   const avg = cells.length ? cells.reduce((a, c) => a + c, 0) / cells.length : null;
   const lo = cells.length ? Math.min(...cells) : null, hi = cells.length ? Math.max(...cells) : null;
   const rem = ok.length ? ok.reduce((a, b) => a + (b.remaining_ah || 0), 0) : null;
+  const withAh = ok.filter(b => b.remaining_ah != null);
+  // Headline: available Ah ÷ capacity of the batteries reporting (same as the glyphs); shunt SoC as fallback.
+  const bankPct = withAh.length ? withAh.reduce((a, b) => a + b.remaining_ah, 0) / (BATT_AH * withAh.length) * 100 : soc;
   const tmax = (i0, i1) => { const v = ok.flatMap(b => (b.temps || []).slice(i0, i1)); return v.length ? fmtT(Math.max(...v)) : "—"; };
   const v3 = v => v == null ? "—" : `${v.toFixed(3)} V`;
   const row = b => b.ok ? `<tr>
@@ -450,7 +455,7 @@ function renderBattCard() {
         <tbody id="bc-rows"></tbody></table>` : `<div class="muted">No per-battery data (Bluetooth adapter off).</div>`}`;
   }
   $("#bc-head").innerHTML = `
-      <div class="bc-soc" style="color:${soc == null ? "var(--muted)" : "var(--ink)"}">${soc == null ? "—" : Math.round(soc)}<small>%</small></div>
+      <div class="bc-soc" style="color:${bankPct == null ? "var(--muted)" : "var(--ink)"}" title="${withAh.length ? `${withAh.length} batteries: available Ah ÷ ${BATT_AH * withAh.length} Ah` : "Lynx shunt SoC"}">${fmtPct(bankPct)}<small>%</small></div>
       <div class="bc-sum"><span class="bc-state ${st[2]}">${st[1] ? icon(st[1]) : ""}${st[0]}</span>
         <span>${num(S["victron.battery.voltage"], 2)} V · ${num(S["victron.battery.current"], 1)} A · ${fmtTTG(S["victron.battery.ttg"])} to go</span>
         <span class="muted">${rem == null ? "" : `${Math.round(rem)} / ${BATT_AH * ble.length} Ah · `}${ok.length} of ${ble.length} batteries via Bluetooth</span></div>`;
