@@ -320,6 +320,7 @@ class N2kAdapter:
                     "kind": (lab or {}).get("kind", "switch"),
                     "blocked": bool((lab or {}).get("blocked")),
                     "home": bool((lab or {}).get("home")),
+                    "requires_input": (lab or {}).get("requires_input"),
                     "rating_a": (lab or {}).get("rating_a"),
                     "level": (self.loads.get((src, ch - 1)) or {}).get("duty") if (lab or {}).get("kind") == "dimmer" else None,
                     "amps": (self.volts.get((src, ch - 1)) or {}).get("amps") if ch <= 16 else None,

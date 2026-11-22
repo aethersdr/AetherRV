@@ -280,6 +280,13 @@ class SwitchController:
             if on and conf.get("blocked"):
                 self._log(cmd, value, "rejected", f"channel blocked: {conf.get('blocked_reason', '')}", client)
                 return {"ok": False, "detail": conf.get("blocked_reason") or f"{conf.get('name', ch)} is blocked"}
+            need = conf.get("requires_input")
+            if on and need is not None:          # interlock: e.g. high-draw lights only with the ignition on
+                d = self.deb.get(int(need))
+                if d is None or d.value is not True:
+                    nm = self.inputs.get(int(need), {}).get("name", f"input {need}")
+                    self._log(cmd, value, "rejected", f"interlock: {nm} is not on", client)
+                    return {"ok": False, "detail": f"{conf.get('name', ch)} needs {nm} on"}
             if cur == ("on" if on else "off"):  # a tripped channel ("error") still takes OFF: that clears the trip
                 self._log(cmd, value, "noop", "already in requested state", client)
                 return {"ok": True, "detail": "already " + ("on" if on else "off")}

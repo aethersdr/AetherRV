@@ -561,3 +561,4 @@ Sections 1–31 use the old names. Mapping:
 - The README safety model now states this exception: with automation on, the keypads and reverse lights don't work while the Pi is down.
 - Tests: the encoder reproduces the captured N2KAnalyzer frames byte for byte.
 - Status: deployed read-only (`tx_enabled = false`). Next: the owner sets the bank back to 32 → approve n2k transmit → first live send on spare ch8 → keypads.
+- **2026-11-21, ignition interlock (owner):** the spot lights (ch1) and flood lights (ch3) draw a lot, so they carry `requires_input = 2` (ignition). AetherRV refuses ON unless the debounced ignition input is on, for touchscreen taps and keypad presses alike; OFF is always allowed. The tiles show "needs Ignition".

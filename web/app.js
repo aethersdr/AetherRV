@@ -648,7 +648,9 @@ function renderSwitches() {
     : live ? `Live: tap to switch. Keypad logic ${S["switching.automation"] ? "runs in AetherRV" : "is off"}.`
     : "Live from NMEA 2000. Switch control is off (n2k tx_enabled is not set), so tapping does nothing.";
   const label = s => s.state === "error" ? "Fault" : s.state === "n/a" ? "Not reporting" : s.state === "stale" ? "No data"
-    : (s.on ? (s.kind === "dimmer" && s.level != null && s.level < 100 ? `On · ${s.level}%` : "On") : "Off") + (s.blocked ? " · locked" : "");
+    : (s.on ? (s.kind === "dimmer" && s.level != null && s.level < 100 ? `On · ${s.level}%` : "On") : "Off") + (s.blocked ? " · locked" : "")
+      + (!s.on && s.requires_input != null && !((S["switching.inputs"] || []).find(i => i.input === s.requires_input) || {}).on
+         ? ` · needs ${((S["switching.inputs"] || []).find(i => i.input === s.requires_input) || {}).name || "input"}` : "");
   const tile = s => `<div class="sw-cell"><button class="sw ${s.on ? "on" : ""} ${s.state === "error" ? "fault" : ""} ${s.state === "n/a" || s.state === "stale" ? "na" : ""} ${s.blocked ? "blocked" : ""}" data-sw="${esc(s.id)}">
       ${s.state === "error" ? icon("alert") : icon(s.icon || "toggle")}
       <div><div class="name">${esc(s.name)}</div><div class="st"><i></i>${label(s)}${s.amps ? `<span class="sw-amps">${(+s.amps).toFixed(1)} A${s.rating_a ? ` / ${s.rating_a}` : ""}</span>` : ""}<span class="sw-id">ch ${s.channel}</span></div></div></button>
@@ -670,6 +672,10 @@ function toggleSwitch(id) {
   if (!canControlDev("n2k") || !s.channel) { toast("Switch control is off (view only)"); return; }
   if (s.state === "stale" || s.state === "n/a") { toast(`${s.name}: no live status`, "bad"); return; }
   if (s.blocked && !s.on) { toast(`${s.name} is locked out (safety)`, "bad"); return; }
+  if (!s.on && s.requires_input != null) {
+    const inp = (S["switching.inputs"] || []).find(i => i.input === s.requires_input);
+    if (!inp || inp.on !== true) { toast(`${s.name} needs ${inp ? inp.name : "input " + s.requires_input} on`, "bad"); return; }
+  }
   if (s.state === "error") {   // tripped: OFF clears it
     askConfirm(`${s.name} tripped`, "The load controller reports a fault on this channel (it shut the output off). Switch it off to clear the fault? Check the load and wiring before switching it on again.",
       () => control("set", { channel: s.channel, on: false }, `${s.name} reset`, "n2k"));

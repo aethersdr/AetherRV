@@ -65,6 +65,7 @@ tx_enabled = false
 # rating_a = 12          # shown next to the live current
 # home = true            # also on the Home screen's quick buttons
 # blocked = true         # refuse ON (e.g. a solenoid whose cut-off timer isn't in the controller yet)
+# requires_input = 2     # interlock: ON only while that [[device.n2k.input]] is on (e.g. ignition)
 # blocked_reason = "…"
 
 # Optional: switching control + logic in AetherRV (see README "Safety model"). Sending needs tx_enabled.

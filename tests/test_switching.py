@@ -212,3 +212,19 @@ async def test_tripped_channel_off_clears_and_on_is_refused():
     asyncio.get_running_loop().create_task(clears())
     r = await ctl.command("set", {"channel": 4, "on": False})
     assert r["ok"] and len(bus.sent) == 2
+
+
+async def test_ignition_interlock_refuses_on_until_ignition():
+    s, n2k, node, bus, ctl = setup()
+    ctl.channels[1]["requires_input"] = 2
+    ctl.inputs[2] = {"input": 2, "name": "Ignition"}
+    from aetherrv.switching import Debounced
+    ctl.deb[2] = Debounced()
+    claimed(node); bus.sent.clear()
+    status(n2k, 0, 32)
+    r = await ctl.command("set", {"channel": 1, "on": True})
+    assert not r["ok"] and "Ignition" in r["detail"] and bus.sent == []
+    ctl.deb[2].value = True
+    ctl.VERIFY = 0.2
+    await ctl.command("set", {"channel": 1, "on": True})
+    assert len(bus.sent) == 2                      # now it is sent
