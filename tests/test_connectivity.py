@@ -359,3 +359,15 @@ def test_peplink_write_needs_explicit_writer():
     api_ro = PeplinkClient("192.0.2.1", "id", "sec", allow_write=True)        # read-only scope
     with pytest.raises(PeplinkError):
         asyncio.run(api_ro.post_once("config.wan.connection.priority", {}))
+
+
+def test_peplink_wifi_wan_fields():
+    from aetherrv.adapters.peplink import normalize_wans
+    resp = {"order": [3, 4],
+            "3": {"name": "WWAN on 2.4 GHz", "enable": True, "statusLed": "flash", "message": "Scanning...", "type": "wifi"},
+            "4": {"name": "WWAN on 5 GHz", "enable": True, "statusLed": "green", "message": "Connected to PTP",
+                  "type": "wifi", "wifi": {"signal": {"strength": 0, "level": 5}, "ssid": "PTP", "bssid": "x", "channel": 149}}}
+    w3, w4 = normalize_wans(resp)
+    assert w4["wifi"] == {"ssid": "PTP", "strength": 0, "level": 5, "channel": 149, "band": "5 GHz"}
+    assert "bssid" not in w4["wifi"]
+    assert w3["wifi"]["ssid"] is None and w3["wifi"]["band"] is None          # scanning: still marked as Wi-Fi

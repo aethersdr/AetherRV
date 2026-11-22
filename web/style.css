@@ -1031,3 +1031,11 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 /* stats packed to the right; the freed width goes to the Mbps pair */
 .sl-card .sl-kv { justify-content: end; column-gap: 22px; }
 .sl-card .sl-left .sl-speeds { gap: 40px; }
+/* Network: Cellular + WWAN side by side in the top-right slot */
+.net-grid > .net-pair { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; min-width: 0; }
+.net-pair > .card { min-width: 0; }
+.net-pair .cell-card .kv-row { grid-template-columns: 1fr 1fr; column-gap: 16px; row-gap: 8px; }
+.net-pair .cell-card .kv-row b { font-size: 18px; overflow: hidden; text-overflow: ellipsis; }
+.net-pair .cell-card .cell-sig b { font-size: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.net-pair .cell-card .cell-sig > div { min-width: 0; }
+.net-pair .cell-card .card-h .pill { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

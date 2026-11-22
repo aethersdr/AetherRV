@@ -88,9 +88,13 @@ def normalize_wans(resp: dict) -> list[dict]:
                 "sim": active_sim,
                 **_best_band(cell),
             }
-        wifi = w.get("wireless")
-        if wifi:
-            row["wifi"] = {"ssid": wifi.get("ssid"), "strength": (wifi.get("signal") or {}).get("strength")}
+        wifi = w.get("wifi") or w.get("wireless")          # fw 8.6.1 reports "wifi"; older docs say "wireless"
+        if isinstance(wifi, dict) or w.get("type") == "wifi":
+            wifi = wifi if isinstance(wifi, dict) else {}
+            sig = wifi.get("signal") or {}
+            ch = wifi.get("channel")
+            row["wifi"] = {"ssid": wifi.get("ssid"), "strength": sig.get("strength"), "level": sig.get("level"),
+                           "channel": ch, "band": None if not isinstance(ch, int) else ("2.4 GHz" if ch <= 14 else "5 GHz")}
         out.append(row)
     return out
 

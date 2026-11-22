@@ -1601,6 +1601,23 @@ function renderNetwork() {
       <div><b>SIM ${c.sim ?? "—"}</b><span>active</span></div>
     </div>`;
 
+  // Wi-Fi WAN (Wi-Fi-as-WAN): the connected profile, else the first enabled one.
+  const wifis = wans.filter(w => w.wifi && w.enabled);
+  const ww = wifis.find(w => w.connected) || wifis[0];
+  const wf = ww?.wifi;
+  const wState = !ww ? "" : ww.connected ? "Connected" : String(ww.message || "").replace(/\.+$/, "");
+  $("#wwan-card").innerHTML = !ww ? `<div class="card-h"><h2>WWAN</h2></div><div class="muted">${S["peplink.reachable"] == null ? "Not enabled." : "No Wi-Fi WAN enabled."}</div>` : `
+    <div class="card-h"><h2>WWAN</h2><span class="pill ${ww.connected ? "ok-pill" : "bad-pill"}">${icon(ww.connected ? "check" : "alert")}${esc(wState)}</span></div>
+    <div class="cell-main">
+      <div class="cell-sig">${bars(ww.connected ? (wf.level ?? 0) : 0)}<div><b>${esc(wf.ssid || "—")}</b><span>${esc(ww.name)}</span></div></div>
+    </div>
+    <div class="kv-row">
+      <div><b>${wf.level != null && ww.connected ? wf.level + "<small>/5</small>" : "—"}</b><span>signal</span></div>
+      <div><b>${wf.channel ?? "—"}</b><span>channel${wf.band ? " · " + wf.band : ""}</span></div>
+      <div><b>${ww.connected && ww.uptime != null ? dur(ww.uptime) : "—"}</b><span>uptime</span></div>
+      <div><b>${ww.priority != null ? "P" + ww.priority : "—"}</b><span>priority</span></div>
+    </div>`;
+
   // Priority order (P1 first; same priority: the one in use, then router order); disabled ("off") WANs hidden.
   const wanList = wans.filter(w => w.enabled)
     .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99) || (b.connected - a.connected) || a.id - b.id);
