@@ -243,3 +243,36 @@ def test_fridge_off_silences_warm_alert_and_rearms_when_cold(tmp_path):
     assert rr.check() == ["fridge"] and s.get("settings.fridge_off") is False           # cold again: re-armed
     s.set("climate.fridge.temp", 8.0)
     assert "cold.fridge" in {f.id for f in r_cold(s, DEFAULTS)}
+
+
+async def test_traffic_tiles_proxy_cache_and_cap(aiohttp_client, tmp_path):
+    from aetherrv.traffic import TrafficTiles
+    from aetherrv.web import make_app
+    calls = []
+
+    t = TrafficTiles("KEY", daily_cap=2)
+    assert "key=KEY" in t.url("flow", "major", 5, 1, 2) and "reduced-sensitivity" in t.url("flow", "major", 5, 1, 2)
+    assert t.valid("incidents", "s0-dark", 7, 10, 20) and not t.valid("incidents", "s9", 7, 1, 1)
+    assert not t.valid("flow", "major", 13, 0, 0) and not t.valid("flow", "major", 3, 8, 0)
+
+    class Resp:
+        status = 200
+        async def read(self): return b"PNG"
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+
+    class Sess:
+        closed = False
+        def get(self, url):
+            calls.append(url); return Resp()
+    t.session = Sess()
+    c = await aiohttp_client(make_app(State(), tmp_path, traffic=t))
+    r = await c.get("/api/traffic/flow/major/5/1/2.png")
+    assert r.status == 200 and await r.read() == b"PNG" and r.content_type == "image/png"
+    await c.get("/api/traffic/flow/major/5/1/2.png?b=2")         # cached: no second upstream call
+    assert len(calls) == 1
+    assert (await c.get("/api/traffic/incidents/s0/5/1/2.png")).status == 200
+    assert (await c.get("/api/traffic/incidents/s0/5/1/3.png")).status == 429   # daily cap reached
+    assert (await c.get("/api/traffic/flow/bogus/5/1/2.png")).status == 404
+    c2 = await aiohttp_client(make_app(State(), tmp_path))         # no key configured
+    assert (await c2.get("/api/traffic/flow/major/5/1/2.png")).status == 404

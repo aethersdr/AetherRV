@@ -1217,6 +1217,7 @@ function renderWeather() {
   if (wxMap) {
     wxMap.invalidateSize();
     loadRadar();
+    applyTraffic();
     if (lat != null) {
       const vanIcon = L.divIcon({ className: "wx-van", html: "<i></i>", iconSize: [22, 22], iconAnchor: [11, 11] });
       if (wxVan) wxVan.setLatLng([lat, lon]); else wxVan = L.marker([lat, lon], { icon: vanIcon, interactive: false, zIndexOffset: 500 }).addTo(wxMap);
@@ -1254,11 +1255,31 @@ function applyWxDark() {
   b.textContent = `Map: ${s.mode[0].toUpperCase()}${s.mode.slice(1)}`;
   b.title = s.mode === "auto" ? `Auto: ${s.on ? "dark (sunset to sunrise)" : "light (sunrise to sunset)"} — tap for Dark` :
     s.mode === "dark" ? "Always dark — tap for Light" : "Always light — tap for Auto";
+  applyTraffic();                                             // incident style follows the map (s0 / s0-dark)
 }
 $("#wx-dark").addEventListener("click", () => {
   store.set("vp.wxmap.mode", WX_MODES[(WX_MODES.indexOf(wxMode()) + 1) % WX_MODES.length]);
   applyWxDark();
 });
+// Traffic overlay (TomTom, proxied by the backend so its key stays on the Pi): slow roads + incidents.
+// Shown only when a key is configured; per-screen on/off; tiles refresh every 5 min (the URL changes per bucket).
+let tfLayers = null;
+const tfOn = () => store.get("vp.traffic", "on") === "on";
+function applyTraffic() {
+  const avail = !!S["traffic.available"], b = $("#wx-traffic");
+  b.hidden = !avail; b.classList.toggle("on", tfOn());
+  b.title = tfOn() ? "Showing slowdowns and incidents (TomTom) — tap to hide" : "Traffic hidden — tap to show";
+  if (!wxMap) return;
+  if (!avail || !tfOn()) { if (tfLayers) { tfLayers.forEach(l => wxMap.removeLayer(l)); tfLayers = null; } return; }
+  if (view !== "weather" && tfLayers) return;                 // don't refetch for a hidden map
+  const q = `?b=${Math.floor(Date.now() / 300e3)}`, inc = wxDarkState().on ? "s0-dark" : "s0";
+  const urls = [`/api/traffic/flow/major/{z}/{x}/{y}.png${q}`, `/api/traffic/incidents/${inc}/{z}/{x}/{y}.png${q}`];
+  // 512 px tiles: map zoom N → tile zoom N-1 (like the radar); above the radar so a storm doesn't hide a closure.
+  if (!tfLayers) tfLayers = urls.map((u, i) => L.tileLayer(u, { tileSize: 512, zoomOffset: -1, minZoom: 3, maxZoom: 12,
+    zIndex: 7 + i, className: "wx-traffic", attribution: i ? "Traffic © TomTom" : "" }).addTo(wxMap));
+  else tfLayers.forEach((l, i) => { if (l._url !== urls[i]) l.setUrl(urls[i]); });
+}
+$("#wx-traffic").addEventListener("click", () => { store.set("vp.traffic", tfOn() ? "off" : "on"); applyTraffic(); });
 setInterval(() => { if (view === "weather") applyWxDark(); }, 60e3);   // crossing sunrise/sunset while on screen
 $("#wx-recenter").addEventListener("click", () => {
   wxCenter = null; fcPick = null; fc = null; fcAt = 0; fcErr = null;

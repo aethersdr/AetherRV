@@ -31,6 +31,7 @@ from .canbus import CanBus, prune_captures
 from .history import History
 from .state import State
 from .txgate import TxGate
+from .traffic import TrafficTiles
 from .settings import AdminClient, AutoTimezone, Prefs, RemoteAuth
 from .web import make_app
 
@@ -233,7 +234,10 @@ async def amain(cfg: dict) -> None:
     prefs = Prefs(state, web_cfg.get("settings_path", "/var/lib/aetherrv/settings.json"))
     adapters.append(AutoTimezone(state, admin, prefs))
     adapters.append(ColdRearm(state, prefs))
-    runner = web.AppRunner(make_app(state, static, history, alerts, controls, admin=admin, prefs=prefs,
+    tt_key = load_secrets(cfg).get("tomtom_api_key", "")
+    traffic = TrafficTiles(tt_key) if tt_key else None
+    state.set("traffic.available", traffic is not None)
+    runner = web.AppRunner(make_app(state, static, history, alerts, controls, admin=admin, prefs=prefs, traffic=traffic,
                                     auth=RemoteAuth(admin, control_subnets=web_cfg.get("control_subnets", []),
                                                     tailnet=web_cfg.get("control_tailnet", "owner"))))
     await runner.setup()

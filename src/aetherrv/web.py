@@ -24,7 +24,7 @@ LONG_VERBS = {"tailscale_install": 660, "update_check": 330}   # seconds (packag
 
 
 def make_app(state: State, static_dir: Path, history: History | None = None, alerts=None,
-             controls: dict | None = None, admin=None, prefs=None, auth=None) -> web.Application:
+             controls: dict | None = None, admin=None, prefs=None, auth=None, traffic=None) -> web.Application:
     controls = controls or {}
 
     async def who_of(req: web.Request) -> str | None:
@@ -166,7 +166,22 @@ def make_app(state: State, static_dir: Path, history: History | None = None, ale
         except Exception as e:                             # noqa: BLE001
             return web.json_response({"ok": False, "error": str(e)})
 
+    async def api_traffic(req: web.Request) -> web.Response:
+        # Weather-map traffic tiles, proxied so the TomTom key stays on the Pi (see traffic.py).
+        m = req.match_info
+        try:
+            z, x, y = int(m["z"]), int(m["x"]), int(m["y"])
+        except ValueError:
+            raise web.HTTPBadRequest()
+        if traffic is None or not traffic.valid(m["kind"], m["style"], z, x, y):
+            raise web.HTTPNotFound()
+        status, body = await traffic.get(m["kind"], m["style"], z, x, y)
+        if status != 200:
+            return web.Response(status=status)
+        return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "max-age=240"})
+
     app.router.add_get("/", index)
+    app.router.add_get("/api/traffic/{kind}/{style}/{z}/{x}/{y}.png", api_traffic)
     app.router.add_get("/api/settings", api_settings)
     app.router.add_post("/api/settings/action", api_settings_action)
     app.router.add_get("/api/state", api_state)
