@@ -670,6 +670,11 @@ function toggleSwitch(id) {
   if (!canControlDev("n2k") || !s.channel) { toast("Switch control is off (view only)"); return; }
   if (s.state === "stale" || s.state === "n/a") { toast(`${s.name}: no live status`, "bad"); return; }
   if (s.blocked && !s.on) { toast(`${s.name} is locked out (safety)`, "bad"); return; }
+  if (s.state === "error") {   // tripped: OFF clears it
+    askConfirm(`${s.name} tripped`, "The load controller reports a fault on this channel (it shut the output off). Switch it off to clear the fault? Check the load and wiring before switching it on again.",
+      () => control("set", { channel: s.channel, on: false }, `${s.name} reset`, "n2k"));
+    return;
+  }
   control("set", { channel: s.channel, on: !s.on }, `${s.name} ${s.on ? "off" : "on"}`, "n2k");
 }
 $("#switches").addEventListener("click", e => { const b = e.target.closest(".sw"); if (b) toggleSwitch(b.dataset.sw); });

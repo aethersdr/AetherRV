@@ -195,3 +195,20 @@ def test_address_claim_moves_off_a_contested_address():
     lower = (node.name - 1).to_bytes(8, "little")      # a device with a lower (stronger) NAME claims 150
     node.on_frame(can.Message(arbitration_id=0x18EEFF96, data=lower, is_extended_id=True))
     assert node.address != 150 and bus.sent[-1].arbitration_id == (0x18EEFF00 | node.address)
+
+
+async def test_tripped_channel_off_clears_and_on_is_refused():
+    s, n2k, node, bus, ctl = setup()
+    claimed(node); bus.sent.clear()
+    status(n2k, 0, 32)
+    n2k.banks[(0, 32)]["states"][3] = "error"               # ch4 tripped
+    r = await ctl.command("set", {"channel": 4, "on": True})
+    assert not r["ok"] and "tripped" in r["detail"] and bus.sent == []
+
+    async def clears():
+        await asyncio.sleep(0.15)
+        status(n2k, 0, 32)                                   # CLMD16 reports ch4 off again
+
+    asyncio.get_running_loop().create_task(clears())
+    r = await ctl.command("set", {"channel": 4, "on": False})
+    assert r["ok"] and len(bus.sent) == 2

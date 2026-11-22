@@ -274,17 +274,21 @@ class SwitchController:
         if st is None or age > self.FRESH:
             self._log(cmd, value, "failed", "no fresh 127501 from the load controller", client)
             return {"ok": False, "detail": "no fresh status from the load controller; nothing sent"}
-        cur_on = st[ch - 1] == "on"
+        cur = st[ch - 1]                      # "on" | "off" | "error" (tripped) | None
         if cmd == "set":
             on = bool(value.get("on"))
             if on and conf.get("blocked"):
                 self._log(cmd, value, "rejected", f"channel blocked: {conf.get('blocked_reason', '')}", client)
                 return {"ok": False, "detail": conf.get("blocked_reason") or f"{conf.get('name', ch)} is blocked"}
-            if cur_on == on:
+            if cur == ("on" if on else "off"):  # a tripped channel ("error") still takes OFF: that clears the trip
                 self._log(cmd, value, "noop", "already in requested state", client)
                 return {"ok": True, "detail": "already " + ("on" if on else "off")}
+            if on and cur == "error":
+                self._log(cmd, value, "rejected", "channel is tripped; switch it off first to clear", client)
+                return {"ok": False, "detail": f"{conf.get('name', ch)} is tripped (fault). Switch it off to clear, then on."}
             payload = switch_command(self.bank, ch, on)
-            verify = lambda: self.channel_on(ch) is on                     # noqa: E731
+            want = "on" if on else "off"
+            verify = lambda: (self.status()[0] or [None] * 28)[ch - 1] == want and self.status()[1] <= self.FRESH  # noqa: E731
         elif cmd == "dim":
             if conf.get("kind") != "dimmer":
                 return {"ok": False, "detail": f"{conf.get('name', ch)} is not a dimmer"}
