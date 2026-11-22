@@ -1564,8 +1564,6 @@ function renderNetwork() {
         <div class="kv-row sl-kv">
           <div><b>${num(S["starlink.latency_ms"])} ms</b><span>latency</span></div>
           <div><b>${S["starlink.drop_rate"] == null ? "—" : (S["starlink.drop_rate"] * 100).toFixed(1) + "%"}</b><span>ping drop</span></div>
-          <div><b>${dur(S["starlink.uptime"])}</b><span>uptime</span></div>
-          <div><b>${S["starlink.gps_sats"] ?? "—"}</b><span>GPS sats</span></div>
           <div><b class="${S["starlink.snr_persistently_low"] ? "warn-text" : ""}">${S["starlink.signal_quality"] == null ? "—" : Math.round(S["starlink.signal_quality"] * 100) + "%"}</b><span>signal quality</span></div>
           <div><b class="${S["starlink.snr_persistently_low"] ? "warn-text" : ""}">${S["starlink.snr_db"] == null ? "—" : (S["starlink.snr_capped"] ? "≥ 10" : (+S["starlink.snr_db"]).toFixed(1)) + " dB"}</b><span>SNR</span></div>
         </div>

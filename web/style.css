@@ -1015,7 +1015,7 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-card .sl-speeds b { font-size: 46px; letter-spacing: -1px; }
 .sl-card .sl-speeds small { font-size: 14px; margin-top: 2px; }
 .sl-card .sl-speeds .arrow { font-size: 22px; margin-right: 4px; }
-.sl-card .sl-kv { grid-template-columns: repeat(6, auto); column-gap: 16px; row-gap: 0; justify-content: space-between; }
+.sl-card .sl-kv { grid-template-columns: repeat(4, auto); column-gap: 16px; row-gap: 0; justify-content: space-between; }
 .sl-card .sl-kv b { font-size: 20px; white-space: nowrap; }
 .sl-card .sl-kv span { font-size: 12px; white-space: nowrap; }
 .sky-sw { position: absolute; z-index: 2; top: 12px; right: 14px; pointer-events: none; font-size: 13px; color: #8fa6c2; }
