@@ -1471,6 +1471,30 @@ function skyMap(m, az, size = 300) {
     </svg></div>`;
 }
 
+// 3D sky (three.js, loaded only when the Network view has a map). The card's HTML is rebuilt on every
+// update, so one persistent element is re-attached into a slot each time; it falls back to the 2D map
+// until the module loads, or for good if WebGL isn't available.
+let sky3d = null, sky3dLoading = false;
+function sky3dSlot(map) {
+  if (sky3d === false) return null;
+  if (!sky3d) {
+    if (!sky3dLoading) {
+      sky3dLoading = true;
+      import("./sky3d.js").then(m => { const s = new m.Sky3D(); sky3d = s.ok ? s : false; renderNetwork(); })
+        .catch(() => { sky3d = false; });
+    }
+    return null;
+  }
+  return `<div class="sky3d-slot"></div>`;
+}
+function mountSky3d() {
+  const slot = sky3d && $("#sl-card .sky3d-slot");
+  if (!slot) return;
+  slot.replaceWith(sky3d.el);
+  sky3d.setMap(S["starlink.obstruction_map"], S["starlink.azimuth"], S["starlink.elevation"]);
+  sky3d.start();
+}
+
 $("#sl-card").addEventListener("click", e => {
   if (!e.target.closest("[data-sl=install]") || !canControlDev("starlink") || ctlPending) return;
   askConfirm("Install the Starlink update?",
@@ -1510,12 +1534,14 @@ function renderNetwork() {
           ${updReady && canControlDev("starlink") ? `<button class="btn-soft sl-install" data-sl="install" ${ctlPending ? "disabled" : ""}>${icon("download")}Install update</button>` : ""}</div>` : ""}
         <div class="muted small">${esc(S["starlink.software"] || "")}</div>
       </div>
-      ${map?.data ? `<figure class="sl-sky">${skyMap(map, S["starlink.azimuth"], 360)}
+      ${map?.data ? `<figure class="sl-sky">${sky3dSlot(map) ?? skyMap(map, S["starlink.azimuth"], 360)}
         <figcaption><b class="${(obs ?? 0) > 5 ? "warn-text" : ""}">${num(obs, 1)}%</b> obstructed
           <span class="sky-key"><i class="clear"></i>Clear <i class="blocked"></i>Obstructed</span></figcaption></figure>`
       : `<div class="sl-obs">${ring(Math.min(100, obs ?? 0), { size: 150, stroke: 14, color: (obs ?? 0) > 5 ? "var(--warning)" : "var(--c-shore)" })}
         <div class="center"><b>${num(obs, 1)}%</b><small>obstructed</small></div></div>`}
     </div>`;
+
+  mountSky3d();
 
   const wans = S["peplink.wans"] || [];
   const cw = wans.find(w => w.cellular);

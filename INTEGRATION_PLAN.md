@@ -610,3 +610,8 @@ Sections 1–31 use the old names. Mapping:
   - These are not in `status_data()`, so they are read from the raw `get_status()`. Field support is judged from the reflected message definition, because proto3 drops 0.0.
   - The Network card shows "signal quality" % and "SNR" dB ("≥ 10 dB" when capped). SNR is recorded in history.
   - A warning is raised when the dish flags SNR as persistently low. First reading: 1.0 (≥ 10 dB).
+- **2026-11-21, 3D Starlink sky (Network card).** three.js r160 (MIT) is vendored at `web/vendor/three/`; `web/sky3d.js` renders the obstruction map as a dome of light over a stylised Sprinter.
+  - **Orientation:** the van's nose points at the dish azimuth, the panel tilts to its elevation, and a beam plus an amber heading line and chevron mark the boresight. The cell orientation matches the verified 2D map.
+  - **Look:** custom point shader (clear = dim cyan dust, obstructions = coral embers sized by severity, a horizon→zenith scan sweep, near-side dust faded) and a fresnel glass dome.
+  - **Interaction:** drag rotates and tilts, pinch or wheel zooms, double-tap resets; it auto-rotates after 6 s idle.
+  - **Cost and fallback:** lazy-loaded only on the Network view, capped at 30 fps, and stops when hidden. It falls back to the 2D map without WebGL.
