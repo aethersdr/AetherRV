@@ -610,7 +610,7 @@ function control(cmd, value, label, device = "rixens") {
   sendWS({ type: "control", device, cmd, value, id });
   render();
 }
-const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok", n2k: "n2k.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
+const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok", n2k: "n2k.controls_ok", peplink: "peplink.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
 function askConfirm(title, detail, onYes) {
   $("#modal-t").textContent = title; $("#modal-d").textContent = detail; $("#modal").hidden = false;
   $("#modal-yes").onclick = () => { $("#modal").hidden = true; onYes(); };
@@ -1471,6 +1471,22 @@ function skyMap(m, az, size = 300) {
     </svg></div>`;
 }
 
+// WAN priority (Peplink, read-write API client): tap P# → pick P1–P4 → confirm → fresh read, one send, verify.
+let wanEdit = null;
+$("#wan-card").addEventListener("click", e => {
+  const b = e.target.closest("button[data-wan]");
+  if (!b || !canControlDev("peplink") || ctlPending) return;
+  const id = +b.dataset.wan, w = (S["peplink.wans"] || []).find(x => x.id === id);
+  if (!w) return;
+  if (!b.dataset.prio) { wanEdit = wanEdit === id ? null : id; renderNetwork(); return; }
+  const p = +b.dataset.prio;
+  wanEdit = null; renderNetwork();
+  if (p === w.priority) return;
+  askConfirm(`Set ${w.name} to priority ${p}?`,
+    "The router re-evaluates which link carries traffic right away. If the active connection changes, internet drops for a few seconds, and remote (Tailscale) access to this console may reconnect.",
+    () => control("set_wan_priority", { id, priority: p }, "WAN priority", "peplink"));
+});
+
 // 3D sky (three.js, loaded only when the Network view has a map). The card's HTML is rebuilt on every
 // update, so one persistent element is re-attached into a slot each time; it falls back to the 2D map
 // until the module loads, or for good if WebGL isn't available.
@@ -1568,8 +1584,11 @@ function renderNetwork() {
     (wanList.length ? `<div class="wans">${wanList.map(w => `<div class="wan ${w.name === S["peplink.active"] ? "active" : ""}">
        <span class="led led-${esc(w.led)}"></span>${icon(w.starlink ? "dish" : w.cellular ? "signal" : w.wifi ? "wifi" : "router")}
        <div><b>${esc(w.name)}</b><span>${esc(w.message)}${w.uptime ? " · up " + dur(w.uptime) : ""}</span></div>
-       <span class="prio">${w.enabled ? (w.priority != null ? "P" + w.priority : "") : "off"}</span>
-       ${w.name === S["peplink.active"] ? `<span class="pill ok-pill">in use</span>` : ""}</div>`).join("")}</div>`
+       ${canControlDev("peplink") ? `<button class="prio prio-btn ${wanEdit === w.id ? "on" : ""}" data-wan="${w.id}" ${ctlPending ? "disabled" : ""}>${w.priority != null ? "P" + w.priority : "—"}</button>`
+         : `<span class="prio">${w.priority != null ? "P" + w.priority : ""}</span>`}
+       ${w.name === S["peplink.active"] ? `<span class="pill ok-pill">in use</span>` : ""}</div>
+       ${wanEdit === w.id && canControlDev("peplink") ? `<div class="wan-pick"><span>Priority for ${esc(w.name)}</span>
+         <div class="seg">${[1, 2, 3, 4].map(p => `<button data-wan="${w.id}" data-prio="${p}" class="${w.priority === p ? "on" : ""}">P${p}</button>`).join("")}</div></div>` : ""}`).join("")}</div>`
       : `<div class="muted">${S["peplink.reachable"] == null ? "Peplink not enabled." : "No WAN data."}</div>`);
 
   const fix = S["location.fix"];

@@ -22,13 +22,16 @@ Control endpoints (WAN priority, SIM switch, reboot) need the read-write scope a
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import sqlite3
 import ssl
 import time
 
 import aiohttp
 
 from ..state import State
+from ..txgate import TxBlocked, TxGate
 
 log = logging.getLogger(__name__)
 
@@ -143,12 +146,29 @@ def normalize_location(resp: dict) -> dict:
     }
 
 
+def priority_payload(current: dict, conn_id: int, priority: int) -> dict:
+    """Body for POST config.wan.connection.priority: the router's current list with ONE connection's priority
+    changed. Strict about the shape: anything unexpected raises ValueError, so nothing is sent."""
+    lst = current.get("list") if isinstance(current, dict) else None
+    if not isinstance(lst, list) or not lst or not all(isinstance(e, dict) and isinstance(e.get("connId"), int) for e in lst):
+        raise ValueError(f"unexpected config.wan.connection.priority shape: {str(current)[:200]}")
+    if not any(e["connId"] == conn_id for e in lst):
+        raise ValueError(f"connection {conn_id} is not in the router's priority list")
+    if not 1 <= priority <= 4:
+        raise ValueError("priority must be 1–4")
+    out = [{**e, "priority": priority} if e["connId"] == conn_id else dict(e) for e in lst]
+    if not any(isinstance(e.get("priority"), int) for e in out):
+        raise ValueError("would leave no connection with a priority")
+    return {"instantActive": True, "list": out}
+
+
 # ── Client ───────────────────────────────────────────────────────────────────
 class PeplinkClient:
     def __init__(self, host: str, client_id: str = "", client_secret: str = "", verify_tls: bool = False,
                  session: aiohttp.ClientSession | None = None, scheme: str = "https",
-                 username: str = "", password: str = "") -> None:
+                 username: str = "", password: str = "", scope: str = "api.read-only") -> None:
         self.base = f"{scheme}://{host}/api"
+        self.scope = scope                       # "api" (read-write) only for the separate WAN-priority writer
         self.client_id, self.client_secret = client_id, client_secret
         self.username, self.password = username, password
         self.mode = "user" if username else "client"
@@ -170,7 +190,7 @@ class PeplinkClient:
         s = await self._sess()
         async with s.post(f"{self.base}/auth.token.grant", ssl=self.ssl,
                           json={"clientId": self.client_id, "clientSecret": self.client_secret,
-                                "scope": "api.read-only"}) as r:
+                                "scope": self.scope}) as r:
             body = await r.json(content_type=None)
         if body.get("stat") != "ok":
             raise PeplinkError(f"token grant failed: {body.get('code')} {body.get('message')}")
@@ -210,6 +230,19 @@ class PeplinkClient:
             raise PeplinkError(f"{func}: {body.get('code')} {body.get('message')}")
         raise PeplinkError(f"{func}: unauthorized")
 
+    async def post_once(self, func: str, body: dict) -> dict:
+        """One POST, never repeated (a token grant beforehand isn't a send). Client (API-key) mode only."""
+        if self.mode != "client" or self.scope != "api":
+            raise PeplinkError("writes need the read-write API client")
+        if not self._token or time.time() > self._expires:
+            await self._grant()
+        s = await self._sess()
+        async with s.post(f"{self.base}/{func}", params={"accessToken": self._token}, json=body, ssl=self.ssl) as r:
+            resp = await r.json(content_type=None)
+        if resp.get("stat") != "ok":
+            raise PeplinkError(f"{func}: {resp.get('code')} {resp.get('message')}")
+        return resp.get("response") or {}
+
     async def close(self) -> None:
         if self._session is not None:
             await self._session.close()
@@ -224,10 +257,86 @@ def _insecure_ctx() -> ssl.SSLContext:
 
 class PeplinkAdapter:
     device = "peplink"
+    COMMANDS = ("set_wan_priority",)
 
-    def __init__(self, state: State, client: PeplinkClient) -> None:
+    def __init__(self, state: State, client: PeplinkClient, writer: PeplinkClient | None = None,
+                 gate: TxGate | None = None, db: sqlite3.Connection | None = None) -> None:
         self.state = state
-        self.client = client
+        self.client = client                     # read-only: all monitoring
+        self.writer, self.gate, self.db = writer, gate, db   # read-write API client: WAN priority only
+        self._cmd_lock = asyncio.Lock()
+        state.set("peplink.controls_ok", bool(writer and gate and gate.is_enabled(self.device)))
+        if db is not None:
+            db.execute("CREATE TABLE IF NOT EXISTS command_log (t REAL, device TEXT, cmd TEXT, value TEXT, "
+                       "outcome TEXT, detail TEXT, client TEXT)")
+
+    def _log(self, cmd: str, value, outcome: str, detail: str, client: str) -> None:
+        log.warning("peplink command %s=%s from %s: %s %s", cmd, value, client, outcome, detail)
+        if self.db is not None:
+            try:
+                self.db.execute("INSERT INTO command_log VALUES (?,?,?,?,?,?,?)",
+                                (time.time(), self.device, cmd, json.dumps(value), outcome, detail, client))
+            except sqlite3.Error:
+                log.exception("command log write failed")
+
+    async def command(self, cmd: str, value=None, client: str = "kiosk", verify_timeout: float = 20.0,
+                      poll: float = 2.0) -> dict:
+        """set_wan_priority {id, priority}: fresh read of the router's priority list → one POST → verify."""
+        async with self._cmd_lock:
+            try:
+                if self.gate is None:
+                    raise TxBlocked("no gate")
+                self.gate.check(self.device, cmd)
+            except TxBlocked as e:
+                self._log(cmd, value, "blocked", str(e), client)
+                return {"ok": False, "detail": "control is disabled for the Peplink router"}
+            if cmd not in self.COMMANDS:
+                self._log(cmd, value, "rejected", "not an allowed command", client)
+                return {"ok": False, "detail": f"command {cmd!r} is not allowed"}
+            if self.writer is None:
+                self._log(cmd, value, "rejected", "no read-write API client", client)
+                return {"ok": False, "detail": "WAN control isn't set up (no read-write API client)"}
+            try:
+                conn, prio = int(value["id"]), int(value["priority"])
+            except (TypeError, KeyError, ValueError):
+                self._log(cmd, value, "rejected", "bad value", client)
+                return {"ok": False, "detail": "bad request"}
+            try:
+                cur = await asyncio.wait_for(self.writer.get("config.wan.connection.priority"), timeout=10)   # fresh
+                body = priority_payload(cur, conn, prio)
+            except ValueError as e:
+                self._log(cmd, value, "rejected", str(e), client)
+                return {"ok": False, "detail": f"not sent: {e}"}
+            except Exception as e:
+                self._log(cmd, value, "failed", f"read: {e}", client)
+                return {"ok": False, "detail": "router not reachable; nothing sent"}
+            was = next((e.get("priority") for e in cur["list"] if e["connId"] == conn), None)
+            if was == prio:
+                self._log(cmd, value, "noop", f"already P{prio}", client)
+                return {"ok": True, "detail": f"already P{prio}"}
+            try:
+                await asyncio.wait_for(self.writer.post_once("config.wan.connection.priority", body), timeout=10)  # once
+            except Exception as e:
+                send_err = e                     # it may still have applied: verify, never resend
+            else:
+                send_err = None
+            deadline = time.monotonic() + verify_timeout
+            while time.monotonic() < deadline:
+                await asyncio.sleep(poll)
+                try:
+                    wans = normalize_wans(await self.writer.get("status.wan.connection"))
+                except Exception:
+                    continue                     # the router may be busy switching links
+                w = next((x for x in wans if x["id"] == conn), None)
+                if w and w.get("priority") == prio:
+                    try:
+                        await self._wan()
+                    except Exception:
+                        pass
+                    self._log(cmd, value, "ok", f"P{was} → P{prio}" + (f" (send raised {send_err})" if send_err else ""), client)
+                    return {"ok": True, "detail": f"{w['name']} is now P{prio}"}
+            self._log(cmd, value, "unverified", f"send={'error: ' + str(send_err) if send_err else 'ok'}; priority not seen", client)
+            return {"ok": False, "detail": "the router didn't confirm the change (not retried)"}
 
     async def _wan(self) -> None:
         wans = normalize_wans(await self.client.get("status.wan.connection"))

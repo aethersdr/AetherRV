@@ -975,3 +975,9 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sky3d-hint b { color: #fbbf24; font-weight: 700; }
 .sl-sky:has(.sky3d) .sky-key i.clear { background: #47d7ff; box-shadow: 0 0 6px #47d7ff; }
 .sl-sky:has(.sky3d) .sky-key i.blocked { background: #ff6a4a; box-shadow: 0 0 6px #ff6a4a; }
+/* WAN priority picker */
+.wans .prio-btn { font: inherit; color: var(--muted); background: var(--surface-2, rgb(255 255 255 / .04)); border: 1px solid var(--line);
+  border-radius: 8px; padding: 4px 10px; min-width: 44px; min-height: 36px; cursor: pointer; }
+.wans .prio-btn.on { color: var(--ink); border-color: var(--accent, #5de3ff); }
+.wans .wan-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 12px 10px 44px; font-size: 14px; color: var(--muted); }
+.wans .wan-pick .seg button { min-width: 52px; min-height: 40px; }

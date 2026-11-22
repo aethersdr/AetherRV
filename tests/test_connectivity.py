@@ -272,3 +272,76 @@ def test_starlink_signal_quality_to_snr():
     d = signal_fields(SimpleNamespace(signal_quality=1.0, is_snr_above_noise_floor=True, is_snr_persistently_low=False))
     assert d["starlink.snr_db"] == 10.0 and d["starlink.snr_capped"] is True
     assert signal_fields(None)["starlink.snr_db"] is None
+
+
+def test_peplink_priority_payload_strict():
+    import pytest
+    from aetherrv.adapters.peplink import priority_payload
+    cur = {"list": [{"connId": 1, "priority": 3}, {"connId": 2, "priority": 2}, {"connId": 4, "priority": 1}]}
+    body = priority_payload(cur, 1, 1)
+    assert body["instantActive"] is True
+    assert body["list"] == [{"connId": 1, "priority": 1}, {"connId": 2, "priority": 2}, {"connId": 4, "priority": 1}]
+    assert cur["list"][0]["priority"] == 3                        # input untouched
+    for bad in ({}, {"list": []}, {"list": [{"id": 1}]}, {"1": {"priority": 1}}, []):
+        with pytest.raises(ValueError):
+            priority_payload(bad, 1, 1)
+    with pytest.raises(ValueError):
+        priority_payload(cur, 9, 1)                               # unknown connection
+    with pytest.raises(ValueError):
+        priority_payload(cur, 1, 5)                               # out of range
+
+
+class _FakeWriter:
+    def __init__(self, cfg, apply=True, post_raises=None):
+        self.cfg, self.apply, self.post_raises, self.posts = cfg, apply, post_raises, []
+        self.prio = {e["connId"]: e.get("priority") for e in cfg["list"]} if isinstance(cfg.get("list"), list) else {}
+
+    async def get(self, func, **_):
+        if func == "config.wan.connection.priority":
+            return self.cfg
+        return {"order": list(self.prio), **{str(k): {"name": f"W{k}", "enable": True, "priority": p} for k, p in self.prio.items()}}
+
+    async def post_once(self, func, body):
+        self.posts.append(body)
+        if self.apply:
+            self.prio = {e["connId"]: e.get("priority") for e in body["list"]}
+        if self.post_raises:
+            raise self.post_raises
+
+
+def _pep(writer, enabled=True):
+    from aetherrv.adapters.peplink import PeplinkAdapter
+    from aetherrv.state import State
+    from aetherrv.txgate import TxGate
+
+    class RO:
+        async def get(self, func, **_):
+            return await writer.get(func)
+    return PeplinkAdapter(State(), RO(), writer=writer, gate=TxGate({"peplink": enabled}))
+
+
+def test_peplink_set_priority_sends_once_and_verifies():
+    import asyncio
+    w = _FakeWriter({"list": [{"connId": 1, "priority": 3}, {"connId": 4, "priority": 1}]})
+    a = _pep(w)
+    assert a.state.get("peplink.controls_ok") is True
+    r = asyncio.run(a.command("set_wan_priority", {"id": 1, "priority": 1}, poll=0.01, verify_timeout=1))
+    assert r["ok"] and len(w.posts) == 1 and "P1" in r["detail"]
+
+
+def test_peplink_set_priority_refusals_send_nothing():
+    import asyncio
+    w = _FakeWriter({"list": [{"connId": 1, "priority": 3}]})
+    assert not asyncio.run(_pep(w, enabled=False).command("set_wan_priority", {"id": 1, "priority": 1}))["ok"]
+    assert not asyncio.run(_pep(w).command("reboot", None))["ok"]
+    assert not asyncio.run(_pep(w).command("set_wan_priority", {"id": 1}))["ok"]
+    assert not asyncio.run(_pep(_FakeWriter({"weird": 1, "list": "x"})).command("set_wan_priority", {"id": 1, "priority": 1}))["ok"]
+    assert asyncio.run(_pep(w).command("set_wan_priority", {"id": 1, "priority": 3}))["detail"] == "already P3"
+    assert w.posts == []
+
+
+def test_peplink_set_priority_unconfirmed_is_not_retried():
+    import asyncio
+    w = _FakeWriter({"list": [{"connId": 1, "priority": 3}]}, apply=False, post_raises=RuntimeError("timeout"))
+    r = asyncio.run(_pep(w).command("set_wan_priority", {"id": 1, "priority": 1}, poll=0.01, verify_timeout=.05))
+    assert not r["ok"] and len(w.posts) == 1

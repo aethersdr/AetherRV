@@ -101,8 +101,13 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
                 if not (d.get("host") and ((user and pw) or (cid and csec))):
                     log.warning("peplink enabled but host / credentials missing; skipping")
                     continue
+                # WAN priority control uses a SEPARATE read-write API client (scope "api"); monitoring stays read-only.
+                rw_id, rw_sec = sec.get("peplink_rw_client_id", ""), sec.get("peplink_rw_client_secret", "")
+                writer = PeplinkClient(d["host"], rw_id, rw_sec, bool(d.get("verify_tls", False)), scope="api") \
+                    if rw_id and rw_sec else None
                 adapters.append(PeplinkAdapter(state, PeplinkClient(
-                    d["host"], cid, csec, bool(d.get("verify_tls", False)), username=user, password=pw)))
+                    d["host"], cid, csec, bool(d.get("verify_tls", False)), username=user, password=pw),
+                    writer=writer, gate=gate, db=history.db if history else None))
             continue
         if kind == "rixens_http":
             if d.get("enabled", False):
@@ -218,7 +223,8 @@ async def amain(cfg: dict) -> None:
         vic.gate, vic.db = gate, history.db
     controls = {"rixens": next((a for a in adapters if isinstance(a, RixensHttpAdapter)), None), "victron": vic,
                 "starlink": next((a for a in adapters if isinstance(a, StarlinkAdapter)), None),
-                "n2k": next((a for a in adapters if isinstance(a, SwitchController)), None)}
+                "n2k": next((a for a in adapters if isinstance(a, SwitchController)), None),
+                "peplink": next((a for a in adapters if isinstance(a, PeplinkAdapter)), None)}
     admin = AdminClient(web_cfg.get("admin_socket", "/run/aetherrv-admin.sock"))
     prefs = Prefs(state, web_cfg.get("settings_path", "/var/lib/aetherrv/settings.json"))
     adapters.append(AutoTimezone(state, admin, prefs))

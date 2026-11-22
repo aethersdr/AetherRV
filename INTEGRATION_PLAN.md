@@ -615,3 +615,8 @@ Sections 1–31 use the old names. Mapping:
   - **Look:** custom point shader (clear = dim cyan dust, obstructions = coral embers sized by severity, a horizon→zenith scan sweep, near-side dust faded) and a fresnel glass dome.
   - **Interaction:** drag rotates and tilts, pinch or wheel zooms, double-tap resets; it auto-rotates after 6 s idle.
   - **Cost and fallback:** lazy-loaded only on the Network view, capped at 30 fps, and stops when hidden. It falls back to the 2D map without WebGL.
+- **2026-11-21, WAN priority control (Peplink).** The router has `config.wan.connection.priority` (it returns 401 to the read-only user, versus 999 for an unknown function).
+  - **Credentials:** a separate read-write API client (scope `api`, secrets `peplink_rw_client_id` and `peplink_rw_client_secret`) is used only for this command; monitoring stays on the read-only login.
+  - **Command:** `set_wan_priority {id, priority 1–4}` goes through TxGate. A fresh GET of the priority list feeds a strict payload builder (any unexpected shape means nothing is sent); one POST (`instantActive`), never retried; then status.wan.connection is polled until the priority shows. Every attempt goes to command_log.
+  - **Kiosk:** tap P# to get a P1–P4 picker, then a confirmation.
+  - **Status:** off until `[device.peplink] tx_enabled = true` and the read-write client exist, and the GET shape has been checked against the builder.
