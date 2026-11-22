@@ -155,8 +155,14 @@ def r_epoch(s: State, c: dict):
         if (b.get("cell_delta_mv") or 0) > 50:
             yield Finding(f"{key}.cells", "warning", f"{nm}: cells out of balance ({b['cell_delta_mv']} mV)",
                           "Cell voltage spread above 50 mV.", "epoch")
-        if b.get("temps") and max(b["temps"]) >= 50:
-            yield Finding(f"{key}.hot", "serious", f"{nm}: hot ({max(b['temps']):.0f} °C)", "A cell/BMS temperature is 50 °C or more.", "epoch")
+        temps = [t for t in b.get("temps") or [] if t is not None]
+        if temps and max(temps) >= 50:
+            yield Finding(f"{key}.hot", "serious", f"{nm}: hot ({max(temps):.0f} °C)", "A cell/BMS temperature is 50 °C or more.", "epoch")
+        cell_t = [t for t in (b.get("temps") or [])[:2] if t is not None]     # T1/T2: the cell probes
+        if cell_t and min(cell_t) < c.get("batt_cold_c", 0.0):
+            t = min(cell_t)
+            yield Finding(f"{key}.cold", "warning", f"{nm}: cells freezing ({t * 9 / 5 + 32:.0f} °F)",
+                          "A cell probe is below 32 °F: LiFePO4 won't accept a charge. Check the battery heater.", "epoch")
 
 
 CERBO_SEVERITY = {0: "warning", 1: "serious"}       # Venus notification Type: 0 warning, 1 alarm, 2 info
@@ -291,7 +297,7 @@ def default_rules_base() -> list[Rule]:
     ]
 
 
-DEFAULTS = {"soc_warning": 20.0, "soc_critical": 10.0, "lfp_charge_min_c": 2.0,
+DEFAULTS = {"soc_warning": 20.0, "soc_critical": 10.0, "lfp_charge_min_c": 2.0, "batt_cold_c": 0.0,
             "data_warning_pct": 80.0, "data_serious_pct": 95.0, "starlink_offline_s": 180.0,
             "bms_expected_modules": 0}
 

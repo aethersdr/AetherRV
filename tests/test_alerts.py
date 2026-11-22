@@ -141,3 +141,14 @@ def test_epoch_alerts_and_bms_count_downgrade():
     s.set("batteries.ble.reporting", 4)
     f = list(r_bms(s, {"bms_expected_modules": 4}))
     assert f[0].severity == "warning" and "CAN" in f[0].title
+
+
+def test_epoch_cold_cells():
+    from aetherrv.alerts import r_epoch
+    s = State()
+    s.set("batteries.ble", [
+        {"name": "296", "ok": True, "temps": [-1.0, 3.0, 20.0, 25.0]},     # one cell probe below 32 °F
+        {"name": "337", "ok": True, "temps": [0.5, 1.0, -5.0, -5.0]},      # cold ambient/MOS only: no alert
+        {"name": "354", "ok": True, "temps": [None, 2.0]}])
+    f = {x.id: x for x in r_epoch(s, {"batt_cold_c": 0.0})}
+    assert set(f) == {"epoch.296.cold"} and f["epoch.296.cold"].severity == "warning" and "30 °F" in f["epoch.296.cold"].title
