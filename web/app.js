@@ -304,7 +304,7 @@ $("#pwr-ctl").addEventListener("click", e => {
 // ── Battery bank card: Lynx shunt for the bank, EPOCH batteries over Bluetooth for each battery ──
 const BATT_AH = 460;                         // EPOCH B12460A nominal capacity per battery
 // Charge % from Ah: one decimal below 100 %, none at or above (a battery can read past its rated capacity).
-const fmtPct = p => p == null ? "—" : p >= 100 ? `${Math.round(p)}` : p.toFixed(1);
+const fmtPct = p => p == null ? "—" : p >= 99.95 ? `${Math.round(p)}` : p.toFixed(1);   // 99.96 → "100", not "100.0"
 // 3D battery-bank scene: each battery is a stack of four glowing discs (one per 25 %) on a shared platform,
 // wired in parallel by animated + / − buses. Built once per battery count, then updated in place every
 // second (rebuilding would restart the animations).
