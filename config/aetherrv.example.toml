@@ -76,18 +76,12 @@ tx_enabled = false
 # controller = 0         # load controller's N2K source address (e.g. a CLMD16)
 # bank = 0               # its 127501 bank instance
 # address = 150          # AetherRV's preferred N2K address (claimed before sending)
-# automation = false     # run the keypad bindings / input follows below
 # show_unlabeled = false
-#
-# [[device.n2k.binding]]  # keypad button → toggle channels (a group sets them all alike)
-# keypad = 101           # keypad source address; its buttons arrive as a 127501 bank
-# button = 4
-# channels = [4]
 #
 # [[device.n2k.trigger]]  # momentary press of a controller VIRTUAL switch whose logic (e.g. a timer) lives in
 # id = "drawer_locks"     #   the controller; AetherRV pulses it and switches the output off itself if the
-# name = "Drawer locks"   #   controller hasn't within expect_off_s. A tile on `channel` (and a binding with
-# bank = 33               #   trigger = "…") fires it.
+# name = "Drawer locks"   #   controller hasn't within expect_off_s. A tile on `channel` fires it.
+# bank = 33
 # switch = 1
 # channel = 11
 # pulse_s = 1.0
@@ -96,7 +90,6 @@ tx_enabled = false
 # [[device.n2k.input]]    # controller's wired inputs (bank indicator 16+N, volts in 127751 connection 15+N)
 # input = 4
 # name = "Reverse"
-# follow = [4]           # outputs that follow this input
 # debounce_s = 0.3
 
 # EPOCH (RoyPow-BMS) batteries over Bluetooth LE, read-only (needs BlueZ). One battery at a time,

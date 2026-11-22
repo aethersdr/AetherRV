@@ -50,13 +50,13 @@ class FakeBus:
         self.sent.append(msg)
 
 
-def setup(tx=True, automation=True):
+def setup(tx=True):
     s = State()
     n2k = N2kAdapter(s)
     gate = TxGate({"n2k": tx})
     bus = FakeBus()
     node = N2kNode(bus, gate, preferred=150)
-    cfg = {"switching": {"controller": 0, "bank": 32, "automation": automation},
+    cfg = {"switching": {"controller": 0, "bank": 32},
            "switch": [{"bank": 32, "channel": 1, "name": "Spot lights"},
                       {"bank": 32, "channel": 4, "name": "Reverse lights"},
                       {"bank": 32, "channel": 7, "name": "Dump valve"},
@@ -64,8 +64,7 @@ def setup(tx=True, automation=True):
                        "blocked_reason": "drawer locks are blocked until the CLMD16 cut-off timer is back"},
                       {"bank": 32, "channel": 12, "name": "Cabin lights", "kind": "dimmer"},
                       {"bank": 32, "channel": 16, "name": "Spare"}],
-           "binding": [{"keypad": 101, "button": 9, "channels": [7, 16]}],
-           "input": [{"input": 4, "name": "Reverse", "follow": [4]}, {"input": 6, "name": "Dome", "debounce_s": 1.5}]}
+           "input": [{"input": 4, "name": "Reverse"}, {"input": 6, "name": "Dome", "debounce_s": 1.5}]}
     ctl = SwitchController(s, n2k, node, gate, cfg)
     return s, n2k, node, bus, ctl
 
@@ -144,47 +143,39 @@ async def test_noop_when_already_in_state():
     assert r["ok"] and bus.sent == []
 
 
-async def test_keypad_rising_edge_toggles_group_and_ignores_baseline():
+async def test_keypad_presses_never_send():
+    """CKM12 presses are the CLMD16's job (dual control, owner 2026-11-22): AetherRV must not relay them,
+    even with automation on and an old [[binding]] table still in the config."""
     s, n2k, node, bus, ctl = setup()
+    ctl2 = SwitchController(s, n2k, node, ctl.gate, {"switching": {"controller": 0, "bank": 32, "automation": True},
+                                                     "binding": [{"keypad": 101, "button": 9, "channels": [7, 16]}]})
     claimed(node); bus.sent.clear()
     status(n2k, 0, 32)
-    status(n2k, 101, 50, on=[9])          # first sight while held: baseline only
+    for on in ([], [9], [], [9], []):
+        status(n2k, 101, 50, on=on)
     await asyncio.sleep(0.05)
-    assert bus.sent == []
-    status(n2k, 101, 50)                  # release
-    status(n2k, 101, 50, on=[9])          # press → toggle ch7 + ch16 ON
-    await asyncio.sleep(0.05)
-    assert [bytes(m.data)[1:7].hex() for m in bus.sent[::2]][:1]  # something sent
-    payloads = [bytes(bus.sent[i].data)[2:] + bytes(bus.sent[i + 1].data)[1:] for i in range(0, len(bus.sent), 2)]
-    assert payloads[0][:10] == switch_command(32, 7, True)
+    assert bus.sent == [] and not hasattr(ctl2, "bindings")
 
 
-async def test_automation_off_ignores_keypads():
-    s, n2k, node, bus, ctl = setup(automation=False)
-    claimed(node); bus.sent.clear()
-    status(n2k, 0, 32)
-    status(n2k, 101, 50)
-    status(n2k, 101, 50, on=[9])
-    await asyncio.sleep(0.05)
-    assert bus.sent == []
-
-
-async def test_reverse_input_follows_after_debounce_but_not_at_startup():
+async def test_inputs_are_read_but_never_switch_anything():
+    """Reverse follow and ignition auto-off moved to the CLMD16 (owner 2026-11-22): input changes are
+    debounced and shown, but AetherRV sends nothing, even with an old `follow` / `automation` config."""
     s, n2k, node, bus, ctl = setup()
+    ctl2 = SwitchController(s, n2k, node, ctl.gate, {
+        "switching": {"controller": 0, "bank": 32, "automation": True},
+        "switch": [{"bank": 32, "channel": 1, "name": "Spot", "requires_input": 2}],
+        "input": [{"input": 2, "name": "Ignition"}, {"input": 4, "name": "Reverse", "follow": [4]}]})
     claimed(node); bus.sent.clear()
     t0 = time.time()
-    status(n2k, 0, 32, on=[20, 4], now=t0)            # reverse engaged at startup, lights on
-    ctl.tick(t0 + 1)
+    status(n2k, 0, 32, on=[18, 20, 1], now=t0)        # ignition + reverse on, spot on
+    ctl2.tick(t0 + 1)
+    status(n2k, 0, 32, on=[1], now=t0 + 2)            # ignition and reverse go off
+    ctl2.tick(t0 + 2.5)
+    ctl2.tick(t0 + 3)
     await asyncio.sleep(0.05)
-    assert bus.sent == []                              # first value is a baseline, never acted on
-    status(n2k, 0, 32, on=[4], now=t0 + 2)            # out of reverse; lights still on
-    ctl.tick(t0 + 2.1)
-    await asyncio.sleep(0.05)
-    assert bus.sent == []                              # not yet stable
-    ctl.tick(t0 + 2.5)
-    await asyncio.sleep(0.05)
-    payload = bytes(bus.sent[0].data)[2:] + bytes(bus.sent[1].data)[1:]
-    assert payload[:10] == switch_command(32, 4, False)   # lights follow the input: off
+    assert bus.sent == []
+    assert [(i["name"], i["on"]) for i in s.get("switching.inputs")] == [("Ignition", False), ("Reverse", False)]
+    assert s.get("switching.automation") is False
 
 
 def test_address_claim_moves_off_a_contested_address():
@@ -228,27 +219,6 @@ async def test_ignition_interlock_refuses_on_until_ignition():
     ctl.VERIFY = 0.2
     await ctl.command("set", {"channel": 1, "on": True})
     assert len(bus.sent) == 2                      # now it is sent
-
-
-async def test_interlocked_lights_go_off_when_ignition_goes_off_but_not_at_startup():
-    s, n2k, node, bus, ctl = setup()
-    ctl.channels[1]["requires_input"] = 2
-    ctl.inputs[2] = {"input": 2, "name": "Ignition"}
-    from aetherrv.switching import Debounced
-    ctl.deb[2] = Debounced(hold=0.3)
-    claimed(node); bus.sent.clear()
-    t0 = time.time()
-    status(n2k, 0, 32, on=[1], now=t0)               # spots on, ignition OFF at startup (ind 18 off)
-    ctl.tick(t0 + 1)
-    await asyncio.sleep(0.05)
-    assert bus.sent == []                             # startup value: never acted on
-    status(n2k, 0, 32, on=[1, 18], now=t0 + 2)       # ignition on
-    ctl.tick(t0 + 2.5)
-    status(n2k, 0, 32, on=[1], now=t0 + 3)           # ignition off
-    ctl.tick(t0 + 3.5)
-    await asyncio.sleep(0.05)
-    payload = bytes(bus.sent[0].data)[2:] + bytes(bus.sent[1].data)[1:]
-    assert payload[:10] == switch_command(32, 1, False)
 
 
 def setup_trigger():

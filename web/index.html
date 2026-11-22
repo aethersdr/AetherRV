@@ -137,7 +137,6 @@
     <section class="view" data-view="weather">
       <div class="card wx-card">
         <div class="card-h"><h2>Weather radar</h2><div class="wx-loc" id="wx-loc"></div><span class="muted" id="wx-sub"></span>
-          <button class="ctl-pill wx-btn" id="wx-traffic" hidden>Traffic</button>
           <button class="ctl-pill wx-btn" id="wx-dark">Dark map</button></div>
         <!-- AetherMap's dark basemap (AetherSDR BasemapStyle::darkImage): reversed luminance ramped from
              color.map.darkDetail (#c8d8e8) to color.map.darkBackground (#18212b); radar is not filtered. -->
@@ -146,6 +145,16 @@
         <div class="wx-body">
           <div class="wx-wrap">
             <div id="wx-map"></div>
+            <button class="wx-menu-btn" id="wx-menu" aria-label="Map layers" aria-expanded="false" title="Map layers">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+            <div class="wx-menu" id="wx-menu-pop" hidden>
+              <div class="wx-menu-h">Map</div>
+              <div class="wx-seg" data-group="base"><button data-v="streets">Streets</button><button data-v="sat">Satellite</button><button data-v="topo">Topo</button></div>
+              <div class="wx-menu-h">Weather</div>
+              <div class="wx-seg" data-group="wx"><button data-v="radar">Radar</button><button data-v="ir">IR clouds</button><button data-v="off">Off</button></div>
+              <div class="wx-menu-h">Overlays</div>
+              <div class="wx-togs"><button class="wx-tog" id="wx-lands">Public lands</button><button class="wx-tog" id="wx-traffic" hidden>Traffic</button></div>
+            </div>
             <div class="wx-opac" id="wx-opac" role="slider" aria-label="Radar opacity" aria-valuemin="10" aria-valuemax="100">
               <svg class="wx-opac-ico" viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="wx-opac-half"><rect x="0" y="13" width="24" height="11"/></clipPath></defs>
                 <path class="drop" d="M12 3.2c3.3 4.2 6 7.6 6 10.8a6 6 0 0 1-12 0c0-3.2 2.7-6.6 6-10.8z"/>

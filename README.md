@@ -31,12 +31,11 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
   (loopback) or from devices owned by the same Tailscale user as the console. `[web] control_subnets` can
   also trust whole LANs, and `control_tailnet = "all"` can trust every tailnet device. Everything else is
   view-only.
-- **The devices stay in charge, with one deliberate exception.** Heat, power, Starlink and every other control
-  only act when a person asks. The exception is optional NMEA 2000 **switching logic**: keypad bindings, groups
-  and "output follows input" rules can run in AetherRV, with the load controller as a plain output box. When
-  enabled (`[device.n2k.switching] automation`), those keypads and input-driven outputs do nothing while the
-  Pi is off or restarting. Anything that must work without the Pi, such as a solenoid's cut-off timer, belongs
-  in the load controller's own configuration. Until it's there, that channel is `blocked` (it refuses ON).
+- **The devices stay in charge.** Heat, power, Starlink, switching and every other control only act when a
+  person asks. NMEA 2000 keypads, groups, timers and "output follows input" rules live in the load
+  controller's own configuration (dual control), so they keep working while the Pi is off; AetherRV never
+  relays keypad presses or switches anything by itself. A channel whose safety logic isn't in the load
+  controller yet is `blocked` (it refuses ON).
 - **Root access is minimal.** The only root component is a small, socket-activated helper with a fixed list of
   validated actions. Wi-Fi passwords never appear in logs, the live state or command lines.
 

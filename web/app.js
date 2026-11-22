@@ -1147,9 +1147,9 @@ const fmtLL = (lat, lon) => `${Math.abs(lat).toFixed(3)}° ${lat >= 0 ? "N" : "S
 function initWxMap() {
   if (wxMap || !window.L) return;
   wxMap = L.map("wx-map", { zoomControl: false, attributionControl: true, zoomSnap: 0.5, tap: true }).setView([45, -110], 7);
-  // OpenStreetMap standard tiles (no key; light use per the OSM tile policy), shown as-is (AetherMap's default look).
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 12, className: "wx-base",
-    attribution: "© OpenStreetMap contributors · Radar © LibreWXR" }).addTo(wxMap);
+  wxMap.attributionControl.addAttribution("Weather © LibreWXR");
+  wxMap.createPane("lands").style.zIndex = 220;                  // public-lands overlay: over the basemap, under the radar
+  applyBase(); applyLands();
   wxMap.on("click", e => {
     fcPick = [e.latlng.lat, e.latlng.lng];
     const pinIcon = L.divIcon({ className: "wx-pin", html: "<i></i>", iconSize: [26, 26], iconAnchor: [13, 13] });
@@ -1164,14 +1164,68 @@ function initWxMap() {
   rvInitGL();
   loadRadar();
 }
+// ── Layers menu (☰, top-right of the map): basemap, weather layer, overlays. All per screen.
+// Basemaps: OpenStreetMap (no key; light use per its tile policy), USGS imagery (US, public domain), OpenTopoMap
+// (community server, fair use). Satellite isn't luminance-inverted for the dark map, just dimmed (CSS .sat).
+const WX_BASES = {
+  streets: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors" }],
+  sat: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
+    { attribution: "Imagery © USGS The National Map", className: "wx-base sat" }],
+  topo: ["https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", { attribution: "© OpenTopoMap (CC-BY-SA) · © OpenStreetMap contributors", subdomains: "abc" }],
+};
+const wxPick = (k, opts, d) => { const v = store.get(k, d); return opts.includes(v) ? v : d; };
+const wxBase = () => wxPick("vp.wx.base", Object.keys(WX_BASES), "streets");
+const wxLayer = () => wxPick("vp.wx.layer", ["radar", "ir", "off"], "radar");
+const landsOn = () => store.get("vp.wx.lands", "off") === "on";
+let baseLayer = null, baseName = "", landsLayer = null;
+function applyBase() {
+  if (!wxMap || baseName === wxBase()) return;
+  const [url, o] = WX_BASES[baseName = wxBase()];
+  if (baseLayer) wxMap.removeLayer(baseLayer);
+  baseLayer = L.tileLayer(url, { maxZoom: 12, className: "wx-base", ...o }).addTo(wxMap);
+}
+function applyLands() {
+  if (!wxMap) return;
+  // BLM Surface Management Agency: who manages the land (BLM, Forest Service, NPS, state, tribal…). US federal, public domain.
+  if (landsOn() && !landsLayer) landsLayer = L.tileLayer("https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_without_PriUnk/MapServer/tile/{z}/{y}/{x}",
+    { pane: "lands", opacity: 0.45, maxZoom: 12, attribution: "Public lands © BLM" }).addTo(wxMap);
+  if (!landsOn() && landsLayer) { wxMap.removeLayer(landsLayer); landsLayer = null; }
+}
+function renderWxMenu() {
+  document.querySelectorAll("#wx-menu-pop .wx-seg[data-group=base] button").forEach(b => b.classList.toggle("on", b.dataset.v === wxBase()));
+  document.querySelectorAll("#wx-menu-pop .wx-seg[data-group=wx] button").forEach(b => b.classList.toggle("on", b.dataset.v === wxLayer()));
+  $("#wx-lands").classList.toggle("on", landsOn());
+  const off = wxLayer() === "off";                               // no weather layer: no timeline / speed / opacity
+  ["#wx-tl", "#wx-speed", "#wx-opac"].forEach(q => { $(q).hidden = off; });
+}
+$("#wx-menu").addEventListener("click", e => {
+  e.stopPropagation();
+  const open = $("#wx-menu-pop").hidden;
+  $("#wx-menu-pop").hidden = !open; $("#wx-menu").setAttribute("aria-expanded", open); $("#wx-menu").classList.toggle("on", open);
+  if (open) renderWxMenu();
+});
+document.addEventListener("pointerdown", e => {                 // tap outside closes it
+  if ($("#wx-menu-pop").hidden || e.target.closest("#wx-menu-pop, #wx-menu")) return;
+  $("#wx-menu-pop").hidden = true; $("#wx-menu").setAttribute("aria-expanded", false); $("#wx-menu").classList.remove("on");
+});
+$("#wx-menu-pop").addEventListener("click", e => {
+  const b = e.target.closest(".wx-seg button"); if (!b) return;
+  const g = b.closest(".wx-seg").dataset.group;
+  if (g === "base") { store.set("vp.wx.base", b.dataset.v); applyBase(); }
+  if (g === "wx" && b.dataset.v !== wxLayer()) { store.set("vp.wx.layer", b.dataset.v); rvStop(); rvAt = 0; loadRadar(true); }
+  renderWxMenu();
+});
+$("#wx-lands").addEventListener("click", () => { store.set("vp.wx.lands", landsOn() ? "off" : "on"); applyLands(); renderWxMenu(); });
 $("#wx-zin").addEventListener("click", () => wxMap && wxMap.zoomIn());
 $("#wx-zout").addEventListener("click", () => wxMap && wxMap.zoomOut());
 // Timeline = frames the Pi recorded (older than the source's 2 h; radar.py) + the source's 2 h + its 1 h forecast.
 // Drawn by RadarGL (WebGL2: each frame composited into one texture for the view, motion-interpolated at ~15 fps
 // along the Pi's flow fields) or, without WebGL2, by Leaflet tile layers (one per frame, a small window attached).
-async function loadRadar() {
-  if (Date.now() - rvAt < 10 * 60e3 && rvFrames.length) return;
+async function loadRadar(force = false) {
+  if (!force && Date.now() - rvAt < 10 * 60e3 && (rvFrames.length || wxLayer() === "off")) return;
   rvAt = Date.now();
+  renderWxMenu();
+  if (wxLayer() === "off") { rvClear(); return; }
   try {
     // LibreWXR: RainViewer-compatible API (same JSON + tile paths), crisper and deeper zoom — as used by AetherMap.
     const [j, rec] = await Promise.all([
@@ -1181,15 +1235,20 @@ async function loadRadar() {
     // 512 px tiles (map zoom N → tile z N-1), colour scheme 6 (NWS-style), no smoothing — AetherMap's settings.
     // Forecast URLs carry the index's timestamp so a cached forecast tile is never shown once it's observed.
     const src = (f, q = "") => `${j.host}${f.path}/512/{z}/{x}/{y}/6/0_0.png${q}`;
-    const frames = [
-      ...(rec.frames || []).filter(t => t < oldest).map(t => ({ time: t, kind: "rec", url: `/api/radar/tile/${t}/{z}/{x}/{y}.png` })),
-      ...past.map(f => ({ time: f.time, kind: "past", url: src(f) })),
-      ...cast.map(f => ({ time: f.time, kind: "cast", url: src(f, `?g=${j.generated}`) }))];
+    // minz/maxz: tile zooms that exist (recorded 4-7; source radar ≤ 10; IR satellite ≤ 6, hourly, colour 0)
+    const ir = wxLayer() === "ir";
+    const frames = ir ? (j.satellite?.infrared || []).map(f => ({ time: f.time, kind: "ir", minz: 0, maxz: 6,
+      url: `${j.host}${f.path}/512/{z}/{x}/{y}/0/0_0.png` })) : [
+      ...(rec.frames || []).filter(t => t < oldest).map(t => ({ time: t, kind: "rec", minz: 4, maxz: 7, url: `/api/radar/tile/${t}/{z}/{x}/{y}.png` })),
+      ...past.map(f => ({ time: f.time, kind: "past", minz: 0, maxz: 10, url: src(f) })),
+      ...cast.map(f => ({ time: f.time, kind: "cast", minz: 0, maxz: 10, url: src(f, `?g=${j.generated}`) }))];
+    if (wxLayer() !== (ir ? "ir" : "radar")) return;              // switched again while this was loading
     if (!frames.length) throw new Error("no frames");
     const prevT = rvFrames.length ? rvFrames[Math.round(rvPos)]?.time : null, wasNow = prevT == null || Math.round(rvPos) === rvNow;
     rvLayers.forEach(l => l && wxMap.removeLayer(l));
-    rvFrames = frames; rvLayers = frames.map(() => null); rvIdx = -1; rvFlowTimes = rec.flows || [];
+    rvFrames = frames; rvLayers = frames.map(() => null); rvIdx = -1; rvFlowTimes = ir ? [] : rec.flows || [];   // IR: cross-fade
     rvNow = frames.map(f => f.kind).lastIndexOf("past"); if (rvNow < 0) rvNow = frames.length - 1;
+    if (rvGL) rvGL._container.hidden = false;
     if (rvGL) rvGL.setFrames(frames);
     const n = frames.length, pc = i => n > 1 ? i / (n - 1) * 100 : 100;
     $("#wx-tl-ticks").innerHTML = frames.map((f, i) => `<i class="${f.kind}${i === rvNow ? " now" : ""}" style="left:${pc(i)}%"></i>`).join("");
@@ -1197,15 +1256,21 @@ async function loadRadar() {
     $("#wx-tl-rec").style.width = `${pc(frames.findIndex(f => f.kind !== "rec"))}%`;
     // keep the frame on screen across a refresh (by time); "now" stays "now"
     let i = rvNow;
-    if (!wasNow) { const k = frames.findIndex(f => f.time >= prevT); i = k < 0 ? n - 1 : k; }
+    if (!wasNow && !force) { const k = frames.findIndex(f => f.time >= prevT); i = k < 0 ? n - 1 : k; }
     rvSet(i);
   } catch (e) { $("#wx-time").textContent = "radar unavailable"; }
 }
 function rvLayer(i) {
   const f = rvFrames[i];
-  // Recorded frames exist at tile zooms 4-7 only (map 5-8): Leaflet scales them outside that (native zoom = map zoom).
+  // Leaflet scales tiles outside the frame's zoom range (native zoom is in map zooms = tile zoom + 1).
   return rvLayers[i] ||= L.tileLayer(f.url, { opacity: 0, tileSize: 512, zoomOffset: -1, maxZoom: 12, zIndex: 5, className: "wx-radar",
-    ...(f.kind === "rec" ? { minNativeZoom: 5, maxNativeZoom: 8 } : { maxNativeZoom: 11 }) });
+    minNativeZoom: f.minz + 1, maxNativeZoom: f.maxz + 1 });
+}
+function rvClear() {                                            // weather layer off
+  rvStop();
+  rvLayers.forEach(l => l && wxMap.removeLayer(l));
+  rvFrames = []; rvLayers = []; rvIdx = -1; rvFlowTimes = [];
+  if (rvGL) { rvGL.setFrames([]); rvGL._container.hidden = true; }
 }
 const fmtAgo = m => m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""} ago`;
 // Move the timeline to a (fractional, with WebGL) frame position: label, rail, and the radar itself.
@@ -1215,7 +1280,7 @@ function rvSet(pos) {
   rvPos = Math.max(0, Math.min(n - 1, pos));
   const i = Math.round(rvPos), f = rvFrames[i], t = new Date(f.time * 1000), mins = Math.round((t - Date.now()) / 60e3);
   const hm = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const label = f.kind === "cast" ? `${hm} · forecast +${Math.max(0, mins)} min` : `${hm} · ${fmtAgo(Math.max(0, -mins))}`;
+  const label = f.kind === "cast" ? `${hm} · forecast +${Math.max(0, mins)} min` : `${f.kind === "ir" ? "IR · " : ""}${hm} · ${fmtAgo(Math.max(0, -mins))}`;
   if ($("#wx-time").textContent !== label) $("#wx-time").textContent = label;
   $("#wx-tl").classList.toggle("cast", f.kind === "cast");
   const p = n > 1 ? rvPos / (n - 1) * 100 : 100, pNow = n > 1 ? rvNow / (n - 1) * 100 : 100;
@@ -1342,7 +1407,7 @@ const RadarGL = window.L && L.Renderer.extend({          // (guarded: a missing 
     const f = this.frames[k], sp = this.spec, gen = this.gen;
     this.building.add(k);
     // tile zoom for this frame: the atlas zoom, clamped to what exists (recorded: 4-7; source: ≤ 10)
-    const zt = f.kind === "rec" ? Math.max(4, Math.min(7, sp.za)) : Math.min(10, sp.za), dz = sp.za - zt;
+    const zt = Math.max(f.minz, Math.min(f.maxz, sp.za)), dz = sp.za - zt;
     const cv = new OffscreenCanvas(sp.nx * 512, sp.ny * 512), cx = cv.getContext("2d");
     const jobs = [];
     for (let j = 0; j < sp.ny; j++) for (let i = 0; i < sp.nx; i++) {

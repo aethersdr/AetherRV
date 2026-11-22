@@ -624,6 +624,23 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-locate svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .wx-locate svg .dot { fill: currentColor; stroke: none; }
 .wx-locate:active { background: rgba(14,17,22,.85); color: var(--c-batt); }
+.wx-menu-btn { position: absolute; right: 14px; top: 14px; z-index: 600; width: 64px; height: 64px; border-radius: 14px;
+  display: grid; place-items: center; background: rgba(14,17,22,.62); border: 1px solid var(--line); color: var(--ink);
+  backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.wx-menu-btn svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.wx-menu-btn.on, .wx-menu-btn:active { background: rgba(14,17,22,.85); color: var(--c-batt); }
+.wx-menu { position: absolute; right: 14px; top: 88px; z-index: 600; width: 330px; padding: 14px 16px 16px; border-radius: 14px;
+  background: rgba(14,17,22,.78); border: 1px solid var(--line); backdrop-filter: blur(6px); box-shadow: 0 4px 16px rgba(0,0,0,.45); }
+.wx-menu-h { font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 12px 2px 8px; }
+.wx-menu-h:first-child { margin-top: 0; }
+.wx-seg { display: flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.wx-seg button { flex: 1; height: 48px; background: transparent; border: 0; color: var(--ink-2); font-size: 16px; font-weight: 600; }
+.wx-seg button + button { border-left: 1px solid var(--line); }
+.wx-seg button.on { background: color-mix(in srgb, var(--c-batt) 30%, transparent); color: var(--ink); }
+.wx-togs { display: flex; gap: 8px; }
+.wx-tog { flex: 1; height: 48px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--ink-2);
+  font-size: 16px; font-weight: 600; }
+.wx-tog.on { background: color-mix(in srgb, var(--c-batt) 30%, transparent); border-color: var(--c-batt); color: var(--ink); }
 .wx-opac { position: absolute; right: 14px; bottom: 252px; z-index: 500; width: 64px; height: 250px; border-radius: 14px;
   display: flex; flex-direction: column; align-items: center; padding: 12px 0 18px; box-sizing: border-box; touch-action: none; cursor: pointer;
   background: rgba(14,17,22,.62); border: 1px solid var(--line); backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
@@ -679,6 +696,7 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 
 /* Dark map toggle */
 .wx-wrap.dark-map .wx-base { filter: url(#wx-dark-filter); }
+.wx-wrap.dark-map .wx-base.sat { filter: brightness(.62) saturate(.85); }   /* imagery: dimmed, not inverted */
 .wx-wrap.dark-map #wx-map, .wx-wrap.dark-map .leaflet-container { background: #18212b; }
 #wx-dark.on { background: color-mix(in srgb, var(--c-batt) 25%, var(--surface-2)); border-color: var(--c-batt); color: var(--ink); }
 

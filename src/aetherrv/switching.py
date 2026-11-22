@@ -1,10 +1,11 @@
-"""NMEA 2000 switching: AetherRV commands the load controller (CLMD16) and runs the keypad/input logic.
+"""NMEA 2000 switching: AetherRV commands the load controller (CLMD16) and watches its wired inputs.
 
-Owner decision 2026-11-21: the switching logic (keypad bindings, groups, input-follows-output) lives in
-AetherRV and the CLMD16 is a plain output box. Consequences the owner accepted: with the Pi off, the
-keypads and input-driven outputs (reverse lights) do nothing; after a backend restart the logic is
-back within ~20 s. Anything that must work without the Pi (the drawer-lock cut-off) belongs in the
-CLMD16's own config; until it is there, channels marked `blocked` refuse ON here.
+Owner decision 2026-11-22: the CKM12 keypads are handled by the CLMD16's own configuration (dual control),
+so they keep working while the Pi is off. AetherRV runs no switching logic of its own: no keypad relay,
+no input follows, no ignition auto-off. It only sends the commands a person asks for (tiles, triggers)
+and reads the controller's wired inputs (shown on the UI and used to refuse interlocked ONs).
+Anything that must work without the Pi (the drawer-lock cut-off) belongs in the CLMD16's own config;
+until it is there, channels marked `blocked` refuse ON here.
 
 Wire format (verified against captures of N2KAnalyzer → CLMD16, firmware 1.0.3.66):
   * Switch:  126208 Command for PGN 127501: priority byte 0xF8, pairs (1, bank instance), (N+1, 0|1).
@@ -23,7 +24,7 @@ import asyncio
 import logging
 import sqlite3
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import can
 
@@ -197,17 +198,6 @@ class Debounced:
 
 
 @dataclass
-class Binding:
-    keypad: int                    # source address of the CKM12
-    button: int                    # 1..12 on its bank-50 status
-    channels: list[int]
-    bank: int = 50
-    lockout: float = 0.6
-    last: float = field(default=0.0)
-    trigger: str | None = None     # fire a [[trigger]] instead of toggling channels
-
-
-@dataclass
 class Trigger:
     """A momentary press of a load-controller VIRTUAL switch whose logic (e.g. a 10 s timer) lives in the
     controller. AetherRV pulses the virtual switch on → off and watches the output it drives; if that
@@ -222,7 +212,7 @@ class Trigger:
 
 
 class SwitchController:
-    """device "n2k": on/off and dimming commands to the load controller, plus the keypad/input logic."""
+    """device "n2k": on/off and dimming commands to the load controller; it never switches anything on its own."""
 
     device = "n2k"
     FRESH = 3.0       # s: newest status must be at most this old (CLMD16 reports every 1.5 s)
@@ -234,10 +224,7 @@ class SwitchController:
         sw = cfg.get("switching", {})
         self.controller = int(sw.get("controller", 0))       # CLMD16 source address
         self.bank = int(sw.get("bank", 32))
-        self.automation = bool(sw.get("automation", True))
         self.channels = {int(c["channel"]): c for c in cfg.get("switch", []) if int(c.get("bank", self.bank)) == self.bank}
-        self.bindings = [Binding(int(b["keypad"]), int(b["button"]), [int(x) for x in b.get("channels", [])],
-                                 int(b.get("bank", 50)), trigger=b.get("trigger")) for b in cfg.get("binding", [])]
         self.triggers = {str(g["id"]): Trigger(str(g["id"]), g.get("name", g["id"]), int(g["bank"]), int(g["switch"]),
                                                int(g["channel"]), float(g.get("pulse_s", 1.0)),
                                                float(g.get("expect_off_s", 12.0))) for g in cfg.get("trigger", [])}
@@ -245,14 +232,13 @@ class SwitchController:
         self.deb = {n: Debounced(hold=float(i.get("debounce_s", 0.3))) for n, i in self.inputs.items()}
         self._seq = 0
         self._locks: dict[int, asyncio.Lock] = {}
-        self._keypad_prev: dict[tuple[int, int], list] = {}
         self._tasks: set[asyncio.Task] = set()
         if db is not None:
             db.execute("CREATE TABLE IF NOT EXISTS command_log (t REAL, device TEXT, cmd TEXT, value TEXT, "
                        "outcome TEXT, detail TEXT, client TEXT)")
         n2k.bank_listeners.append(self.on_bank)
         state.set("n2k.controls_ok", gate.is_enabled(self.device))
-        state.set("switching.automation", self.automation)
+        state.set("switching.automation", False)    # no logic runs in AetherRV (the UI reads this flag)
         state.set("switching.triggers", [{"id": g.id, "name": g.name, "channel": g.channel, "bank": g.bank, "switch": g.switch}
                                          for g in self.triggers.values()])
 
@@ -444,55 +430,21 @@ class SwitchController:
         t.add_done_callback(self._tasks.discard)
 
     def on_bank(self, src: int, inst: int, states: list, now: float) -> None:
-        """Called by the N2K adapter for every 127501. Keypad rising edges → bound channels."""
-        key = (src, inst)
-        prev = self._keypad_prev.get(key)
-        self._keypad_prev[key] = states
-        if src == self.controller and inst == self.bank:
-            for n in self.inputs:
-                raw = states[16 + n - 1] if 16 + n - 1 < len(states) else None
-                if raw is not None:
-                    self.deb[n].feed(raw == "on", now)
+        """Called by the N2K adapter for every 127501: the controller's wired inputs feed the debouncers.
+        Keypad banks (CKM12) are deliberately ignored: the CLMD16 acts on them itself."""
+        if src != self.controller or inst != self.bank:
             return
-        if prev is None or not self.automation:
-            return                                   # first sight of a keypad: baseline only, never act
-        for b in self.bindings:
-            if b.keypad != src or b.bank != inst or b.button > len(states):
-                continue
-            if states[b.button - 1] == "on" and prev[b.button - 1] != "on" and now - b.last >= b.lockout:
-                b.last = now
-                self._spawn(self._toggle(b))
-
-    async def _toggle(self, b: Binding) -> None:
-        if b.trigger:
-            r = await self.command("trigger", {"trigger": b.trigger}, client=f"keypad:{b.keypad}.{b.button}")
-            if not r["ok"]:
-                log.info("keypad %d button %d → trigger %s: %s", b.keypad, b.button, b.trigger, r["detail"])
-            return
-        first = self.channel_on(b.channels[0])
-        if first is None:
-            log.warning("keypad %d button %d: no fresh status, ignored", b.keypad, b.button)
-            return
-        for ch in b.channels:
-            r = await self.command("set", {"channel": ch, "on": not first}, client=f"keypad:{b.keypad}.{b.button}")
-            if not r["ok"]:
-                log.info("keypad %d button %d → ch%d: %s", b.keypad, b.button, ch, r["detail"])
+        for n in self.inputs:
+            raw = states[16 + n - 1] if 16 + n - 1 < len(states) else None
+            if raw is not None:
+                self.deb[n].feed(raw == "on", now)
 
     def tick(self, now: float | None = None) -> None:
         now = time.time() if now is None else now
         for n, d in self.deb.items():
             first = d.value is None
-            if not d.settle(now) or first:
-                continue                     # no change, or the first value after start: never act on it
-            name = self.inputs[n].get("name", n)
-            if self.automation:
-                for ch in self.inputs[n].get("follow", []):
-                    self._spawn(self.command("set", {"channel": int(ch), "on": bool(d.value)}, client=f"input:{name}"))
-            if d.value is False:
-                # interlocked channels (requires_input = n) go off when their input goes off (owner, 2026-11-21)
-                for ch, conf in self.channels.items():
-                    if conf.get("requires_input") is not None and int(conf["requires_input"]) == n and self.channel_on(ch):
-                        self._spawn(self.command("set", {"channel": ch, "on": False}, client=f"interlock:{name} off"))
+            if d.settle(now) and not first:
+                log.info("input %s: %s", self.inputs[n].get("name", n), "on" if d.value else "off")
         loads = self.n2k.volts
         self.state.set("switching.inputs", [
             {"input": n, "name": i.get("name", f"Input {n}"), "icon": i.get("icon", "toggle"),
