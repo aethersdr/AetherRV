@@ -345,7 +345,7 @@ function bankScene(names) {
       clips += `<clipPath id="bg-c${i}-${k}"><rect id="bg-cr${i}-${k}" x="${cx - BS.rx - 2}" y="${yb + BS.ry + 2}" width="${2 * BS.rx + 4}" height="0"/></clipPath>`;
       discs += `<g class="bg-disc">
         <path d="${discSide(cx, yt, yb)}" class="bg-dim"/><ellipse cx="${cx}" cy="${yt}" rx="${BS.rx}" ry="${BS.ry}" class="bg-dim-top"/>
-        <g clip-path="url(#bg-c${i}-${k})"><path id="bg-ls${i}-${k}" d="${discSide(cx, yt, yb)}"/>
+        <g clip-path="url(#bg-c${i}-${k})" class="bg-lit"><path id="bg-ls${i}-${k}" d="${discSide(cx, yt, yb)}"/>
           <ellipse id="bg-lt${i}-${k}" cx="${cx}" cy="${yt}" rx="${BS.rx}" ry="${BS.ry}"/></g>
         <ellipse id="bg-sf${i}-${k}" cx="${cx}" cy="${yb}" rx="${BS.rx - 1}" ry="${BS.ry - 1}" class="bg-surface" opacity="0"/>
         <ellipse cx="${cx}" cy="${yt}" rx="${BS.rx}" ry="${BS.ry}" class="bg-rim"/></g>`;
@@ -404,7 +404,7 @@ function updateBankScene(batts, bankAmps) {
       $(`#bg-lt${i}-${k}`).setAttribute("fill", `url(#bg-top-${hue})`);
       const sf = $(`#bg-sf${i}-${k}`);                     // liquid surface on the partly-filled quarter
       sf.setAttribute("cy", (yb - f * BS.dh).toFixed(1)); sf.setAttribute("fill", `url(#bg-top-${hue})`);
-      sf.setAttribute("opacity", f > 0 && f < 1 ? 1 : 0);
+      sf.setAttribute("opacity", f > 0 && f < 1 ? .75 : 0);       // same 75 % alpha as the charged body
     }
     $(`#bg-pct${i}`).textContent = soc == null ? "—" : `${Math.round(soc)}%`;
     $(`#bg-amp${i}`).textContent = b.ok && b.current != null ? `${(+b.current).toFixed(1)} A` : "";

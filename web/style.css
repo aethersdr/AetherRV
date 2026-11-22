@@ -915,8 +915,9 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 
 /* 3D battery-bank scene (Energy) */
 .bank-scene { width: 100%; height: auto; max-height: 300px; overflow: visible; }
-.bank-scene .bg-dim { fill: rgba(18, 34, 56, .55); stroke: rgba(120, 190, 230, .28); stroke-width: 1.2; }   /* aethersdr --panel / --line-hi */
-.bank-scene .bg-dim-top { fill: rgba(28, 52, 84, .65); stroke: rgba(120, 190, 230, .4); stroke-width: 1.2; }   /* --panel-hi */
+.bank-scene .bg-dim { fill: rgba(18, 34, 56, .12); stroke: rgba(120, 190, 230, .3); stroke-width: 1.2; }   /* empty: mostly clear glass */
+.bank-scene .bg-dim-top { fill: rgba(28, 52, 84, .15); stroke: rgba(120, 190, 230, .38); stroke-width: 1.2; }
+.bank-scene .bg-lit { opacity: .75; }   /* charged quarters: 75 % opaque even when full */
 .bank-scene .bg-rim { fill: none; stroke: rgba(142, 247, 230, .3); stroke-width: 1.1; }
 .bank-scene .bg-surface { stroke: rgba(234, 242, 251, .4); stroke-width: 1; }
 .bank-scene .bg-stack.off { opacity: .5; } .bank-scene .bg-stack.off .bg-rim { stroke-dasharray: 4 4; }
