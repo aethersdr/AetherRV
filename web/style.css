@@ -1058,3 +1058,6 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 #wan-card .wan.off { opacity: .6; }
 #wan-card .wan.off.dragging { opacity: 1; }
 #wan-card .wan .grip.none { cursor: default; }
+/* every WAN row the same height: the plain "off"/P# label gets the P# button's box */
+#wan-card .wans .prio:not(.prio-btn) { min-height: 36px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; padding: 4px 10px; box-sizing: border-box; }
