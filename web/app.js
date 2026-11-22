@@ -1395,21 +1395,33 @@ const RadarGL = window.L && L.Renderer.extend({          // (guarded: a missing 
     this.frames = frames; this.dropTextures();
     this.flows.forEach((f, t) => { if (!rvFlowTimes.includes(t)) { if (f && f.tex) this.gl.deleteTexture(f.tex); this.flows.delete(t); } });
   },
-  dropTextures() { this.gen++; this.tex.forEach(x => this.gl.deleteTexture(x.tex)); this.tex.clear(); this.building.clear(); },
+  dropTextures() { this.gen++; this.tex.forEach(x => this.gl.deleteTexture(x.tex)); this.tex.clear(); this.building.clear(); this.queue = []; },
   // Build the frames around pos (more ahead while playing). Built textures stay resident up to ~320 MB, so a
   // loop only builds each frame once; past that the ones furthest ahead in the loop order are freed first.
   want(pos) {
     const n = this.frames.length; if (!n || !this.spec) return;
-    // paused: just the frame(s) shown (no idle prefetch: forecast frames re-download after each refresh)
-    const i = Math.floor(pos), keep = (rvRaf ? [0, 1, 2, 3, 4, 5, 6, -1] : pos - i > 1e-3 ? [0, 1] : [0]).map(d => (i + d + n) % n);
-    for (const k of keep) if (!this.tex.has(k) && !this.building.has(k)) this.build(k);
+    // Playing: the next frames. Paused: the frame(s) shown plus the first frames of the loop, so Play starts at
+    // once (those are observed frames: cacheable; forecast frames aren't preloaded, they re-download per refresh).
+    const i = Math.floor(pos);
+    const keep = [...new Set([...(rvRaf ? [0, 1, 2, 3, 4, 5, 6, -1] : pos - i > 1e-3 ? [0, 1] : [0]).map(d => (i + d + n) % n),
+      ...(rvRaf ? [] : [0, 1, 2].filter(k => k < n))])];
+    this.queue = keep;                                   // built in this order, two at a time (see pump)
+    this.pump();
     for (const k of keep.slice(0, 2)) this.flowFor(k);
     const per = this.spec.nx * this.spec.ny * 512 * 512 * 4, max = Math.max(keep.length, Math.floor(320e6 / per));
     while (this.tex.size > max) {
       let worst = -1, wd = -1;
-      this.tex.forEach((_, k) => { const d = (k - i + n) % n; if (!keep.includes(k) && d > wd) { wd = d; worst = k; } });
+      this.tex.forEach((_, k) => { const d = (k - i + n) % n; if (!keep.includes(k) && d > wd) { wd = d; worst = k; } });   // never one we want
       if (worst < 0) break;
       this.gl.deleteTexture(this.tex.get(worst).tex); this.tex.delete(worst);
+    }
+  },
+  pump() {                                            // at most two builds at once, most-needed first
+    for (const k of this.queue || []) {
+      if (this.building.size >= 2) break;
+      if (this.tex.has(k) || this.building.has(k) || !this.frames[k]) continue;
+      const g = this.gen;
+      this.build(k).finally(() => { if (g === this.gen && !this.tex.has(k)) this.building.delete(k); this.pump(); });
     }
   },
   tileBitmap(url) {
@@ -1441,7 +1453,7 @@ const RadarGL = window.L && L.Renderer.extend({          // (guarded: a missing 
       }
     }
     await Promise.all(jobs);
-    if (gen !== this.gen || !this.frames[k] || this.frames[k] !== f) return;
+    if (gen !== this.gen || !this.frames[k] || this.frames[k] !== f) return;     // stale (view or frames changed)
     const gl = this.gl, tex = gl.createTexture();
     gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
@@ -1531,7 +1543,7 @@ function rvStop() {
 }
 function rvPlay() {
   $("#wx-tl").classList.add("playing"); $("#wx-play").setAttribute("aria-label", "Pause radar loop");
-  if (rvPos >= rvFrames.length - 1) rvSet(0);                    // from the end: start over at the oldest frame
+  if (rvPos >= rvNow) rvSet(0);               // at "now" (or in the forecast): start at the beginning of the period
   // (the frame list is re-read every tick: a refresh every 10 min can change its length)
   if (!rvGL) { rvTimer = setInterval(() => rvSet((Math.round(rvPos) + 1) % rvFrames.length), rvFrameMs()); return; }
   let last = performance.now(), acc = 0;
