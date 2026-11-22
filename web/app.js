@@ -1545,6 +1545,7 @@ const netKeys = () => S["peplink.reachable"] != null ? ["wan.down_mbps", "wan.up
 const netTitle = () => S["peplink.reachable"] == null ? "Starlink throughput"
   : `${S["peplink.active"] || "Internet"} throughput`;
 
+let slot3d = null;
 function renderNetwork() {
   $("#net-chart-title").textContent = netTitle();       // follows WAN failover live
   if (netHistKeys().join(",") !== netSig) loadHistory();   // state arrived after the first fetch (or WAN changed)
@@ -1572,9 +1573,12 @@ function renderNetwork() {
           ${updReady && canControlDev("starlink") ? `<button class="btn-soft sl-install" data-sl="install" ${ctlPending ? "disabled" : ""}>${icon("download")}Install update</button>` : ""}</div>` : ""}
         <div class="muted small">${esc(S["starlink.software"] || "")}</div>
       </div>
-      ${map?.data ? `<figure class="sl-sky">${sky3dSlot(map) ?? skyMap(map, S["starlink.azimuth"], 360)}
+      ${map?.data ? ((slot3d = sky3dSlot(map)) ? `<figure class="sl-sky has3d">${slot3d}
+          <div class="sky-ov tl"><b class="${(obs ?? 0) > 5 ? "warn-text" : ""}">${num(obs, 1)}%</b><span>obstructed</span></div>
+          <div class="sky-ov br sky-key"><i class="clear"></i>Clear <i class="blocked"></i>Obstructed</div></figure>`
+        : `<figure class="sl-sky">${skyMap(map, S["starlink.azimuth"], 360)}
         <figcaption><b class="${(obs ?? 0) > 5 ? "warn-text" : ""}">${num(obs, 1)}%</b> obstructed
-          <span class="sky-key"><i class="clear"></i>Clear <i class="blocked"></i>Obstructed</span></figcaption></figure>`
+          <span class="sky-key"><i class="clear"></i>Clear <i class="blocked"></i>Obstructed</span></figcaption></figure>`)
       : `<div class="sl-obs">${ring(Math.min(100, obs ?? 0), { size: 150, stroke: 14, color: (obs ?? 0) > 5 ? "var(--warning)" : "var(--c-shore)" })}
         <div class="center"><b>${num(obs, 1)}%</b><small>obstructed</small></div></div>`}
     </div>`;

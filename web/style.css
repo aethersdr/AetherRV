@@ -996,3 +996,14 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .wx-card .card-h .wx-loc > b { position: relative; }
 .wx-card .card-h .wx-loc > b small { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 1px;
   font-size: 16px; font-weight: 400; color: var(--muted); }   /* hangs below the time: the time stays on the line */
+/* 3D sky: obstruction % (top-left) and legend (bottom-right) overlaid on the scene; the scene fills the card */
+.sl-sky.has3d { position: relative; display: flex; flex: 1; min-height: 0; margin: 0; }
+.sl-sky.has3d .sky3d { flex: 1; min-height: 300px; }
+.sky-ov { position: absolute; z-index: 2; pointer-events: none; padding: 6px 12px; border-radius: 12px;
+  background: rgb(6 11 19 / .55); border: 1px solid rgb(120 190 230 / .18); color: #8fa6c2; }
+.sky-ov.tl { top: 12px; left: 12px; display: flex; align-items: baseline; gap: 8px; font-size: 15px; }
+.sky-ov.tl b { font-size: 26px; color: #e8eef5; font-weight: 700; }
+.sky-ov.tl b.warn-text { color: var(--warning); }
+.sky-ov.br { right: 12px; bottom: 10px; font-size: 13px; border-radius: 999px; padding: 3px 10px; }
+.sl-sky.has3d .sky-key i.clear { background: #47d7ff; box-shadow: 0 0 6px #47d7ff; }
+.sl-sky.has3d .sky-key i.blocked { background: #ff6a4a; box-shadow: 0 0 6px #ff6a4a; }
