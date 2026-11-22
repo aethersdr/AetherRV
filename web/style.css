@@ -1019,3 +1019,4 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-card .sl-kv b { font-size: 20px; white-space: nowrap; }
 .sl-card .sl-kv span { font-size: 12px; white-space: nowrap; }
 .sky-sw { position: absolute; z-index: 2; top: 12px; right: 14px; pointer-events: none; font-size: 13px; color: #8fa6c2; }
+.sl-title { display: flex; align-items: center; gap: 10px; }   /* status dot: green online, amber reachable-but-not-online, red unreachable */

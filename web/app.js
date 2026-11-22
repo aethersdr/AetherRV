@@ -1554,7 +1554,7 @@ function renderNetwork() {
   const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
   const updReady = on != null && S["starlink.update_state"] === "REBOOT_REQUIRED";
   $("#sl-card").innerHTML = reach == null ? `<div class="card-h"><h2>Starlink</h2></div><div class="muted">Not enabled.</div>` : `
-    <div class="card-h"><h2>Starlink</h2><span class="pill ${on ? "ok-pill" : "bad-pill"}">${icon(on ? "check" : "alert")}${on ? "Online" : reach ? esc(String(S["starlink.state"] || "").replace(/_/g, " ").toLowerCase()) : "Unreachable"}</span></div>
+    <div class="card-h"><h2 class="sl-title" title="${on ? "Online" : reach ? esc(String(S["starlink.state"] || "").replace(/_/g, " ").toLowerCase()) : "Unreachable"}"><span class="led ${on ? "led-green" : reach ? "led-yellow" : "led-red"}"></span>Starlink</h2></div>
     <div class="sl-body">
       <div class="sl-left">
         <div class="sl-speeds">
