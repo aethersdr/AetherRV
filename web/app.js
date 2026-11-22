@@ -404,7 +404,7 @@ function updateBankScene(batts, bankAmps) {
       $(`#bg-lt${i}-${k}`).setAttribute("fill", `url(#bg-top-${hue})`);
       const sf = $(`#bg-sf${i}-${k}`);                     // liquid surface on the partly-filled quarter
       sf.setAttribute("cy", (yb - f * BS.dh).toFixed(1)); sf.setAttribute("fill", `url(#bg-top-${hue})`);
-      sf.setAttribute("opacity", f > 0 && f < 1 ? .75 : 0);       // same 75 % alpha as the charged body
+      sf.setAttribute("opacity", f > 0 && f < 1 ? .9 : 0);        // same 90 % alpha as the charged body
     }
     $(`#bg-pct${i}`).textContent = soc == null ? "—" : `${Math.round(soc)}%`;
     $(`#bg-amp${i}`).textContent = b.ok && b.current != null ? `${(+b.current).toFixed(1)} A` : "";
