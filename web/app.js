@@ -1223,7 +1223,7 @@ function rvSet(pos) {
   $("#wx-tl-track").setAttribute("aria-valuenow", i);
   if (rvGL) { rvGL.want(rvPos); rvGL.draw(rvPos); return; }
   // tile-layer fallback: the shown frame plus one behind and three ahead attached (prefetch); the rest detached
-  const keep = new Set([-1, 0, 1, 2, 3].map(d => (i + d + n) % n));
+  const keep = new Set((rvTimer ? [-1, 0, 1, 2, 3] : [0]).map(d => (i + d + n) % n));
   rvLayers.forEach((l, k) => { if (l && !keep.has(k) && wxMap.hasLayer(l)) wxMap.removeLayer(l); });
   keep.forEach(k => { const l = rvLayer(k); if (!wxMap.hasLayer(l)) l.setOpacity(0).addTo(wxMap); });
   if (rvIdx >= 0 && rvLayers[rvIdx] && rvIdx !== i) rvLayers[rvIdx].setOpacity(0);
@@ -1319,8 +1319,8 @@ const RadarGL = window.L && L.Renderer.extend({          // (guarded: a missing 
   // loop only builds each frame once; past that the ones furthest ahead in the loop order are freed first.
   want(pos) {
     const n = this.frames.length; if (!n || !this.spec) return;
-    const i = Math.floor(pos), ahead = rvRaf ? 6 : 3;
-    const keep = [...Array(ahead + 1).keys(), -1].map(d => (i + d + n) % n);
+    // paused: just the frame(s) shown (no idle prefetch: forecast frames re-download after each refresh)
+    const i = Math.floor(pos), keep = (rvRaf ? [0, 1, 2, 3, 4, 5, 6, -1] : pos - i > 1e-3 ? [0, 1] : [0]).map(d => (i + d + n) % n);
     for (const k of keep) if (!this.tex.has(k) && !this.building.has(k)) this.build(k);
     for (const k of keep.slice(0, 2)) this.flowFor(k);
     const per = this.spec.nx * this.spec.ny * 512 * 512 * 4, max = Math.max(keep.length, Math.floor(320e6 / per));
@@ -1374,7 +1374,7 @@ const RadarGL = window.L && L.Renderer.extend({          // (guarded: a missing 
     const a = this.frames[k], b = this.frames[k + 1];
     if (!a || !b || !rvFlowTimes.length) return null;
     const ft = rvFlowTimes.reduce((best, t) => Math.abs(t - a.time) < Math.abs(best - a.time) ? t : best, rvFlowTimes[0]);
-    if (Math.abs(ft - a.time) > 3600) return null;
+    if (Math.abs(ft - a.time) > 3 * 3600) return null;
     const fl = this.flows.get(ft);
     if (fl === undefined) {
       this.flows.set(ft, "pending");
@@ -1429,6 +1429,7 @@ function rvInitGL() {
 }
 function rvFallback(why) {                              // WebGL failed mid-session: back to tile layers
   clientInfo("radar-gl", { fallback: why });
+  rvStop();
   if (rvGL) { try { wxMap.removeLayer(rvGL); } catch { /* gone */ } }
   rvGL = null; rvSet(Math.round(rvPos));
 }
@@ -1448,18 +1449,19 @@ function rvStop() {
   $("#wx-tl").classList.remove("playing"); $("#wx-play").setAttribute("aria-label", "Play radar loop");
 }
 function rvPlay() {
-  const n = rvFrames.length;
   $("#wx-tl").classList.add("playing"); $("#wx-play").setAttribute("aria-label", "Pause radar loop");
-  if (rvPos >= n - 1) rvSet(0);                                  // from the end: start over at the oldest frame
-  if (!rvGL) { rvTimer = setInterval(() => rvSet((Math.round(rvPos) + 1) % n), rvFrameMs()); return; }
+  if (rvPos >= rvFrames.length - 1) rvSet(0);                    // from the end: start over at the oldest frame
+  // (the frame list is re-read every tick: a refresh every 10 min can change its length)
+  if (!rvGL) { rvTimer = setInterval(() => rvSet((Math.round(rvPos) + 1) % rvFrames.length), rvFrameMs()); return; }
   let last = performance.now(), acc = 0;
   rvStats = { t0: last, frames: 0, ms: 0 };
   const tick = now => {
     rvRaf = requestAnimationFrame(tick);
-    if (view !== "weather") { rvStop(); return; }                 // never animate a hidden map
+    if (view !== "weather" || !rvGL) { rvStop(); return; }        // never animate a hidden map
     acc += now - last; last = now;
     if (acc < 1000 / RV_FPS - 4) return;                         // ~15 fps
     const dt = acc; acc = 0;
+    const n = rvFrames.length;
     let p = rvPos + dt / rvFrameMs();
     if (p > n - 1) p = 0;
     if (!rvGL.ready(p)) { rvGL.want(p); return; }                // hold until the pair's textures are in
