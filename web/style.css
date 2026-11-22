@@ -911,4 +911,4 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .bc-table .mos i.off { background: color-mix(in srgb, var(--critical) 22%, transparent); color: var(--critical); }
 .bc-table tr.na td { opacity: .6; }
 .bank-glyph .g-pol.g-neg { fill: var(--ink-2); font-size: 22px; }
-.bank-glyph { max-height: 250px; }
+.bank-glyph { max-height: 281px; }
