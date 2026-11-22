@@ -927,8 +927,8 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .bank-scene .bg-bus-p, .bank-scene .bg-post-p { stroke: #c9604a; stroke-width: 4; fill: none; stroke-linecap: round; }
 .bank-scene .bg-bus-n, .bank-scene .bg-post-n { stroke: #2a83c9; stroke-width: 4; fill: none; stroke-linecap: round; }
 .bank-scene .bg-post-p, .bank-scene .bg-post-n { stroke-width: 4; }
-.bank-scene .bg-pol { font-size: 22px; font-weight: 800; }
-.bank-scene .bg-pol-p { fill: #EE7355; text-anchor: end; } .bank-scene .bg-pol-n { fill: #5de3ff; text-anchor: start; }
+.bank-scene .bg-pol { font-size: 22px; font-weight: 800; dominant-baseline: central; }
+.bank-scene .bg-pol-p { fill: #EE7355; text-anchor: start; } .bank-scene .bg-pol-n { fill: #5de3ff; text-anchor: end; }
 .bank-scene .bg-flow { fill: none; stroke: #8ef7e6; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 3 15; opacity: 0; }
 .bank-scene.chg .bg-flow, .bank-scene.dis .bg-flow { opacity: .55; animation: bg-flow var(--flow-dur, 2s) linear infinite; }
 .bank-scene.chg .bg-flow { animation-direction: reverse; }

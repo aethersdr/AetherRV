@@ -407,10 +407,11 @@ function bankScene(names) {
       <line x1="${cx - 22}" y1="${topY - 4}" x2="${cx - 22}" y2="26" class="bg-flow bg-flow-post"/><line x1="${cx + 22}" y1="${topY - 4}" x2="${cx + 22}" y2="42" class="bg-flow bg-flow-post"/>`;
   });
   const xl = cxs[0] - 22, xr = cxs[n - 1] + 22;
-  const buses = `<path d="M${xl} 26 H${W - 14}" class="bg-bus-p bg-halo-line"/><path d="M${xr} 42 H14" class="bg-bus-n bg-halo-line"/>
-    <path d="M${xl} 26 H${W - 14}" class="bg-bus-p"/><path d="M${xr} 42 H14" class="bg-bus-n"/>
-    <path d="M${xl} 26 H${W - 14}" class="bg-flow bg-flow-bus"/><path d="M${xr} 42 H14" class="bg-flow bg-flow-bus"/>
-    <text x="${W - 6}" y="31" class="bg-pol bg-pol-p">+</text><text x="6" y="47" class="bg-pol bg-pol-n">−</text>`;
+  const pE = W - 30, nE = 30;                 // bus ends; the + / − sit 10 px past them, centred on the line
+  const buses = `<path d="M${xl} 26 H${pE}" class="bg-bus-p bg-halo-line"/><path d="M${xr} 42 H${nE}" class="bg-bus-n bg-halo-line"/>
+    <path d="M${xl} 26 H${pE}" class="bg-bus-p"/><path d="M${xr} 42 H${nE}" class="bg-bus-n"/>
+    <path d="M${xl} 26 H${pE}" class="bg-flow bg-flow-bus"/><path d="M${xr} 42 H${nE}" class="bg-flow bg-flow-bus"/>
+    <text x="${pE + 10}" y="26" class="bg-pol bg-pol-p">+</text><text x="${nE - 10}" y="42" class="bg-pol bg-pol-n">−</text>`;
   return `<svg class="bank-scene" id="bank-scene" data-n="${n}" viewBox="0 0 ${W} ${BS.h}" role="img" aria-label="${n} batteries in parallel">
     <defs>${defs}${clips}</defs>${slab}${posts}${buses}${stacks}</svg>`;
 }
