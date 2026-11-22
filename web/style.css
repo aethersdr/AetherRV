@@ -1032,7 +1032,10 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-card .sl-kv { justify-content: end; column-gap: 22px; }
 .sl-card .sl-left .sl-speeds { gap: 40px; }
 /* Network: Cellular + WWAN side by side in the top-right slot */
-.net-grid > .net-pair { grid-column: 2; grid-row: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; min-width: 0; }
+/* right column: Cellular + WWAN sized to their content; WAN priority takes the rest of the height */
+.net-grid > .net-right { grid-column: 2; grid-row: 1 / 4; display: flex; flex-direction: column; gap: 20px; min-width: 0; min-height: 0; }
+.net-right > .net-pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; min-width: 0; }
+.net-right > #wan-card { flex: 1; }
 .net-pair > .card { min-width: 0; }
 .net-pair .cell-card .kv-row { grid-template-columns: 1fr 1fr; column-gap: 16px; row-gap: 8px; }
 .net-pair .cell-card .kv-row b { font-size: 18px; overflow: hidden; text-overflow: ellipsis; }
