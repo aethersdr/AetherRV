@@ -303,32 +303,118 @@ $("#pwr-ctl").addEventListener("click", e => {
 
 // ── Battery bank card: Lynx shunt for the bank, EPOCH batteries over Bluetooth for each battery ──
 const BATT_AH = 460;                         // EPOCH B12460A nominal capacity per battery
-function bankGlyph(batts, w = 560, h = 260) {
-  // One big battery made of N smaller ones wired in parallel: + bus (red) to the + terminal, − bus to −.
-  const n = Math.max(1, batts.length), pad = 26, top = 40, body = h - 30;
-  const cw = (w - 2 * pad - 30 - 28 - (n - 1) * 18) / n, ch = body - top - 46;   // inside the shell, clear of the nub
-  let cells = "", tabs = "";
-  batts.forEach((b, i) => {
-    const x = pad + 14 + i * (cw + 18), y = top + 34;
-    const soc = b.ok ? Math.max(0, Math.min(100, b.soc ?? 0)) : null, fh = soc == null ? 0 : (ch - 8) * soc / 100;
-    cells += `<rect x="${x}" y="${y}" width="${cw}" height="${ch}" rx="9" class="g-cell ${b.ok ? "" : "g-na"}"/>
-      <rect x="${x + 4}" y="${y + ch - 4 - fh}" width="${cw - 8}" height="${fh}" rx="6" fill="${soc == null ? "none" : socColor(soc)}" opacity=".85"/>
-      <text x="${x + cw / 2}" y="${y + ch / 2 + 2}" class="g-soc">${soc == null ? "—" : Math.round(soc) + "%"}</text>
-      <text x="${x + cw / 2}" y="${y + ch + 22}" class="g-name">${esc(b.name)}</text>`;
-    const px = x + cw * .28, nx = x + cw * .72;
-    tabs += `<rect x="${px - 7}" y="${y - 9}" width="14" height="9" rx="2" class="g-tab-p"/><rect x="${nx - 7}" y="${y - 9}" width="14" height="9" rx="2" class="g-tab-n"/>
-      <line x1="${px}" y1="${y - 9}" x2="${px}" y2="${top + 14}" class="g-wire-p"/><line x1="${nx}" y1="${y - 9}" x2="${nx}" y2="${top + 24}" class="g-wire-n"/>`;
+// 3D battery-bank scene: each battery is a stack of four glowing discs (one per 25 %) on a shared platform,
+// wired in parallel by animated + / − buses. Built once per battery count, then updated in place every
+// second (rebuilding would restart the animations).
+const BS = { w: 800, h: 300, rx: 56, ry: 16, dh: 24, step: 31, yb0: 202 };
+const bankHist = {};                         // battery name → [[t, amps]] for the sparklines (2 min, client-side)
+const discSide = (cx, yt, yb) => `M${cx - BS.rx} ${yt} V${yb} A${BS.rx} ${BS.ry} 0 0 0 ${cx + BS.rx} ${yb} V${yt} Z`;
+function bankScene(names) {
+  const n = names.length, W = BS.w, cxs = names.map((_, i) => (i + .5) * W / n);
+  const grad = (id, stops, attrs = 'x1="0" x2="1" y1="0" y2="0"') =>
+    `<linearGradient id="${id}" ${attrs}>${stops.map(([o, c, a = 1]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${a}"/>`).join("")}</linearGradient>`;
+  const hues = { blue: ["#0b2a6b", "#1d4ed8", "#60a5fa", "#bfdbfe"], amber: ["#5a2c04", "#b45309", "#f59e0b", "#fde68a"],
+                 red: ["#5c0b0b", "#b91c1c", "#f87171", "#fecaca"] };
+  let defs = "";
+  for (const [k, [d0, d1, d2, d3]] of Object.entries(hues)) {
+    defs += grad(`bg-side-${k}`, [[0, d0], [.18, d1], [.5, d2], [.62, d3], [.8, d1], [1, d0]]);
+    defs += `<radialGradient id="bg-top-${k}" cx=".45" cy=".35" r=".75"><stop offset="0" stop-color="${d3}"/><stop offset=".55" stop-color="${d2}"/><stop offset="1" stop-color="${d1}"/></radialGradient>`;
+    defs += `<radialGradient id="bg-pool-${k}"><stop offset="0" stop-color="${d2}" stop-opacity=".75"/><stop offset="1" stop-color="${d2}" stop-opacity="0"/></radialGradient>`;
+  }
+  defs += grad("bg-scan", [[0, "#fff", 0], [.5, "#e0f2fe", .55], [1, "#fff", 0]], 'x1="0" x2="0" y1="0" y2="1"')
+       + grad("bg-slab", [[0, "#0c1f3f"], [1, "#061226"]], 'x1="0" x2="0" y1="0" y2="1"')
+       + grad("bg-spark", [[0, "#38bdf8", .45], [1, "#38bdf8", 0]], 'x1="0" x2="0" y1="0" y2="1"')
+       + `<radialGradient id="bg-slabtop" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#1e3a8a" stop-opacity=".85"/><stop offset="1" stop-color="#0a1a3a" stop-opacity=".9"/></radialGradient>
+          <filter id="bg-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="${BS.w}" height="${BS.h}"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  const pY = BS.yb0 + 12, slab = `<ellipse cx="${W / 2}" cy="${pY + 12}" rx="${W / 2 - 8}" ry="36" fill="url(#bg-slab)"/>
+    <ellipse cx="${W / 2}" cy="${pY}" rx="${W / 2 - 8}" ry="36" fill="url(#bg-slabtop)" class="bg-slab-top"/>
+    <ellipse cx="${W / 2}" cy="${pY}" rx="${W / 2 - 22}" ry="30" class="bg-slab-line"/>
+    <ellipse cx="${W / 2}" cy="${pY}" rx="${W / 2 - 8}" ry="36" class="bg-slab-edge bg-halo-line"/>
+    <ellipse cx="${W / 2}" cy="${pY}" rx="${W / 2 - 8}" ry="36" class="bg-slab-edge"/>`;
+  let clips = "", stacks = "", posts = "";
+  const topY = BS.yb0 - 3 * BS.step - BS.dh;              // top of the top disc's body
+  cxs.forEach((cx, i) => {
+    clips += `<clipPath id="bg-stk${i}"><rect x="${cx - BS.rx}" y="${topY}" width="${2 * BS.rx}" height="${BS.yb0 - topY + BS.ry}"/></clipPath>`;   // a plain rect: cheap to repaint
+    let discs = "";
+    for (let k = 0; k < 4; k++) {
+      const yb = BS.yb0 - k * BS.step, yt = yb - BS.dh;
+      clips += `<clipPath id="bg-c${i}-${k}"><rect id="bg-cr${i}-${k}" x="${cx - BS.rx - 2}" y="${yb + BS.ry + 2}" width="${2 * BS.rx + 4}" height="0"/></clipPath>`;
+      discs += `<g class="bg-disc">
+        <path d="${discSide(cx, yt, yb)}" class="bg-dim"/><ellipse cx="${cx}" cy="${yt}" rx="${BS.rx}" ry="${BS.ry}" class="bg-dim-top"/>
+        <g clip-path="url(#bg-c${i}-${k})"><path id="bg-ls${i}-${k}" d="${discSide(cx, yt, yb)}"/>
+          <ellipse id="bg-lt${i}-${k}" cx="${cx}" cy="${yt}" rx="${BS.rx}" ry="${BS.ry}"/></g>
+        <ellipse id="bg-sf${i}-${k}" cx="${cx}" cy="${yb}" rx="${BS.rx - 1}" ry="${BS.ry - 1}" class="bg-surface" opacity="0"/>
+        <ellipse cx="${cx}" cy="${yt}" rx="${BS.rx}" ry="${BS.ry}" class="bg-rim"/></g>`;
+    }
+    stacks += `<g id="bg-s${i}" class="bg-stack">
+      <ellipse id="bg-halo${i}" cx="${cx}" cy="${BS.yb0 - 1.6 * BS.step}" rx="${BS.rx + 34}" ry="${2.6 * BS.step}" fill="url(#bg-pool-blue)" class="bg-halo"/>
+      <ellipse id="bg-pool${i}" cx="${cx}" cy="${BS.yb0 + 10}" rx="${BS.rx + 26}" ry="${BS.ry + 10}" fill="url(#bg-pool-blue)"/>
+      <ellipse cx="${cx}" cy="${BS.yb0 + 10}" rx="${BS.rx + 12}" ry="${BS.ry + 6}" class="bg-ring" style="animation-delay:${i * .35}s"/>
+      ${discs}
+      <g clip-path="url(#bg-stk${i})"><rect class="bg-scan" x="${cx - BS.rx}" y="${BS.yb0 + BS.ry - 30}" width="${2 * BS.rx}" height="30" fill="url(#bg-scan)"/></g>
+      <text id="bg-pct${i}" x="${cx}" y="${BS.yb0 - 1.5 * BS.step - BS.dh / 2 + 6}" class="bg-pct">—</text>
+      <text x="${cx}" y="${pY + 26}" class="bg-name">${esc(names[i])}</text>
+      <path id="bg-sa${i}" class="bg-spark-area" d=""/><path id="bg-sl${i}" class="bg-spark" d=""/>
+      <line x1="${cx - 78}" x2="${cx + 34}" y1="${BS.h - 6}" y2="${BS.h - 6}" class="bg-zero"/>
+      <text id="bg-amp${i}" x="${cx + 40}" y="${BS.h - 13}" class="bg-amp"></text></g>`;
+    posts += `<line x1="${cx - 22}" y1="${topY - 4}" x2="${cx - 22}" y2="26" class="bg-post-p"/><line x1="${cx + 22}" y1="${topY - 4}" x2="${cx + 22}" y2="42" class="bg-post-n"/>
+      <line x1="${cx - 22}" y1="${topY - 4}" x2="${cx - 22}" y2="26" class="bg-flow bg-flow-post"/><line x1="${cx + 22}" y1="${topY - 4}" x2="${cx + 22}" y2="42" class="bg-flow bg-flow-post"/>`;
   });
-  const x0 = pad + 14 + (cw * .28), x1 = pad + 14 + (n - 1) * (cw + 18) + cw * .72;
-  return `<svg class="bank-glyph" viewBox="0 0 ${w} ${h}" role="img" aria-label="${n} batteries in parallel">
-    <rect x="${pad}" y="${top - 12}" width="${w - 2 * pad - 30}" height="${body - top + 12}" rx="22" class="g-shell"/>
-    <rect x="${w - pad - 30}" y="${top + (body - top) / 2 - 34}" width="22" height="56" rx="7" class="g-nub"/>
-    <line x1="${x0}" y1="${top + 14}" x2="${w - pad - 44}" y2="${top + 14}" class="g-bus-p"/>
-    <path d="M${w - pad - 44} ${top + 14} V${top + (body - top) / 2 - 18} H${w - pad - 30}" class="g-bus-p"/>
-    <path d="M${x1} ${top + 24} H${pad + 6} V${top + (body - top) / 2 + 30}" class="g-bus-n"/>
-    <text x="${pad - 10}" y="${top + (body - top) / 2 + 36}" class="g-pol g-neg">−</text>
-    <text x="${w - pad - 19}" y="${top + (body - top) / 2 - 42}" class="g-pol">+</text>
-    ${tabs}${cells}</svg>`;
+  const xl = cxs[0] - 22, xr = cxs[n - 1] + 22;
+  const buses = `<path d="M${xl} 26 H${W - 14}" class="bg-bus-p bg-halo-line"/><path d="M${xr} 42 H14" class="bg-bus-n bg-halo-line"/>
+    <path d="M${xl} 26 H${W - 14}" class="bg-bus-p"/><path d="M${xr} 42 H14" class="bg-bus-n"/>
+    <path d="M${xl} 26 H${W - 14}" class="bg-flow bg-flow-bus"/><path d="M${xr} 42 H14" class="bg-flow bg-flow-bus"/>
+    <text x="${W - 6}" y="31" class="bg-pol bg-pol-p">+</text><text x="6" y="47" class="bg-pol bg-pol-n">−</text>`;
+  return `<svg class="bank-scene" id="bank-scene" data-n="${n}" viewBox="0 0 ${W} ${BS.h}" role="img" aria-label="${n} batteries in parallel">
+    <defs>${defs}${clips}</defs>${slab}${posts}${buses}${stacks}</svg>`;
+}
+function updateBankScene(batts, bankAmps) {
+  const svg = $("#bank-scene"); if (!svg) return;
+  const now = Date.now() / 1000;
+  const flow = bankAmps == null ? "" : bankAmps > 0.5 ? "chg" : bankAmps < -0.5 ? "dis" : "";
+  svg.classList.toggle("chg", flow === "chg"); svg.classList.toggle("dis", flow === "dis");
+  svg.style.setProperty("--flow-dur", `${Math.max(.5, Math.min(4, 4 - Math.abs(bankAmps || 0) / 12)).toFixed(2)}s`);
+  batts.forEach(b => {
+    const h = (bankHist[b.name] ||= []);
+    if (b.ok && b.current != null) {
+      const ts = Math.round(now - (b.age || 0));
+      if (!h.length || h[h.length - 1][0] !== ts) h.push([ts, +b.current]);
+    }
+    while (h.length && h[0][0] < now - 120) h.shift();
+  });
+  batts.forEach((b, i) => {
+    const cx = (i + .5) * BS.w / batts.length, soc = b.ok && b.soc != null ? Math.max(0, Math.min(100, b.soc)) : null;
+    const hue = soc == null ? "blue" : soc < 15 ? "red" : soc < 30 ? "amber" : "blue";
+    $(`#bg-s${i}`)?.classList.toggle("off", soc == null);
+    $(`#bg-pool${i}`)?.setAttribute("fill", `url(#bg-pool-${hue})`);
+    $(`#bg-pool${i}`)?.setAttribute("opacity", soc == null ? 0 : (.25 + .75 * soc / 100).toFixed(2));
+    $(`#bg-halo${i}`)?.setAttribute("fill", `url(#bg-pool-${hue})`);
+    $(`#bg-halo${i}`)?.setAttribute("opacity", soc == null ? 0 : (.12 + .28 * soc / 100).toFixed(2));
+    for (let k = 0; k < 4; k++) {
+      const f = soc == null ? 0 : Math.max(0, Math.min(1, (soc - 25 * k) / 25));
+      const yb = BS.yb0 - k * BS.step, yt = yb - BS.dh;
+      const top = f >= 1 ? yt - BS.ry - 2 : yb - f * BS.dh;
+      const cr = $(`#bg-cr${i}-${k}`);
+      cr.setAttribute("y", f > 0 ? top.toFixed(1) : yb + BS.ry + 2); cr.setAttribute("height", f > 0 ? (yb + BS.ry + 2 - top).toFixed(1) : 0);
+      $(`#bg-ls${i}-${k}`).setAttribute("fill", `url(#bg-side-${hue})`);
+      $(`#bg-lt${i}-${k}`).setAttribute("fill", `url(#bg-top-${hue})`);
+      const sf = $(`#bg-sf${i}-${k}`);                     // liquid surface on the partly-filled quarter
+      sf.setAttribute("cy", (yb - f * BS.dh).toFixed(1)); sf.setAttribute("fill", `url(#bg-top-${hue})`);
+      sf.setAttribute("opacity", f > 0 && f < 1 ? 1 : 0);
+    }
+    $(`#bg-pct${i}`).textContent = soc == null ? "—" : `${Math.round(soc)}%`;
+    $(`#bg-amp${i}`).textContent = b.ok && b.current != null ? `${(+b.current).toFixed(1)} A` : "";
+    // Sparkline of this battery's current over 2 min, scaled to its own range (≥ 0.4 A) so small swings show.
+    const h = bankHist[b.name] || [], x0 = cx - 78, x1 = cx + 34, yTop = BS.h - 32, yBot = BS.h - 6;
+    if (h.length > 1) {
+      let lo = Math.min(...h.map(p => p[1])), hi = Math.max(...h.map(p => p[1]));
+      if (hi - lo < .4) { const m = (hi + lo) / 2; lo = m - .2; hi = m + .2; }
+      const pts = h.map(([t, a]) => [x0 + (x1 - x0) * (1 - (now - t) / 120), yBot - (a - lo) / (hi - lo) * (yBot - yTop)]);
+      const d = pts.map(([x, y], j) => `${j ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join("");
+      $(`#bg-sl${i}`).setAttribute("d", d);
+      $(`#bg-sa${i}`).setAttribute("d", `${d}L${pts[pts.length - 1][0].toFixed(1)} ${yBot}L${pts[0][0].toFixed(1)} ${yBot}Z`);
+    }
+  });
 }
 function renderBattCard() {
   const soc = S["victron.battery.soc"], bp = S["victron.battery.power"];
@@ -348,21 +434,27 @@ function renderBattCard() {
       <td title="${(b.temps || []).length >= 4 ? `T1 ${fmtT(b.temps[0])} · T2 ${fmtT(b.temps[1])} · ambient ${fmtT(b.temps[2])} · MOS ${fmtT(b.temps[3])}` : ""}">${(b.temps || []).length ? fmtT(Math.max(...b.temps.slice(0, 2))) : "—"}</td>
       <td class="mos"><i class="${b.charge_fet ? "on" : "off"}" title="Charge MOS ${b.charge_fet ? "on" : "off"}">C</i><i class="${b.discharge_fet ? "on" : "off"}" title="Discharge MOS ${b.discharge_fet ? "on" : "off"}">D</i></td></tr>`
     : `<tr class="na"><td><b>${esc(b.name)}</b></td><td colspan="8" class="muted">${esc(b.error ? "no data · reconnecting" : "connecting…")}</td></tr>`;
-  $("#batt-card").innerHTML = `
-    <div class="bc-head">
+  const card = $("#batt-card"), names = ble.map(b => b.name).join("|");
+  if (card.dataset.names !== names) {                    // (re)build the skeleton only when the battery set changes
+    card.dataset.names = names;
+    card.innerHTML = `<div class="bc-head" id="bc-head"></div>${ble.length ? bankScene(ble.map(b => b.name)) : ""}
+      ${ble.length ? `<div class="bc-cells" id="bc-cells"></div>
+      <table class="bc-table"><thead><tr><th>Battery</th><th>SoC</th><th>Volts</th><th>Amps</th><th>Power</th><th>Cycles</th><th>Ah</th><th>Temp</th><th>MOS</th></tr></thead>
+        <tbody id="bc-rows"></tbody></table>` : `<div class="muted">No per-battery data (Bluetooth adapter off).</div>`}`;
+  }
+  $("#bc-head").innerHTML = `
       <div class="bc-soc" style="color:${soc == null ? "var(--muted)" : "var(--ink)"}">${soc == null ? "—" : Math.round(soc)}<small>%</small></div>
       <div class="bc-sum"><span class="bc-state ${st[2]}">${st[1] ? icon(st[1]) : ""}${st[0]}</span>
         <span>${num(S["victron.battery.voltage"], 2)} V · ${num(S["victron.battery.current"], 1)} A · ${fmtTTG(S["victron.battery.ttg"])} to go</span>
-        <span class="muted">${rem == null ? "" : `${Math.round(rem)} / ${BATT_AH * ble.length} Ah · `}${ok.length} of ${ble.length} batteries via Bluetooth</span></div>
-    </div>
-    ${ble.length ? bankGlyph(ble, 800, 281) : ""}
-    ${ble.length ? `<div class="bc-cells">
+        <span class="muted">${rem == null ? "" : `${Math.round(rem)} / ${BATT_AH * ble.length} Ah · `}${ok.length} of ${ble.length} batteries via Bluetooth</span></div>`;
+  if (!ble.length) return;
+  updateBankScene(ble, S["batteries.ble.current"] ?? S["victron.battery.current"]);
+  $("#bc-cells").innerHTML = `
       <div><span>VAVG</span><b>${v3(avg)}</b></div><div><span>VDIFF</span><b class="${hi != null && hi - lo > .05 ? "warn" : ""}">${v3(hi == null ? null : hi - lo)}</b></div>
       <div><span>VLO</span><b>${v3(lo)}</b></div><div><span>VHI</span><b>${v3(hi)}</b></div>
       <div><span>Cells T1/T2</span><b>${tmax(0, 2)}</b></div><div><span>Ambient</span><b>${tmax(2, 3)}</b></div>
-      <div><span>MOS</span><b>${tmax(3, 4)}</b></div><div><span>Battery (shunt)</span><b>${fmtT(S["victron.battery.temp"])}</b></div></div>
-    <table class="bc-table"><thead><tr><th>Battery</th><th>SoC</th><th>Volts</th><th>Amps</th><th>Power</th><th>Cycles</th><th>Ah</th><th>Temp</th><th>MOS</th></tr></thead>
-      <tbody>${ble.map(row).join("")}</tbody></table>` : `<div class="muted">No per-battery data (Bluetooth adapter off).</div>`}`;
+      <div><span>MOS</span><b>${tmax(3, 4)}</b></div><div><span>Battery (shunt)</span><b>${fmtT(S["victron.battery.temp"])}</b></div>`;
+  $("#bc-rows").innerHTML = ble.map(row).join("");
 }
 
 function renderEnergy() {

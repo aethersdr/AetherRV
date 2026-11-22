@@ -598,3 +598,8 @@ Sections 1–31 use the old names. Mapping:
   - **Card data, modeled on the EPOCH app:** bank SoC/state/V/A/time to go, Ah remaining of 4 × 460, and VAVG/VDIFF/VLO/VHI across all 16 cells.
   - **Temperatures:** the four BMS sensors are assumed to be T1, T2, Ambient, MOS in that order.
   - **Per-battery table:** SoC, V, A, W, cycles, Ah/460, and charge/discharge MOS.
+- **2026-11-21, 3D battery-bank scene (Energy).** Each battery is a stack of four glowing discs (one per 25 %), with a partial "liquid" fill on the current quarter, blue/amber/red by SoC. The stacks stand on one glowing platform with pulsing rings and halos.
+  - Animated + / − buses: flow pulses run outward when discharging and inward when charging, faster at higher current. A scan line runs up when charging and down when discharging.
+  - Per-battery current sparklines (2 min, client-side, auto-ranged).
+  - The scene is built once per battery set and updated in place, so animations don't restart.
+  - Cost: headless CPU on the Energy view was 156 % with blur filters, 123 % after replacing them with stroke glows and making the halos static, vs 83 % on Home. The owner accepted that: the page is rarely shown, and a later move to React may help.
