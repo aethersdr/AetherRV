@@ -665,6 +665,7 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none;
   background: rgba(14,17,22,.82); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font-size: 15px; color: var(--ink-2); }
 .wx-base { filter: saturate(.8) brightness(.95); }
+.wx-radar-gl { pointer-events: none; }
 
 /* Dark map toggle */
 .wx-wrap.dark-map .wx-base { filter: url(#wx-dark-filter); }

@@ -1160,12 +1160,15 @@ function initWxMap() {
   // Zoom +/- are our own glass buttons stacked above the locate button (Leaflet's control is off).
   const zoomState = () => { $("#wx-zin").disabled = wxMap.getZoom() >= wxMap.getMaxZoom(); $("#wx-zout").disabled = wxMap.getZoom() <= wxMap.getMinZoom(); };
   wxMap.on("zoomend", zoomState); zoomState();
+  wxMap.createPane("traffic").style.zIndex = 300;                // traffic above the radar (250)
+  rvInitGL();
   loadRadar();
 }
 $("#wx-zin").addEventListener("click", () => wxMap && wxMap.zoomIn());
 $("#wx-zout").addEventListener("click", () => wxMap && wxMap.zoomOut());
 // Timeline = frames the Pi recorded (older than the source's 2 h; radar.py) + the source's 2 h + its 1 h forecast.
-// Only a small window of frames is attached to the map at a time (each is a set of decoded 512 px tiles).
+// Drawn by RadarGL (WebGL2: each frame composited into one texture for the view, motion-interpolated at ~15 fps
+// along the Pi's flow fields) or, without WebGL2, by Leaflet tile layers (one per frame, a small window attached).
 async function loadRadar() {
   if (Date.now() - rvAt < 10 * 60e3 && rvFrames.length) return;
   rvAt = Date.now();
@@ -1173,7 +1176,7 @@ async function loadRadar() {
     // LibreWXR: RainViewer-compatible API (same JSON + tile paths), crisper and deeper zoom — as used by AetherMap.
     const [j, rec] = await Promise.all([
       fetch("https://api.librewxr.net/public/weather-maps.json").then(r => r.json()),
-      fetch("/api/radar/recorded").then(r => r.json()).catch(() => ({ frames: [] }))]);
+      fetch("/api/radar/recorded").then(r => r.json()).catch(() => ({ frames: [], flows: [] }))]);
     const past = j.radar.past || [], cast = j.radar.nowcast || [], oldest = past.length ? past[0].time : Infinity;
     // 512 px tiles (map zoom N → tile z N-1), colour scheme 6 (NWS-style), no smoothing — AetherMap's settings.
     // Forecast URLs carry the index's timestamp so a cached forecast tile is never shown once it's observed.
@@ -1183,18 +1186,19 @@ async function loadRadar() {
       ...past.map(f => ({ time: f.time, kind: "past", url: src(f) })),
       ...cast.map(f => ({ time: f.time, kind: "cast", url: src(f, `?g=${j.generated}`) }))];
     if (!frames.length) throw new Error("no frames");
-    const prev = rvFrames[rvIdx], wasNow = !prev || rvIdx === rvNow;
+    const prevT = rvFrames.length ? rvFrames[Math.round(rvPos)]?.time : null, wasNow = prevT == null || Math.round(rvPos) === rvNow;
     rvLayers.forEach(l => l && wxMap.removeLayer(l));
-    rvFrames = frames; rvLayers = frames.map(() => null); rvIdx = -1;
+    rvFrames = frames; rvLayers = frames.map(() => null); rvIdx = -1; rvFlowTimes = rec.flows || [];
     rvNow = frames.map(f => f.kind).lastIndexOf("past"); if (rvNow < 0) rvNow = frames.length - 1;
+    if (rvGL) rvGL.setFrames(frames);
     const n = frames.length, pc = i => n > 1 ? i / (n - 1) * 100 : 100;
     $("#wx-tl-ticks").innerHTML = frames.map((f, i) => `<i class="${f.kind}${i === rvNow ? " now" : ""}" style="left:${pc(i)}%"></i>`).join("");
     $("#wx-tl-cast").style.left = `${pc(rvNow)}%`;
     $("#wx-tl-rec").style.width = `${pc(frames.findIndex(f => f.kind !== "rec"))}%`;
     // keep the frame on screen across a refresh (by time); "now" stays "now"
     let i = rvNow;
-    if (!wasNow) { const k = frames.findIndex(f => f.time >= prev.time); i = k < 0 ? n - 1 : k; }
-    showFrame(i);
+    if (!wasNow) { const k = frames.findIndex(f => f.time >= prevT); i = k < 0 ? n - 1 : k; }
+    rvSet(i);
   } catch (e) { $("#wx-time").textContent = "radar unavailable"; }
 }
 function rvLayer(i) {
@@ -1204,31 +1208,271 @@ function rvLayer(i) {
     ...(f.kind === "rec" ? { minNativeZoom: 5, maxNativeZoom: 8 } : { maxNativeZoom: 11 }) });
 }
 const fmtAgo = m => m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""} ago`;
-function showFrame(i) {
+// Move the timeline to a (fractional, with WebGL) frame position: label, rail, and the radar itself.
+function rvSet(pos) {
   const n = rvFrames.length;
   if (!n) return;
-  // attach the shown frame plus one behind and three ahead (prefetch for playback); detach the rest
+  rvPos = Math.max(0, Math.min(n - 1, pos));
+  const i = Math.round(rvPos), f = rvFrames[i], t = new Date(f.time * 1000), mins = Math.round((t - Date.now()) / 60e3);
+  const hm = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const label = f.kind === "cast" ? `${hm} · forecast +${Math.max(0, mins)} min` : `${hm} · ${fmtAgo(Math.max(0, -mins))}`;
+  if ($("#wx-time").textContent !== label) $("#wx-time").textContent = label;
+  $("#wx-tl").classList.toggle("cast", f.kind === "cast");
+  const p = n > 1 ? rvPos / (n - 1) * 100 : 100, pNow = n > 1 ? rvNow / (n - 1) * 100 : 100;
+  $("#wx-tl-fill").style.width = `${Math.min(p, pNow)}%`; $("#wx-tl-thumb").style.left = `${p}%`;   // fill stops at "now"
+  $("#wx-tl-track").setAttribute("aria-valuenow", i);
+  if (rvGL) { rvGL.want(rvPos); rvGL.draw(rvPos); return; }
+  // tile-layer fallback: the shown frame plus one behind and three ahead attached (prefetch); the rest detached
   const keep = new Set([-1, 0, 1, 2, 3].map(d => (i + d + n) % n));
   rvLayers.forEach((l, k) => { if (l && !keep.has(k) && wxMap.hasLayer(l)) wxMap.removeLayer(l); });
   keep.forEach(k => { const l = rvLayer(k); if (!wxMap.hasLayer(l)) l.setOpacity(0).addTo(wxMap); });
   if (rvIdx >= 0 && rvLayers[rvIdx] && rvIdx !== i) rvLayers[rvIdx].setOpacity(0);
   rvIdx = i; rvLayers[i].setOpacity(0.85);
-  const f = rvFrames[i], t = new Date(f.time * 1000), mins = Math.round((t - Date.now()) / 60e3);
-  const hm = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  $("#wx-time").textContent = f.kind === "cast" ? `${hm} · forecast +${Math.max(0, mins)} min` : `${hm} · ${fmtAgo(Math.max(0, -mins))}`;
-  $("#wx-tl").classList.toggle("cast", f.kind === "cast");
-  const p = n > 1 ? i / (n - 1) * 100 : 100, pNow = n > 1 ? rvNow / (n - 1) * 100 : 100;
-  $("#wx-tl-fill").style.width = `${Math.min(p, pNow)}%`; $("#wx-tl-thumb").style.left = `${p}%`;   // fill stops at "now"
-  $("#wx-tl-track").setAttribute("aria-valuenow", i);
+}
+
+// ── RadarGL: the radar as one WebGL2 canvas in its own map pane (positioned/zoom-animated like Leaflet's Canvas
+// renderer). Each frame becomes one texture covering the view (tiles composited; recorded low-zoom tiles upscaled),
+// and between frames A and B the shader moves both along the Pi's flow field d (A(p) ≈ B(p + d)):
+//   I(t) = (1 − t)·A(p − t·d) + t·B(p + (1 − t)·d)        t = 0 is exactly A, t = 1 exactly B.
+// No flow for a pair → the nearest pair's (motion persists over tens of minutes); outside the flow block → d = 0.
+let rvGL = null, rvPos = 0, rvFlowTimes = [], rvRaf = 0;
+const RV_VS = `#version 300 es
+in vec2 a; out vec2 v; void main() { v = vec2(a.x * .5 + .5, .5 - a.y * .5); gl_Position = vec4(a, 0., 1.); }`;
+const RV_FS = `#version 300 es
+precision highp float;
+in vec2 v; out vec4 o;
+uniform sampler2D A, B, F;
+uniform vec2 cW0, cWs, aW0, aWs, fW0, fWs;
+uniform float t, alpha, hasB, hasF, fScale;
+vec4 samp(sampler2D s, vec2 w) {
+  vec2 u = (w - aW0) / aWs;
+  if (any(lessThan(u, vec2(0.))) || any(greaterThan(u, vec2(1.)))) return vec4(0.);
+  return texture(s, u);
+}
+void main() {
+  vec2 w = cW0 + v * cWs, d = vec2(0.);
+  if (hasF > .5) {
+    vec2 fu = (w - fW0) / fWs, e = smoothstep(0., .06, fu) * smoothstep(0., .06, 1. - fu);
+    d = texture(F, clamp(fu, 0., 1.)).xy * fScale * e.x * e.y;
+  }
+  vec4 c = samp(A, w - d * t);
+  if (hasB > .5) c = mix(c, samp(B, w + d * (1. - t)), t);
+  o = c * alpha;
+}`;
+const RadarGL = window.L && L.Renderer.extend({          // (guarded: a missing Leaflet must not abort app.js)
+  options: { padding: 0.06, pane: "radar" },
+  _initContainer() {
+    const c = this._container = L.DomUtil.create("canvas", "wx-radar-gl");
+    const gl = this.gl = c.getContext("webgl2", { premultipliedAlpha: true, antialias: false, alpha: true });
+    if (!gl) throw new Error("WebGL2 unavailable");
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    const p = this.prog = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, RV_VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, RV_FS)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    gl.useProgram(p);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    this.u = {}; for (const n of ["A", "B", "F", "cW0", "cWs", "aW0", "aWs", "fW0", "fWs", "t", "alpha", "hasB", "hasF", "fScale"])
+      this.u[n] = gl.getUniformLocation(p, n);
+    gl.uniform1i(this.u.A, 0); gl.uniform1i(this.u.B, 1); gl.uniform1i(this.u.F, 2);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    this.tex = new Map();        // frame index → {tex, key} (one texture per frame for the current atlas)
+    this.flows = new Map();      // pair start time → {tex, W0, Ws, scale, dt} | "pending"
+    this.bmp = new Map();        // tile URL → Promise<ImageBitmap|null> (small LRU)
+    this.frames = []; this.spec = null; this.gen = 0; this.building = new Set();
+    const info = gl.getExtension("WEBGL_debug_renderer_info");
+    this.renderer = info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    c.addEventListener("webglcontextlost", e => { e.preventDefault(); rvFallback("context lost"); });
+  },
+  _destroyContainer() { L.DomUtil.remove(this._container); },
+  _update() {
+    if (this._map._animatingZoom && this._bounds) return;
+    L.Renderer.prototype._update.call(this);
+    const b = this._bounds, s = b.getSize(), c = this._container;
+    L.DomUtil.setPosition(c, b.min);
+    c.width = s.x; c.height = s.y; c.style.width = `${s.x}px`; c.style.height = `${s.y}px`;
+    this.gl.viewport(0, 0, s.x, s.y);
+    this.fire("update");
+  },
+  _updatePaths() {                                    // view changed: new canvas placement, maybe a new atlas
+    const m = this._map, b = this._bounds, z = m.getZoom(), s = b.getSize();
+    const w0 = m.project(m.layerPointToLatLng(b.min), 0).divideBy(256);
+    this.cW0 = [w0.x, w0.y]; this.cWs = [s.x / (256 * 2 ** z), s.y / (256 * 2 ** z)];
+    const za = Math.max(1, Math.min(10, Math.round(z) - 1)), N = 2 ** za;
+    const tx0 = Math.floor(w0.x * N), ty0 = Math.max(0, Math.floor(w0.y * N));
+    const tx1 = Math.floor((w0.x + this.cWs[0]) * N), ty1 = Math.min(N - 1, Math.floor((w0.y + this.cWs[1]) * N));
+    const spec = { za, tx0, ty0, nx: tx1 - tx0 + 1, ny: ty1 - ty0 + 1 }, key = JSON.stringify(spec);
+    if (!this.spec || this.spec.key !== key) {
+      this.spec = { ...spec, key, W0: [tx0 / N, ty0 / N], Ws: [spec.nx / N, spec.ny / N] };
+      this.dropTextures();
+    }
+    this.want(rvPos); this.draw(rvPos);
+  },
+  setFrames(frames) {
+    this.frames = frames; this.dropTextures();
+    this.flows.forEach((f, t) => { if (!rvFlowTimes.includes(t)) { if (f && f.tex) this.gl.deleteTexture(f.tex); this.flows.delete(t); } });
+  },
+  dropTextures() { this.gen++; this.tex.forEach(x => this.gl.deleteTexture(x.tex)); this.tex.clear(); this.building.clear(); },
+  // Build the frames around pos (more ahead while playing). Built textures stay resident up to ~320 MB, so a
+  // loop only builds each frame once; past that the ones furthest ahead in the loop order are freed first.
+  want(pos) {
+    const n = this.frames.length; if (!n || !this.spec) return;
+    const i = Math.floor(pos), ahead = rvRaf ? 6 : 3;
+    const keep = [...Array(ahead + 1).keys(), -1].map(d => (i + d + n) % n);
+    for (const k of keep) if (!this.tex.has(k) && !this.building.has(k)) this.build(k);
+    for (const k of keep.slice(0, 2)) this.flowFor(k);
+    const per = this.spec.nx * this.spec.ny * 512 * 512 * 4, max = Math.max(keep.length, Math.floor(320e6 / per));
+    while (this.tex.size > max) {
+      let worst = -1, wd = -1;
+      this.tex.forEach((_, k) => { const d = (k - i + n) % n; if (!keep.includes(k) && d > wd) { wd = d; worst = k; } });
+      if (worst < 0) break;
+      this.gl.deleteTexture(this.tex.get(worst).tex); this.tex.delete(worst);
+    }
+  },
+  tileBitmap(url) {
+    if (this.bmp.has(url)) { const p = this.bmp.get(url); this.bmp.delete(url); this.bmp.set(url, p); return p; }
+    const p = fetch(url).then(r => r.ok ? r.blob() : null).then(b => b && createImageBitmap(b)).catch(() => null);
+    this.bmp.set(url, p);
+    while (this.bmp.size > 160) { const [k, v] = this.bmp.entries().next().value; this.bmp.delete(k); v.then(b => b && b.close()); }
+    return p;
+  },
+  async build(k) {
+    const f = this.frames[k], sp = this.spec, gen = this.gen;
+    this.building.add(k);
+    // tile zoom for this frame: the atlas zoom, clamped to what exists (recorded: 4-7; source: ≤ 10)
+    const zt = f.kind === "rec" ? Math.max(4, Math.min(7, sp.za)) : Math.min(10, sp.za), dz = sp.za - zt;
+    const cv = new OffscreenCanvas(sp.nx * 512, sp.ny * 512), cx = cv.getContext("2d");
+    const jobs = [];
+    for (let j = 0; j < sp.ny; j++) for (let i = 0; i < sp.nx; i++) {
+      const N = 2 ** sp.za, ax = ((sp.tx0 + i) % N + N) % N, ay = sp.ty0 + j;
+      if (dz >= 0) {                                  // one (parent) tile, its sub-square scaled up into the cell
+        const s = 512 / 2 ** dz, px = ax >> dz, py = ay >> dz;
+        const url = f.url.replace("{z}", zt).replace("{x}", px).replace("{y}", py);
+        jobs.push(this.tileBitmap(url).then(b => b && cx.drawImage(b, (ax - (px << dz)) * s, (ay - (py << dz)) * s, s, s, i * 512, j * 512, 512, 512)));
+      } else {                                        // finer tiles than the atlas: several scaled down into the cell
+        const m = 2 ** -dz, s = 512 / m;
+        for (let v = 0; v < m; v++) for (let u = 0; u < m; u++) {
+          const url = f.url.replace("{z}", zt).replace("{x}", ax * m + u).replace("{y}", ay * m + v);
+          jobs.push(this.tileBitmap(url).then(b => b && cx.drawImage(b, i * 512 + u * s, j * 512 + v * s, s, s)));
+        }
+      }
+    }
+    await Promise.all(jobs);
+    if (gen !== this.gen || !this.frames[k] || this.frames[k] !== f) return;
+    const gl = this.gl, tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cv);
+    for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+      [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
+    this.building.delete(k); this.tex.set(k, { tex });
+    if (Math.floor(rvPos) === k || Math.floor(rvPos) + 1 === k) this.draw(rvPos);
+  },
+  // flow for the pair starting at frame k: its own, else the nearest recorded pair's (scaled to this pair's gap)
+  flowFor(k) {
+    const a = this.frames[k], b = this.frames[k + 1];
+    if (!a || !b || !rvFlowTimes.length) return null;
+    const ft = rvFlowTimes.reduce((best, t) => Math.abs(t - a.time) < Math.abs(best - a.time) ? t : best, rvFlowTimes[0]);
+    if (Math.abs(ft - a.time) > 3600) return null;
+    const fl = this.flows.get(ft);
+    if (fl === undefined) {
+      this.flows.set(ft, "pending");
+      fetch(`/api/radar/flow/${ft}`).then(r => r.ok ? r.json() : null).then(j => {
+        if (!j) { this.flows.set(ft, null); return; }
+        const gl = this.gl, n = j.n, data = new Float32Array(n * n * 2);
+        for (let q = 0; q < n * n; q++) { data[2 * q] = j.dx[q]; data[2 * q + 1] = j.dy[q]; }
+        const tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, n, n, 0, gl.RG, gl.FLOAT, data);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        for (const [p, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+          [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, p, v);
+        const Z = 2 ** j.z;                            // flow grid: z{j.z} tiles x0..x0+w, values in z{j.z} px per dt
+        this.flows.set(ft, { tex, W0: [j.x0 / Z, j.y0 / Z], Ws: [j.w / Z, j.w / Z], unit: 1 / (512 * Z), dt: j.dt || 600 });
+        this.draw(rvPos);
+      }).catch(() => this.flows.set(ft, null));
+      return null;
+    }
+    return fl && fl !== "pending" ? { ...fl, scale: fl.unit * (b.time - a.time) / fl.dt } : null;
+  },
+  ready(pos) {                                        // both textures of the pair at pos are in
+    const i = Math.floor(pos), t = pos - i;
+    return this.tex.has(i) && (t < 1e-3 || this.tex.has(i + 1));
+  },
+  draw(pos) {
+    const n = this.frames.length; if (!n || !this.spec || !this.cW0) return false;
+    const i = Math.min(n - 1, Math.floor(pos)), t = pos - i, A = this.tex.get(i), B = t > 1e-3 ? this.tex.get(i + 1) : null;
+    if (!A) return false;                             // keep the last image until this frame is in
+    const gl = this.gl, u = this.u, sp = this.spec, fl = B ? this.flowFor(i) : null;
+    gl.useProgram(this.prog);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, A.tex);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, (B || A).tex);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fl ? fl.tex : null);
+    gl.uniform2fv(u.cW0, this.cW0); gl.uniform2fv(u.cWs, this.cWs); gl.uniform2fv(u.aW0, sp.W0); gl.uniform2fv(u.aWs, sp.Ws);
+    gl.uniform2fv(u.fW0, fl ? fl.W0 : [0, 0]); gl.uniform2fv(u.fWs, fl ? fl.Ws : [1, 1]);
+    gl.uniform1f(u.t, B ? t : 0); gl.uniform1f(u.alpha, 0.85); gl.uniform1f(u.hasB, B ? 1 : 0);
+    gl.uniform1f(u.hasF, fl ? 1 : 0); gl.uniform1f(u.fScale, fl ? fl.scale : 0);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    return true;
+  },
+});
+function rvInitGL() {
+  if (new URLSearchParams(location.search).get("radar") === "tiles") return;
+  if (!RadarGL) return;
+  wxMap.createPane("radar").style.zIndex = 250;                // above the basemap, below traffic (300) and markers
+  const g = new RadarGL();
+  try { g.addTo(wxMap); rvGL = g; clientInfo("radar-gl", { renderer: g.renderer }); }
+  catch (e) { try { wxMap.removeLayer(g); } catch { /* never added */ } rvGL = null; clientInfo("radar-gl", { error: String(e) }); }
+}
+function rvFallback(why) {                              // WebGL failed mid-session: back to tile layers
+  clientInfo("radar-gl", { fallback: why });
+  if (rvGL) { try { wxMap.removeLayer(rvGL); } catch { /* gone */ } }
+  rvGL = null; rvSet(Math.round(rvPos));
+}
+// One line to the backend log (kiosk only) so the kiosk's GPU and frame rate can be read from the Pi.
+const clientInfoSent = new Set();
+function clientInfo(kind, data) {
+  if (clientInfoSent.has(kind)) return; clientInfoSent.add(kind);
+  fetch("/api/client-info", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, ...data }) }).catch(() => {});
 }
 // Radar timeline: play/pause icon + a rail with one tick per frame; drag (or tap) the rail to scrub.
-function rvStop() { if (rvTimer) { clearInterval(rvTimer); rvTimer = null; } $("#wx-tl").classList.remove("playing"); $("#wx-play").setAttribute("aria-label", "Play radar loop"); }
-$("#wx-play").addEventListener("click", () => {
-  if (rvTimer) { rvStop(); return; }
-  if (!rvFrames.length) return;
+// With WebGL the loop runs at ~15 fps with interpolated in-between images; without, it steps frame by frame.
+const RV_FPS = 15, rvFrameMs = () => 700 / rvSpeed();
+let rvStats = null;
+function rvStop() {
+  if (rvTimer) { clearInterval(rvTimer); rvTimer = null; }
+  if (rvRaf) { cancelAnimationFrame(rvRaf); rvRaf = 0; }
+  $("#wx-tl").classList.remove("playing"); $("#wx-play").setAttribute("aria-label", "Play radar loop");
+}
+function rvPlay() {
+  const n = rvFrames.length;
   $("#wx-tl").classList.add("playing"); $("#wx-play").setAttribute("aria-label", "Pause radar loop");
-  if (rvIdx >= rvFrames.length - 1) showFrame(0);              // from the end: start over at the oldest frame
-  rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvFrames.length), 700 / rvSpeed());
+  if (rvPos >= n - 1) rvSet(0);                                  // from the end: start over at the oldest frame
+  if (!rvGL) { rvTimer = setInterval(() => rvSet((Math.round(rvPos) + 1) % n), rvFrameMs()); return; }
+  let last = performance.now(), acc = 0;
+  rvStats = { t0: last, frames: 0, ms: 0 };
+  const tick = now => {
+    rvRaf = requestAnimationFrame(tick);
+    if (view !== "weather") { rvStop(); return; }                 // never animate a hidden map
+    acc += now - last; last = now;
+    if (acc < 1000 / RV_FPS - 4) return;                         // ~15 fps
+    const dt = acc; acc = 0;
+    let p = rvPos + dt / rvFrameMs();
+    if (p > n - 1) p = 0;
+    if (!rvGL.ready(p)) { rvGL.want(p); return; }                // hold until the pair's textures are in
+    const t0 = performance.now(); rvSet(p);
+    rvStats.frames++; rvStats.ms += performance.now() - t0;
+    if (now - rvStats.t0 > 10e3 && !clientInfoSent.has("radar-fps"))
+      clientInfo("radar-fps", { fps: +(rvStats.frames / ((now - rvStats.t0) / 1000)).toFixed(1), ms_per_frame: +(rvStats.ms / rvStats.frames).toFixed(2) });
+  };
+  rvRaf = requestAnimationFrame(tick);
+}
+$("#wx-play").addEventListener("click", () => {
+  if (rvTimer || rvRaf) { rvStop(); rvSet(Math.round(rvPos)); return; }   // pause on a real frame
+  if (rvFrames.length) rvPlay();
 });
 // Loop speed: one button cycling 1× → 2× → 4× (1× = 700 ms a frame), remembered per screen.
 const RV_SPEEDS = [1, 2, 4];
@@ -1238,19 +1482,20 @@ rvSpeedLabel();
 $("#wx-speed").addEventListener("click", () => {
   store.set("vp.radar.speed", RV_SPEEDS[(RV_SPEEDS.indexOf(rvSpeed()) + 1) % RV_SPEEDS.length]);
   rvSpeedLabel();
-  if (rvTimer) { clearInterval(rvTimer); rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvFrames.length), 700 / rvSpeed()); }
+  if (rvTimer) { clearInterval(rvTimer); rvTimer = setInterval(() => rvSet((Math.round(rvPos) + 1) % rvFrames.length), rvFrameMs()); }
 });
 {
   const track = $("#wx-tl-track"), rail = track.querySelector(".wx-tl-rail");
-  const at = e => { const r = rail.getBoundingClientRect(), n = rvFrames.length;
-    return Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (n - 1)); };
+  // with WebGL the drag is continuous (in-between images too); without, it snaps to frames
+  const at = e => { const r = rail.getBoundingClientRect(), p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (rvFrames.length - 1);
+    return rvGL ? p : Math.round(p); };
   let drag = null;
   track.addEventListener("pointerdown", e => {
     if (!rvFrames.length) return;
     rvStop(); drag = e.pointerId; track.setPointerCapture(e.pointerId); track.classList.add("drag");
-    const i = at(e); if (i !== rvIdx) showFrame(i);
+    rvSet(at(e));
   });
-  track.addEventListener("pointermove", e => { if (drag !== e.pointerId) return; const i = at(e); if (i !== rvIdx) showFrame(i); });
+  track.addEventListener("pointermove", e => { if (drag !== e.pointerId) return; const p = at(e); if (p !== rvPos) rvSet(p); });
   const end = e => { if (drag !== e.pointerId) return; drag = null; track.classList.remove("drag"); };
   track.addEventListener("pointerup", end); track.addEventListener("pointercancel", end);
 }
@@ -1344,7 +1589,7 @@ function applyTraffic() {
   const q = `?b=${Math.floor(Date.now() / 300e3)}`, inc = wxDarkState().on ? "s0-dark" : "s0";
   const urls = [`/api/traffic/flow/major/{z}/{x}/{y}.png${q}`, `/api/traffic/incidents/${inc}/{z}/{x}/{y}.png${q}`];
   // 512 px tiles: map zoom N → tile zoom N-1 (like the radar); above the radar so a storm doesn't hide a closure.
-  if (!tfLayers) tfLayers = urls.map((u, i) => L.tileLayer(u, { tileSize: 512, zoomOffset: -1, minZoom: 3, maxZoom: 12,
+  if (!tfLayers) tfLayers = urls.map((u, i) => L.tileLayer(u, { tileSize: 512, zoomOffset: -1, minZoom: 3, maxZoom: 12, pane: "traffic",
     zIndex: 7 + i, className: "wx-traffic", attribution: i ? "Traffic © TomTom" : "" }).addTo(wxMap));
   else tfLayers.forEach((l, i) => { if (l._url !== urls[i]) l.setUrl(urls[i]); });
 }

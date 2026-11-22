@@ -327,3 +327,33 @@ async def test_radar_poll_records_gaps_not_newest(tmp_path, aiohttp_client):
     assert r.status == 200 and await r.read() == b"PNG"
     r = await c.get(f"/api/radar/tile/{now - 1200}/6/0/0.png")
     assert r.status == 200 and await r.read() == CLEAR_PNG
+
+
+def test_radar_flow_pair_finds_known_shift(tmp_path):
+    np = __import__("pytest").importorskip("numpy")
+    cv2 = __import__("pytest").importorskip("cv2")
+    from aetherrv.radar import NEXRAD, flow_pair
+    rng = np.random.default_rng(1)
+    base = np.zeros((1536 + 64, 1536 + 64), np.float32)          # 3×3 tiles of 512 px, plus room to shift
+    for _ in range(60):                                          # blobby "echoes" of varying strength
+        cv2.circle(base, (int(rng.integers(300, 1300)), int(rng.integers(300, 1300))), int(rng.integers(15, 60)),
+                   float(rng.integers(1, 12)), -1)
+    base = cv2.GaussianBlur(base, (0, 0), 6)
+    def write(d, img):
+        r = np.clip(np.rint(img), 0, 15).astype(int)
+        bgra = np.zeros(r.shape + (4,), np.uint8)
+        for k, (cr, cg, cb) in enumerate(NEXRAD, start=1):
+            bgra[r == k] = (cb, cg, cr, 255)
+        for i in range(3):
+            for j in range(3):
+                p = d / "6" / str(10 + i) / f"{21 + j}.png"; p.parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(p), bgra[j * 512:(j + 1) * 512, i * 512:(i + 1) * 512])
+    write(tmp_path / "a", base[32:32 + 1536, 32:32 + 1536])
+    write(tmp_path / "b", base[32 - 3:32 - 3 + 1536, 32 - 6:32 - 6 + 1536])    # B(p) = A(p - (6, 3)): moved right/down
+    f = flow_pair(tmp_path / "a", tmp_path / "b")
+    dx, dy = np.array(f["dx"]).reshape(32, 32)[8:24, 8:24], np.array(f["dy"]).reshape(32, 32)[8:24, 8:24]
+    assert (f["x0"], f["y0"], f["w"], f["n"]) == (10, 21, 3, 32)
+    assert abs(np.median(dx) - 6) < 1.5 and abs(np.median(dy) - 3) < 1.5, (np.median(dx), np.median(dy))
+    (tmp_path / "c" / "6" / "11" / "21.png").parent.mkdir(parents=True)        # different block → no flow
+    (tmp_path / "c" / "6" / "11" / "21.png").write_bytes(b"")
+    assert flow_pair(tmp_path / "a", tmp_path / "c") is None

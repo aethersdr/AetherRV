@@ -182,7 +182,17 @@ def make_app(state: State, static_dir: Path, history: History | None = None, ale
 
     async def api_radar_recorded(_req: web.Request) -> web.Response:
         # Radar frames the Pi saved itself (radar.py), for the part of the timeline the source no longer serves.
-        return web.json_response({"frames": radar.frames() if radar else [], "zoom": [4, 7]})
+        return web.json_response({"frames": radar.frames() if radar else [], "flows": radar.flows() if radar else [], "zoom": [4, 7]})
+
+    async def api_radar_flow(req: web.Request) -> web.StreamResponse:
+        try:
+            t = int(req.match_info["t"])
+        except ValueError:
+            raise web.HTTPBadRequest()
+        p = radar.flow(t) if radar else None
+        if p is None:
+            raise web.HTTPNotFound()
+        return web.FileResponse(p, headers={"Cache-Control": "max-age=86400", "Content-Type": "application/json"})
 
     async def api_radar_tile(req: web.Request) -> web.StreamResponse:
         from .radar import CLEAR_PNG
@@ -196,9 +206,22 @@ def make_app(state: State, static_dir: Path, history: History | None = None, ale
             return web.Response(body=CLEAR_PNG, content_type="image/png", headers={"Cache-Control": "max-age=300"})
         return web.FileResponse(p, headers={"Cache-Control": "max-age=86400", "Content-Type": "image/png"})
 
+    async def api_client_info(req: web.Request) -> web.Response:
+        # One-line reports from the kiosk page (e.g. which GPU its WebGL got, the radar loop's frame rate).
+        if await who_of(req) != "kiosk":
+            raise web.HTTPForbidden()
+        try:
+            body = await req.json()
+        except ValueError:
+            raise web.HTTPBadRequest()
+        log.info("kiosk page: %s", json.dumps(body)[:400])
+        return web.json_response({"ok": True})
+
     app.router.add_get("/", index)
+    app.router.add_post("/api/client-info", api_client_info)
     app.router.add_get("/api/radar/recorded", api_radar_recorded)
     app.router.add_get("/api/radar/tile/{t}/{z}/{x}/{y}.png", api_radar_tile)
+    app.router.add_get("/api/radar/flow/{t}", api_radar_flow)
     app.router.add_get("/api/traffic/{kind}/{style}/{z}/{x}/{y}.png", api_traffic)
     app.router.add_get("/api/settings", api_settings)
     app.router.add_post("/api/settings/action", api_settings_action)

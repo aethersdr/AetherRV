@@ -11,6 +11,8 @@ dependencies = [
     "starlink-grpc-core>=1.3",
     "bleak>=0.22",
     "aiobmsble>=0.33",
+    "numpy>=2",
+    "opencv-python-headless>=4.10",   # radar motion (optical flow) for the smooth Weather-map loop
 ]
 
 [project.optional-dependencies]
