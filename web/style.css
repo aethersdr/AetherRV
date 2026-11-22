@@ -950,3 +950,6 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 @media (prefers-reduced-motion: reduce) { .bank-scene * { animation: none !important; } }
 /* cheap glow: a wide translucent stroke under the line instead of a blur filter (filters repaint every frame) */
 .bank-scene .bg-halo-line { stroke-width: 10 !important; opacity: .12; }
+/* MultiPlus / MPPT mode buttons: share the card's width equally (the generic .seg rule above is inline-flex) */
+.seg.mode-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
+.seg.mode-seg button { text-align: center; }
