@@ -85,63 +85,110 @@ const beamMaterial = () => new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
 });
 
-// A stylised Mercedes Sprinter 170 high roof (~5.9 m × 2.0 m × 2.8 m), nose toward −z before rotation.
+// The owner's van: a lifted silver Mercedes Sprinter VS30 4x4 high roof (144" wb, ~5.9 m), nose toward −z before
+// rotation. Long sloping hood + raked windshield, charcoal lower cladding, black steel bumper with light bar and
+// winch, 33" all-terrains on black wheels, black roof rack with a light-bar fairing, solar panels, the Starlink
+// panel, a driver-side rear ladder and a spare on the rear door. Van left (driver) = −x.
 function sprinter() {
   const van = new THREE.Group();
-  const paint = new THREE.MeshStandardMaterial({ color: C.body, metalness: .45, roughness: .32 });
-  const glass = new THREE.MeshStandardMaterial({ color: C.glass, metalness: .8, roughness: .1, emissive: 0x0b2a4a, emissiveIntensity: .5, side: THREE.DoubleSide });
-  const trim = new THREE.MeshStandardMaterial({ color: C.trim, metalness: .3, roughness: .7 });
-  const tire = new THREE.MeshStandardMaterial({ color: C.tire, roughness: .95 });
-  const rim = new THREE.MeshStandardMaterial({ color: 0x9aa4b0, metalness: .9, roughness: .3 });
-  const add = (geo, m, x, y, z, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); van.add(o); return o; };
+  const M = (o) => new THREE.MeshStandardMaterial(o);
+  const paint = M({ color: 0xd4dae1, metalness: .3, roughness: .32 });
+  const clad = M({ color: 0x3b4048, metalness: .2, roughness: .75, side: THREE.DoubleSide });
+  const black = M({ color: 0x15181c, metalness: .45, roughness: .55 });
+  const glass = M({ color: 0x0a1320, metalness: .85, roughness: .08, emissive: 0x0b2a4a, emissiveIntensity: .45, side: THREE.DoubleSide });
+  const tire = M({ color: 0x0c0d0f, roughness: .95 });
+  const wheel = M({ color: 0x23272d, metalness: .6, roughness: .45 });
+  const chrome = M({ color: 0xe8edf2, metalness: 1, roughness: .15 });
+  const led = M({ color: 0xffffff, emissive: 0xeaf6ff, emissiveIntensity: 2.6 });
+  const head = M({ color: C.light, emissive: C.light, emissiveIntensity: 3 });
+  const tail = M({ color: 0xff2a20, emissive: 0xff2a20, emissiveIntensity: 2 });
+  const solar = M({ color: 0x1b2a44, metalness: .6, roughness: .25, emissive: 0x10203a, emissiveIntensity: .4 });
+  const add = (geo, m, x, y, z, rx = 0, ry = 0, rz = 0, parent = van) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.set(rx, ry, rz); parent.add(o); return o; };
   const box = (w, h, d, m, x, y, z) => add(new THREE.BoxGeometry(w, h, d), m, x, y, z);
-  const L = 5.9, W = 2.0, base = .42, roof = 2.78, cabL = 1.45;
-  const zF = -L / 2, zCab = zF + cabL;                                  // nose, cab/box seam
-  // cargo box with chamfered roof edges (cross-section extruded along the van, +z = rearward)
-  const sec = new THREE.Shape(); const hw = W / 2, ch = .14;
-  sec.moveTo(-hw, base); sec.lineTo(hw, base); sec.lineTo(hw, roof - ch); sec.lineTo(hw - ch, roof); sec.lineTo(-hw + ch, roof); sec.lineTo(-hw, roof - ch); sec.closePath();
-  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(sec, { depth: L - cabL, bevelEnabled: false }), paint);
-  body.position.z = zCab; van.add(body);
-  // cab side profile (x = distance back from the nose, y = height), extruded across the width
-  const prof = new THREE.Shape();
-  prof.moveTo(0, base); prof.lineTo(cabL, base); prof.lineTo(cabL, roof - .02); prof.lineTo(cabL - .12, roof - .02);
-  prof.lineTo(.78, 1.55); prof.lineTo(.08, 1.18); prof.lineTo(0, 1.0); prof.closePath();
-  const cab = new THREE.Mesh(new THREE.ExtrudeGeometry(prof, { depth: W - .04, bevelEnabled: true, bevelSize: .04, bevelThickness: .04, bevelSegments: 2 }), paint);
-  cab.rotation.y = -Math.PI / 2; cab.position.set(hw - .02, 0, zF); van.add(cab);    // profile x → +z, extrusion → −x
-  // windscreen along the rake: from (0.78 back, 1.55 up) to (cabL-0.12 back, roof)
-  const p0 = new THREE.Vector3(0, 1.55, zF + .78), p1 = new THREE.Vector3(0, roof - .02, zF + cabL - .12);
-  const ws = add(new THREE.PlaneGeometry(W - .22, p0.distanceTo(p1) * .9), glass, 0, 0, 0);
-  ws.position.copy(p0).add(p1).multiplyScalar(.5).add(new THREE.Vector3(0, .01, -.012));
-  ws.rotation.x = -Math.atan2(p1.z - p0.z, p1.y - p0.y);
+  const L = 5.9, W = 2.02, hw = W / 2, sill = .62, roof = 2.92, zF = -L / 2;
+  const Z = u => zF + u;                                  // u = metres back from the nose
+  // one-piece side silhouette (u back, y up), extruded across the width with rounded edges
+  const bv = .09, sil = new THREE.Shape();
+  [[0, .72], [0, 1.02], [.12, 1.17], [1.02, 1.4], [1.86, 2.44], [2.02, 2.72], [2.3, roof], [L - .06, roof], [L, roof - .06], [L, sill], [.06, sill]]
+    .forEach(([u, y], i) => i ? sil.lineTo(u, y) : sil.moveTo(u, y));
+  sil.closePath();
+  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(sil, { depth: W - 2 * bv, bevelEnabled: true, bevelSize: bv, bevelThickness: bv, bevelSegments: 4 }), paint);
+  body.rotation.y = -Math.PI / 2; body.position.set(hw - bv, 0, zF); van.add(body);   // shape u → +z, extrusion → −x
+  // windshield on the rake
+  const a = new THREE.Vector3(0, 1.42, Z(1.06)), b = new THREE.Vector3(0, 2.42, Z(1.84));
+  const ws = add(new THREE.PlaneGeometry(W - .3, a.distanceTo(b) * .9), glass, 0, 0, 0);
+  const rake = Math.atan2(b.z - a.z, b.y - a.y);                       // plane's +y runs up the rake
+  ws.rotation.x = rake;
+  ws.position.copy(a).add(b).multiplyScalar(.5)
+    .add(new THREE.Vector3(0, Math.sin(rake), -Math.cos(rake)).multiplyScalar(bv + .015));   // outside the bevel
+  // side glass + cladding + flares, both sides (flat shapes laid on the body side)
+  const side = (pts, m, s, off = .012) => {
+    const sh = new THREE.Shape(); pts.forEach(([u, y], i) => i ? sh.lineTo(u, y) : sh.moveTo(u, y)); sh.closePath();
+    add(new THREE.ShapeGeometry(sh), m, s * (hw + off), 0, zF, 0, -Math.PI / 2);
+  };
   for (const s of [-1, 1]) {
-    box(.03, .62, .78, glass, s * (hw + .015), 1.85, zF + 1.0);             // cab door windows
-    box(.03, .55, 2.9, glass, s * (hw + .015), 1.95, 1.0);                  // rear side windows
-    box(.03, .1, L - .3, trim, s * (hw + .02), .62, .1);                    // rubbing strip
-    box(.2, .14, .05, trim, s * (hw + .12), 1.6, zF + .78);                 // mirrors
+    side([[1.28, 1.66], [1.86, 2.34], [2.62, 2.34], [2.62, 1.66]], glass, s);                 // cab door
+    side([[3.0, 1.7], [3.0, 2.36], [4.25, 2.36], [4.25, 1.7]], glass, s);                     // big quarter window
+    side([[4.62, 2.0], [4.62, 2.36], [5.35, 2.36], [5.35, 2.0]], glass, s);                   // small rear window
+    side([[.15, sill], [.15, 1.02], [L - .08, 1.02], [L - .08, sill]], clad, s, .008);       // two-tone lower cladding
+    box(.22, .16, .06, black, s * (hw + .14), 1.78, Z(1.32));                                 // mirror head
+    box(.18, .05, .05, black, s * (hw + .06), 1.72, Z(1.32));                                 // mirror arm
+    box(.04, .05, .2, chrome, s * (hw + .02), 1.42, Z(2.25));                                 // door handle
   }
-  box(W + .04, .32, .12, trim, 0, .58, zF - .02);                          // front bumper
-  box(W + .04, .28, .12, trim, 0, .58, L / 2 + .04);                       // rear bumper
-  box(1.1, .36, .04, trim, 0, .98, zF - .01);                              // grille
-  box(.03, 1.9, .03, trim, 0, 1.45, L / 2 + .005);                         // rear door seam
-  for (const [x, z] of [[-1, zF + .95], [1, zF + .95], [-1, 1.95], [1, 1.95]]) {
-    add(new THREE.CylinderGeometry(.37, .37, .26, 28), tire, x * (hw - .08), .37, z, 0, 0, Math.PI / 2);
-    add(new THREE.CylinderGeometry(.2, .2, .27, 16), rim, x * (hw - .08), .37, z, 0, 0, Math.PI / 2);
+  // wheels: 33" all-terrains on black wheels, black arch flares
+  for (const [s, u] of [[-1, .98], [1, .98], [-1, 4.62], [1, 4.62]]) {
+    const x = s * (hw - .06), z = Z(u);
+    add(new THREE.CylinderGeometry(.43, .43, .32, 32), tire, x, .43, z, 0, 0, Math.PI / 2);
+    add(new THREE.TorusGeometry(.4, .045, 6, 32), tire, x + s * .16, .43, z, 0, Math.PI / 2, 0);      // sidewall bulge
+    add(new THREE.CylinderGeometry(.27, .27, .33, 20), wheel, x, .43, z, 0, 0, Math.PI / 2);
+    add(new THREE.TorusGeometry(.52, .075, 8, 28, Math.PI), black, s * (hw + .02), .45, z, 0, Math.PI / 2, 0);   // arch flare
   }
-  const hl = new THREE.MeshStandardMaterial({ color: C.light, emissive: C.light, emissiveIntensity: 3 });
-  const tl = new THREE.MeshStandardMaterial({ color: 0xff2a20, emissive: 0xff2a20, emissiveIntensity: 2 });
-  for (const s of [-1, 1]) { box(.4, .13, .04, hl, s * .74, 1.08, zF - .02); box(.1, .5, .04, tl, s * (hw - .07), 1.2, L / 2 + .02); }
-  // headlight throw on the ground (canvas top = forward after laying the plane flat)
-  const throwTex = canvasTex(256, 256, (g, w, h) => {
-    const grd = g.createLinearGradient(0, h, 0, 0); grd.addColorStop(0, "rgba(255,236,180,.55)"); grd.addColorStop(1, "rgba(255,236,180,0)");
-    g.fillStyle = grd; g.beginPath(); g.moveTo(w * .36, h); g.lineTo(w * .64, h); g.lineTo(w, 0); g.lineTo(0, 0); g.closePath(); g.fill();
-  });
-  add(new THREE.PlaneGeometry(4.2, 5.5), new THREE.MeshBasicMaterial({ map: throwTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
-      0, .02, zF - 2.75, -Math.PI / 2);
-  // Starlink panel on the roof (pivots about its centre to face the boresight)
-  const dish = new THREE.Group(); dish.position.set(0, roof + .14, .7); van.add(dish);
+  // front: grille + star, swept headlights, black steel bumper with hoop, light bar and winch
+  const nose = Z(0) - bv;                                               // front face, outside the bevel
+  box(1.0, .3, .04, black, 0, .9, nose - .01);                          // grille
+  box(.96, .025, .02, chrome, 0, .96, nose - .035);
+  add(new THREE.TorusGeometry(.085, .012, 6, 24), chrome, 0, .9, nose - .04);   // star ring
+  for (const s of [-1, 1]) add(new THREE.BoxGeometry(.34, .09, .05), head, s * .7, 1.08, nose + .02, 0, s * .45, s * -.1);  // swept headlights
+  box(W + .12, .42, .32, black, 0, .66, Z(0) - .14);                                         // bumper
+  for (const s of [-1, 1]) box(.07, .42, .07, black, s * .55, 1.02, Z(0) - .2);              // hoop uprights
+  box(1.17, .07, .07, black, 0, 1.22, Z(0) - .2);                                            // hoop top
+  box(.82, .07, .05, led, 0, 1.13, Z(0) - .24);                                              // bumper light bar
+  box(.3, .14, .1, M({ color: 0x9aa1a9, metalness: .8, roughness: .35 }), 0, .62, Z(0) - .33);  // winch fairlead
+  box(.08, .08, .04, M({ color: 0xd33, roughness: .5 }), 0, .62, Z(0) - .39);                // red hook
+  for (const s of [-1, 1]) box(.09, .09, .03, led, s * .78, .72, Z(0) - .31);                // bumper pods
+  // rear: bumper, tall tail lights, spare on the rear door
+  box(W + .04, .3, .16, black, 0, .7, L / 2 + .06);
+  for (const s of [-1, 1]) box(.1, .62, .04, tail, s * (hw - .06), 1.25, L / 2 + .02);
+  add(new THREE.CylinderGeometry(.41, .41, .28, 28), tire, -.42, 1.45, L / 2 + .2, Math.PI / 2, 0, 0);
+  add(new THREE.CylinderGeometry(.25, .25, .29, 18), wheel, -.42, 1.45, L / 2 + .2, Math.PI / 2, 0, 0);
+  // roof rack: black deck over the roof, front fairing with a double-row light bar, solar panels
+  const rackY = roof + .16;
+  box(W + .06, .05, L - 2.1, black, 0, rackY, Z(2.0 + (L - 2.1) / 2));
+  for (const s of [-1, 1]) box(.06, .14, L - 2.1, black, s * (hw + .03), rackY + .03, Z(2.0 + (L - 2.1) / 2));
+  for (let u = 2.4; u < L - .1; u += .9) for (const s of [-1, 1]) box(.06, .16, .08, black, s * (hw - .2), roof + .08, Z(u));  // towers
+  const fair = add(new THREE.BoxGeometry(W + .1, .34, .36), black, 0, rackY - .02, Z(1.86));
+  fair.rotation.x = -.12;
+  for (const y of [-.07, .07]) add(new THREE.BoxGeometry(W - .3, .07, .03), led, 0, rackY - .02 + y, Z(1.67));
+  box(.03, .45, .03, black, -.5, rackY + .25, Z(2.1));                                       // antenna whip
+  box(.05, .2, .05, black, .82, rackY + .12, Z(5.3));                                        // puck antenna
+  box(W - .3, .04, 1.15, solar, 0, rackY + .05, Z(2.85));                                    // solar panel (front)
+  box(W - .3, .04, 1.05, solar, 0, rackY + .05, Z(5.05));                                    // solar panel (rear)
+  // driver-side rear ladder (rails + rungs)
+  const lx = -(hw + .08);
+  for (const u of [4.95, 5.35]) box(.05, roof - .55, .05, black, lx, (roof + .55) / 2 + .05, Z(u));
+  for (let y = .85; y < roof; y += .3) box(.05, .04, .4, black, lx, y, Z(5.15));
+  // Starlink panel on the rack, between the solar panels (pivots about its centre to face the boresight)
+  const dish = new THREE.Group(); dish.position.set(0, rackY + .16, Z(3.95)); van.add(dish);
   dish.add(new THREE.Mesh(new THREE.BoxGeometry(.56, .035, .82),
-    new THREE.MeshStandardMaterial({ color: 0xf6f8fb, roughness: .45, metalness: .1, emissive: 0x7fdcff, emissiveIntensity: .25 })));
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(.04, .05, .14, 10), trim); mast.position.y = -.08; dish.add(mast);
+    M({ color: 0xf6f8fb, roughness: .45, metalness: .1, emissive: 0x7fdcff, emissiveIntensity: .25 })));
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(.04, .05, .14, 10), black); mast.position.y = -.08; dish.add(mast);
+  // headlight + light-bar throw on the ground (canvas top = forward once the plane lies flat)
+  const throwTex = canvasTex(256, 256, (g, w, h) => {
+    const grd = g.createLinearGradient(0, h, 0, 0); grd.addColorStop(0, "rgba(255,240,200,.6)"); grd.addColorStop(1, "rgba(255,240,200,0)");
+    g.fillStyle = grd; g.beginPath(); g.moveTo(w * .34, h); g.lineTo(w * .66, h); g.lineTo(w, 0); g.lineTo(0, 0); g.closePath(); g.fill();
+  });
+  add(new THREE.PlaneGeometry(4.6, 6), new THREE.MeshBasicMaterial({ map: throwTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+      0, .02, zF - 3.2, -Math.PI / 2);
   van.userData.dish = dish;
   return van;
 }
@@ -174,7 +221,7 @@ export class Sky3D {
     const s = this.scene;
     s.add(new THREE.HemisphereLight(0xcfeeff, 0x08101c, 1.1));
     const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(8, 14, 10); s.add(key);
-    const rimL = new THREE.DirectionalLight(0x5de3ff, 1.6); rimL.position.set(-10, 6, -12); s.add(rimL);
+    const rimL = new THREE.DirectionalLight(0x5de3ff, 1.0); rimL.position.set(-10, 6, -12); s.add(rimL);
     // ground glow + polar grid
     const groundTex = canvasTex(512, 512, (g, w) => {
       const grd = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
@@ -206,7 +253,7 @@ export class Sky3D {
     s.add(new THREE.Points(stars, new THREE.PointsMaterial({ color: 0xbfd8ff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: .55, depthWrite: false })));
     // sky cells (filled by setMap)
     this.skyMat = skyMaterial();
-    this.points = new THREE.Points(new THREE.BufferGeometry(), this.skyMat); this.points.frustumCulled = false; s.add(this.points);
+    this.points = new THREE.Points(new THREE.BufferGeometry(), this.skyMat); this.points.frustumCulled = false; this.points.visible = false; s.add(this.points);
     // van, heading line + chevron on the horizon, beam, pulse ring
     this.van = sprinter(); this.van.scale.setScalar(.82); s.add(this.van);
     this.heading = new THREE.Group(); s.add(this.heading);
@@ -249,6 +296,7 @@ export class Sky3D {
       g.setAttribute("size", new THREE.Float32BufferAttribute(size, 1));
       g.setAttribute("phase", new THREE.Float32BufferAttribute(phase, 1));
       g.setAttribute("obst", new THREE.Float32BufferAttribute(obst, 1));
+      this.points.visible = pos.length > 0;
     }
     if (az != null && (az !== this._az || el !== this._el)) {
       const first = this._az == null;
