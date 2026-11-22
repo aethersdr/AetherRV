@@ -1684,10 +1684,10 @@ function renderNetwork() {
   // dragging across it enables/disables. "License Required" WANs can't be enabled, so they get no handle.
   const wanList = wans.filter(w => w.enabled)
     .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99) || (b.connected - a.connected) || a.id - b.id);
-  const wanOff = wans.filter(w => !w.enabled);
+  const locked = w => /licen[cs]e/i.test(w.message || "");          // needs a licence: can't be enabled → hidden
+  const wanOff = wans.filter(w => !w.enabled && !locked(w));
   const canDrag = canControlDev("peplink") && !ctlPending && wanList.length + wanOff.length > 1;
   const GRIP = `<span class="grip" aria-hidden="true"><svg viewBox="0 0 10 16"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg></span>`;
-  const locked = w => /licen[cs]e/i.test(w.message || "");
   const wanRow = w => `<div class="wan ${w.name === S["peplink.active"] ? "active" : ""} ${w.enabled ? "" : "off"} ${locked(w) ? "locked" : ""}" data-wid="${w.id}">
        ${locked(w) ? `<span class="grip none"></span>` : GRIP}<span class="led led-${esc(w.enabled ? w.led : "gray")}"></span>${icon(w.starlink ? "dish" : w.cellular ? "signal" : w.wifi ? "wifi" : "router")}
        <div><b>${esc(w.name)}</b><span>${esc(w.message)}${w.enabled && w.uptime ? " · up " + dur(w.uptime) : ""}</span></div>

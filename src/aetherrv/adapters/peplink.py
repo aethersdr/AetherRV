@@ -177,8 +177,9 @@ def _entry(current: dict, conn_id: int) -> dict:
 
 def layout_targets(current: dict, order: list, disabled: list | None = None) -> dict[int, dict]:
     """Drag-to-reorder: `order` (enabled, top first) becomes P1, P2, P3, … (capped at P4); `disabled` is switched
-    off. Together they must name every connection on the router exactly once; with `disabled` omitted, the
-    connections that are disabled now stay disabled. At least one stays enabled. Strict → ValueError."""
+    off. Every enabled connection must be named exactly once; connections left out must already be disabled
+    and stay so (with `disabled` omitted, all currently disabled ones stay disabled). At least one stays
+    enabled. Strict → ValueError."""
     for lst, what in ((order, "order"), (disabled or [], "disabled")):
         if not isinstance(lst, list) or not all(isinstance(c, int) for c in lst):
             raise ValueError(f"{what} must be a list of connection ids")
@@ -194,8 +195,12 @@ def layout_targets(current: dict, order: list, disabled: list | None = None) -> 
         disabled = [c for c in current["order"] if not _entry(current, c).get("enable")]
         if set(order) & set(disabled):
             raise ValueError("order includes a disabled connection")
-    if set(order) | set(disabled) != allc:
-        raise ValueError("order + disabled must list every connection exactly once")
+    # Connections the kiosk doesn't show (e.g. "License Required") may be left out, but only if they're disabled
+    # now: they simply stay disabled. Leaving out an enabled connection is an error.
+    missing = allc - set(order) - set(disabled)
+    if any(_entry(current, c).get("enable") for c in missing):
+        raise ValueError("order + disabled must list every enabled connection")
+    disabled = [*disabled, *sorted(missing)]
     out = {c: {"enable": True, "priority": min(i + 1, 4)} for i, c in enumerate(order)}
     out.update({c: {"enable": False, "priority": None} for c in disabled})
     return out

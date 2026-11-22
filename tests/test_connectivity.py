@@ -393,9 +393,12 @@ def test_peplink_layout_targets_strict():
     assert layout_payload(cur, layout_changes(cur, T))["list"] == [
         {"connId": 5, "priority": 2, "enable": True}, {"connId": 2, "enable": False}]       # 1 is already P3: not sent
     for bad in (([4, 1], None), ([4, 1, 2, 5], None), ([4, 4, 1, 2], None), ([], [1, 2, 4, 5]), ([4, 1, 9], None),
-                ([4, 1], [2]), ([4, 1, 2], [5, 2])):
+                ([4, 1], [5]), ([4, 1, 2], [5, 2])):
         with pytest.raises(ValueError):
             layout_targets(cur, *bad)
+    # a hidden, already-disabled connection (5) may be omitted: it stays disabled, nothing sent for it
+    T = layout_targets(cur, [4, 1], [2])
+    assert T[5] == {"enable": False, "priority": None} and 5 not in layout_changes(cur, T)
 
 
 def test_peplink_set_order_one_post_only_changed():
