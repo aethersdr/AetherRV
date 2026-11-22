@@ -251,7 +251,7 @@ async def test_traffic_tiles_proxy_cache_and_cap(aiohttp_client, tmp_path):
     calls = []
 
     t = TrafficTiles("KEY", daily_cap=2)
-    assert "key=KEY" in t.url("flow", "major", 5, 1, 2) and "reduced-sensitivity" in t.url("flow", "major", 5, 1, 2)
+    assert "key=KEY" in t.url("flow", "major", 5, 1, 2) and "relative-delay" in t.url("flow", "major", 5, 1, 2)
     assert t.valid("incidents", "s0-dark", 7, 10, 20) and not t.valid("incidents", "s9", 7, 1, 1)
     assert not t.valid("flow", "major", 13, 0, 0) and not t.valid("flow", "major", 3, 8, 0)
 

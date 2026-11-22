@@ -1,7 +1,7 @@
 """TomTom traffic tiles for the Weather map, fetched by the backend so the API key never reaches a browser.
 
-Two raster layers (TomTom Traffic API v4): flow with the 'reduced-sensitivity' style (only roads well below
-free-flow speed, i.e. real slowdowns) and incidents (s0 / s0-dark). Tiles are cached for a few minutes and
+Two raster layers (TomTom Traffic API v4): flow with the 'relative-delay' style (only roads slower than
+free-flow, i.e. slowdowns; free-flowing roads stay undrawn) and incidents (s0 / s0-dark). Tiles are cached for a few minutes and
 shared by every screen; a daily cap keeps us inside the free tier and limits WAN data.
 """
 
@@ -35,8 +35,8 @@ class TrafficTiles:
         return style in STYLES.get(kind, ()) and 2 <= z <= 12 and 0 <= x < 2 ** z and 0 <= y < 2 ** z
 
     def url(self, kind: str, style: str, z: int, x: int, y: int) -> str:
-        if kind == "flow":                          # reduced-sensitivity: only significant slowdowns get coloured
-            return f"{BASE}/flow/reduced-sensitivity/{z}/{x}/{y}.png?key={self.key}&tileSize=512&thickness=6"
+        if kind == "flow":                          # relative-delay: only roads slower than free-flow are drawn
+            return f"{BASE}/flow/relative-delay/{z}/{x}/{y}.png?key={self.key}&tileSize=512&thickness=6"
         return f"{BASE}/incidents/{style}/{z}/{x}/{y}.png?key={self.key}&tileSize=512&t=-1"
 
     async def get(self, kind: str, style: str, z: int, x: int, y: int) -> tuple[int, bytes]:
