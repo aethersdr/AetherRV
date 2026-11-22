@@ -1876,10 +1876,6 @@ function connect() {
 // Tap the clock to toggle °F/°C.
 $(".clock").addEventListener("click", () => { store.set("vp.temp", UNIT === "F" ? "C" : "F"); location.reload(); });
 
-connect();
-if (new URLSearchParams(location.search).get("inv") === "1") setTimeout(openInvModal, 2500);   // screenshot/debug aid
-if (new URLSearchParams(location.search).get("batt") === "1") setTimeout(openBattModal, 2500);
-go(VIEWS.some(v => v[0] === location.hash.slice(1)) ? location.hash.slice(1) : "home");
 
 
 // ── Home quick switches: DEMO placeholders only. Toggle on screen, send nothing (no bus, no backend).
@@ -1995,3 +1991,11 @@ if (IS_LOCAL) {
   $("#wake-shield").addEventListener("pointerdown", wake);
   $("#wake-shield").addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); });
 }
+
+// ── Start-up: LAST, after every section above has defined its constants and handlers. Running go()/render
+// earlier threw (QUICK_DEMO in its temporal dead zone) when the page opened on Home, which aborted the rest
+// of this module: the kiosk (which always opens on Home) lost the Home tile, heater and +/− handlers.
+connect();
+if (new URLSearchParams(location.search).get("inv") === "1") setTimeout(openInvModal, 2500);   // screenshot/debug aid
+if (new URLSearchParams(location.search).get("batt") === "1") setTimeout(openBattModal, 2500);
+go(VIEWS.some(v => v[0] === location.hash.slice(1)) ? location.hash.slice(1) : "home");

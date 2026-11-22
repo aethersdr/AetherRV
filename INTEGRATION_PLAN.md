@@ -627,3 +627,8 @@ Sections 1–31 use the old names. Mapping:
   - Dropping a row renumbers the enabled WANs P1, P2, P3… in list order (anything past P4 stays at P4), after one confirmation.
   - `set_wan_order {order}`: strict `order_targets` (every enabled connection exactly once, disabled ones never sent); one POST containing only the connections whose priority changes; verified until all show the new priority.
   - The card stops re-rendering while a drag is in progress. Tested on the Pi with CDP mouse events: drag, confirm dialog, cancel, nothing sent.
+- **2026-11-21, kiosk Home controls dead: root cause.** The startup code (`connect()` + initial `go(view)`) ran mid-file. When the page opened on Home (the kiosk always does), `renderQuick()` hit `QUICK_DEMO` in its temporal dead zone and threw, which aborted the rest of the module.
+  - Lost with it: the tile, heater and +/− handlers (+ fell through to the card → Climate) and the kiosk screen-off block. Laptops that loaded another view first were unaffected.
+  - Fix: start-up runs last; every start view was scanned headless for load errors.
+  - Also: in-place DOM morph for tappable containers, a `[data-goto]` guard, and a ctlPending watchdog.
+  - Lesson: a headless test that stubs clicks proved nothing; the real-handler test with a command trap caught it. Once the trap failed to load and a real Cabin lights ON was sent; it was turned off on owner OK.
