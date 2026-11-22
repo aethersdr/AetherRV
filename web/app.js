@@ -1100,23 +1100,22 @@ $("#wx-play").addEventListener("click", () => {
 });
 // Sun + position strip at the top of the Weather card (moved from the Network page's Location card).
 function renderWxLoc() {
+  // One compact line in the card header: sunrise ▬ sunset · daylight · altitude · parked/moving.
   const lat = S["location.lat"], lon = S["location.lon"];
-  const meta = [S["location.alt_m"] != null ? Math.round(S["location.alt_m"] * 3.281).toLocaleString() + " ft" : null,
-    lat == null ? null : S["location.speed"] ? "moving" : "parked",
-    S["location.hdop"] != null ? "HDOP " + S["location.hdop"] : null,
-    S["location.source"] ? esc(S["location.source"]) + " GPS" : null].filter(Boolean).join(" · ");
+  const tip = [S["location.hdop"] != null ? "HDOP " + S["location.hdop"] : null,
+    S["location.source"] ? S["location.source"] + " GPS" : null].filter(Boolean).join(" · ");
+  const extra = [S["location.alt_m"] != null ? Math.round(S["location.alt_m"] * 3.281).toLocaleString() + " ft" : null,
+    lat == null ? null : S["location.speed"] ? "moving" : "parked"].filter(Boolean).join(" · ");
   const st = lat != null ? sunTimes(+lat, +lon) : null;
-  if (!st) { $("#wx-loc").innerHTML = meta ? `<div class="wx-loc-meta">${icon("pin")}${meta}</div>` : ""; return; }
+  const el = $("#wx-loc"); el.title = tip;
+  if (!st) { el.innerHTML = extra ? `<span>${extra}</span>` : ""; return; }
   const hm = t => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   const d0 = new Date(); d0.setHours(0, 0, 0, 0);
   const pct = t => Math.max(0, Math.min(100, (t - d0) / 864000));
   const len = Math.round((st.set - st.rise) / 60000);
-  $("#wx-loc").innerHTML = `
-    <div class="wx-sun"><b>${hm(st.rise)}</b><span>sunrise</span></div>
+  el.innerHTML = `<b>${hm(st.rise)}</b>
     <div class="daybar"><i style="left:${pct(st.rise)}%;width:${pct(st.set) - pct(st.rise)}%"></i><b style="left:${pct(Date.now())}%"></b></div>
-    <div class="wx-sun"><b>${hm(st.set)}</b><span>sunset</span></div>
-    <div class="wx-sun"><b>${Math.floor(len / 60)} h ${len % 60} m</b><span>daylight</span></div>
-    <div class="wx-loc-meta">${icon("pin")}${meta}</div>`;
+    <b>${hm(st.set)}</b><span>${Math.floor(len / 60)} h ${len % 60} m daylight${extra ? " · " + extra : ""}</span>`;
 }
 
 function renderWeather() {

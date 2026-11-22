@@ -138,10 +138,9 @@
     <!-- WEATHER -->
     <section class="view" data-view="weather">
       <div class="card wx-card">
-        <div class="card-h"><h2>Weather radar</h2><span class="wx-fc-for" id="wx-fc-for"></span><span class="muted" id="wx-sub"></span>
+        <div class="card-h"><h2>Weather radar</h2><span class="wx-fc-for" id="wx-fc-for"></span><div class="wx-loc" id="wx-loc"></div><span class="muted" id="wx-sub"></span>
           <button class="ctl-pill wx-btn" id="wx-dark">Dark map</button>
           <button class="ctl-pill wx-btn" id="wx-recenter">Re-centre</button></div>
-        <div class="wx-loc" id="wx-loc"></div>
         <!-- AetherMap's dark basemap (AetherSDR BasemapStyle::darkImage): reversed luminance ramped from
              color.map.darkDetail (#c8d8e8) to color.map.darkBackground (#18212b); radar is not filtered. -->
         <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="wx-dark-filter" color-interpolation-filters="sRGB">
