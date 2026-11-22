@@ -345,8 +345,9 @@ function renderBattCard() {
       <td>${(+b.voltage).toFixed(2)} V</td><td>${b.current == null ? "—" : (+b.current).toFixed(1) + " A"}</td>
       <td>${b.current == null ? "—" : fmtW(b.voltage * b.current)}</td><td>${b.cycles ?? "—"}</td>
       <td>${b.remaining_ah == null ? "—" : (+b.remaining_ah).toFixed(1)}<small>/${BATT_AH}</small></td>
+      <td title="${(b.temps || []).length >= 4 ? `T1 ${fmtT(b.temps[0])} · T2 ${fmtT(b.temps[1])} · ambient ${fmtT(b.temps[2])} · MOS ${fmtT(b.temps[3])}` : ""}">${(b.temps || []).length ? fmtT(Math.max(...b.temps.slice(0, 2))) : "—"}</td>
       <td class="mos"><i class="${b.charge_fet ? "on" : "off"}" title="Charge MOS ${b.charge_fet ? "on" : "off"}">C</i><i class="${b.discharge_fet ? "on" : "off"}" title="Discharge MOS ${b.discharge_fet ? "on" : "off"}">D</i></td></tr>`
-    : `<tr class="na"><td><b>${esc(b.name)}</b></td><td colspan="7" class="muted">${esc(b.error ? "no data · reconnecting" : "connecting…")}</td></tr>`;
+    : `<tr class="na"><td><b>${esc(b.name)}</b></td><td colspan="8" class="muted">${esc(b.error ? "no data · reconnecting" : "connecting…")}</td></tr>`;
   $("#batt-card").innerHTML = `
     <div class="bc-head">
       <div class="bc-soc" style="color:${soc == null ? "var(--muted)" : "var(--ink)"}">${soc == null ? "—" : Math.round(soc)}<small>%</small></div>
@@ -360,7 +361,7 @@ function renderBattCard() {
       <div><span>VLO</span><b>${v3(lo)}</b></div><div><span>VHI</span><b>${v3(hi)}</b></div>
       <div><span>Cells T1/T2</span><b>${tmax(0, 2)}</b></div><div><span>Ambient</span><b>${tmax(2, 3)}</b></div>
       <div><span>MOS</span><b>${tmax(3, 4)}</b></div><div><span>Battery (shunt)</span><b>${fmtT(S["victron.battery.temp"])}</b></div></div>
-    <table class="bc-table"><thead><tr><th>Battery</th><th>SoC</th><th>Volts</th><th>Amps</th><th>Power</th><th>Cycles</th><th>Ah</th><th>MOS</th></tr></thead>
+    <table class="bc-table"><thead><tr><th>Battery</th><th>SoC</th><th>Volts</th><th>Amps</th><th>Power</th><th>Cycles</th><th>Ah</th><th>Temp</th><th>MOS</th></tr></thead>
       <tbody>${ble.map(row).join("")}</tbody></table>` : `<div class="muted">No per-battery data (Bluetooth adapter off).</div>`}`;
 }
 
