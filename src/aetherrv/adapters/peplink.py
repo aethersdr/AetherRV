@@ -276,7 +276,11 @@ class PeplinkClient:
             await self._grant()
         s = await self._sess()
         params = {"accessToken": self._token} if self.mode == "client" else {}
-        async with s.post(f"{self.base}/{func}", params=params, json=body, ssl=self.ssl) as r:
+        # fw 8.6.1: a cookie-session POST is only accepted as a web-admin request with X-Requested-With
+        # (otherwise it's treated as token auth → "401 Unauthorized"). Verified with a no-op POST, 2026-11-21.
+        origin = self.base[:-len("/api")]
+        headers = {} if self.mode == "client" else {"X-Requested-With": "XMLHttpRequest", "Origin": origin, "Referer": origin + "/"}
+        async with s.post(f"{self.base}/{func}", params=params, json=body, headers=headers, ssl=self.ssl) as r:
             resp = await r.json(content_type=None)
         if resp.get("stat") != "ok":
             raise PeplinkError(f"{func}: {resp.get('code')} {resp.get('message')}")
