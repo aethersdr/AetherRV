@@ -1227,7 +1227,7 @@ function rvSet(pos) {
   rvLayers.forEach((l, k) => { if (l && !keep.has(k) && wxMap.hasLayer(l)) wxMap.removeLayer(l); });
   keep.forEach(k => { const l = rvLayer(k); if (!wxMap.hasLayer(l)) l.setOpacity(0).addTo(wxMap); });
   if (rvIdx >= 0 && rvLayers[rvIdx] && rvIdx !== i) rvLayers[rvIdx].setOpacity(0);
-  rvIdx = i; rvLayers[i].setOpacity(0.85);
+  rvIdx = i; rvLayers[i].setOpacity(rvAlpha);
 }
 
 // ── RadarGL: the radar as one WebGL2 canvas in its own map pane (positioned/zoom-animated like Leaflet's Canvas
@@ -1412,7 +1412,7 @@ const RadarGL = window.L && L.Renderer.extend({          // (guarded: a missing 
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, fl ? fl.tex : null);
     gl.uniform2fv(u.cW0, this.cW0); gl.uniform2fv(u.cWs, this.cWs); gl.uniform2fv(u.aW0, sp.W0); gl.uniform2fv(u.aWs, sp.Ws);
     gl.uniform2fv(u.fW0, fl ? fl.W0 : [0, 0]); gl.uniform2fv(u.fWs, fl ? fl.Ws : [1, 1]);
-    gl.uniform1f(u.t, B ? t : 0); gl.uniform1f(u.alpha, 0.85); gl.uniform1f(u.hasB, B ? 1 : 0);
+    gl.uniform1f(u.t, B ? t : 0); gl.uniform1f(u.alpha, rvAlpha); gl.uniform1f(u.hasB, B ? 1 : 0);
     gl.uniform1f(u.hasF, fl ? 1 : 0); gl.uniform1f(u.fScale, fl ? fl.scale : 0);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -1476,6 +1476,26 @@ $("#wx-play").addEventListener("click", () => {
   if (rvTimer || rvRaf) { rvStop(); rvSet(Math.round(rvPos)); return; }   // pause on a real frame
   if (rvFrames.length) rvPlay();
 });
+// Radar opacity: the glass slider above the zoom buttons (10-100 %), remembered per screen.
+let rvAlpha = (v => isFinite(v) ? Math.max(.1, Math.min(1, v)) : .85)(+store.get("vp.radar.opacity", .85));
+function rvSetAlpha(v, save = true) {
+  rvAlpha = Math.max(.1, Math.min(1, Math.round(v * 20) / 20));        // 5 % steps
+  const p = (rvAlpha - .1) / .9 * 100;
+  $("#wx-opac-fill").style.height = `${p}%`; $("#wx-opac-thumb").style.bottom = `${p}%`;
+  $("#wx-opac").setAttribute("aria-valuenow", Math.round(rvAlpha * 100)); $("#wx-opac").title = `Radar opacity ${Math.round(rvAlpha * 100)} %`;
+  if (save) store.set("vp.radar.opacity", rvAlpha);
+  if (rvGL) rvGL.draw(rvPos); else if (rvIdx >= 0 && rvLayers[rvIdx]) rvLayers[rvIdx].setOpacity(rvAlpha);
+}
+rvSetAlpha(rvAlpha, false);
+{
+  const el = $("#wx-opac"), track = $("#wx-opac-track");
+  const at = e => { const r = track.getBoundingClientRect(); return .1 + .9 * Math.max(0, Math.min(1, (r.bottom - e.clientY) / r.height)); };
+  let drag = null;
+  el.addEventListener("pointerdown", e => { drag = e.pointerId; el.setPointerCapture(e.pointerId); el.classList.add("drag"); rvSetAlpha(at(e)); });
+  el.addEventListener("pointermove", e => { if (drag === e.pointerId) rvSetAlpha(at(e)); });
+  const end = e => { if (drag !== e.pointerId) return; drag = null; el.classList.remove("drag"); };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+}
 // Loop speed: one button cycling 1× → 2× → 4× (1× = 700 ms a frame), remembered per screen.
 const RV_SPEEDS = [1, 2, 4];
 const rvSpeed = () => { const v = +store.get("vp.radar.speed", 1); return RV_SPEEDS.includes(v) ? v : 1; };

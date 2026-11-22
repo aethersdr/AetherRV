@@ -146,6 +146,12 @@
         <div class="wx-body">
           <div class="wx-wrap">
             <div id="wx-map"></div>
+            <div class="wx-opac" id="wx-opac" role="slider" aria-label="Radar opacity" aria-valuemin="10" aria-valuemax="100">
+              <svg class="wx-opac-ico" viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="wx-opac-half"><rect x="0" y="13" width="24" height="11"/></clipPath></defs>
+                <path class="drop" d="M12 3.2c3.3 4.2 6 7.6 6 10.8a6 6 0 0 1-12 0c0-3.2 2.7-6.6 6-10.8z"/>
+                <path class="fill" clip-path="url(#wx-opac-half)" d="M12 3.2c3.3 4.2 6 7.6 6 10.8a6 6 0 0 1-12 0c0-3.2 2.7-6.6 6-10.8z"/></svg>
+              <div class="wx-opac-track" id="wx-opac-track"><div class="wx-opac-fill" id="wx-opac-fill"></div><div class="wx-opac-thumb" id="wx-opac-thumb"></div></div>
+            </div>
             <div class="wx-zoom" id="wx-zoom">
               <button id="wx-zin" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
               <button id="wx-zout" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button></div>

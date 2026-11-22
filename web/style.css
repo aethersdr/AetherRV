@@ -624,6 +624,16 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-locate svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .wx-locate svg .dot { fill: currentColor; stroke: none; }
 .wx-locate:active { background: rgba(14,17,22,.85); color: var(--c-batt); }
+.wx-opac { position: absolute; right: 14px; bottom: 252px; z-index: 500; width: 64px; height: 250px; border-radius: 14px;
+  display: flex; flex-direction: column; align-items: center; padding: 12px 0 18px; box-sizing: border-box; touch-action: none; cursor: pointer;
+  background: rgba(14,17,22,.62); border: 1px solid var(--line); backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.wx-opac-ico { width: 26px; height: 26px; flex: none; margin-bottom: 14px; }
+.wx-opac-ico .drop { fill: none; stroke: var(--ink); stroke-width: 1.8; } .wx-opac-ico .fill { fill: var(--ink); }
+.wx-opac-track { position: relative; flex: 1; width: 4px; border-radius: 2px; background: rgba(255,255,255,.22); }
+.wx-opac-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 2px; background: var(--c-batt); }
+.wx-opac-thumb { position: absolute; left: 50%; width: 20px; height: 20px; margin: 0 0 -10px -10px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-batt) 45%, transparent); transition: transform .12s; }
+.wx-opac.drag .wx-opac-thumb { transform: scale(1.25); }
 .wx-zoom { position: absolute; right: 14px; bottom: 110px; z-index: 500; width: 64px; display: flex; flex-direction: column;
   border-radius: 14px; overflow: hidden; background: rgba(14,17,22,.62); border: 1px solid var(--line);
   backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }   /* same glass as the locate button, stacked above it */
