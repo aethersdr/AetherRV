@@ -28,9 +28,11 @@ class TxGate:
     def is_enabled(self, device: str) -> bool:
         return self._enabled.get(device, False) is True
 
-    def check(self, device: str, what: str) -> None:
+    def check(self, device: str, what: str, quiet: bool = False) -> None:
+        """quiet: routine protocol housekeeping (e.g. answering a peer's address-claim poll) is logged at DEBUG
+        when allowed; a BLOCKED transmit is always a warning."""
         if self.is_enabled(device):
-            log.info("TX allowed  %s: %s", device, what)
+            (log.debug if quiet else log.info)("TX allowed  %s: %s", device, what)
             return
         self.blocked_count[device] = self.blocked_count.get(device, 0) + 1
         log.warning("TX BLOCKED %s: %s (tx_enabled is false)", device, what)

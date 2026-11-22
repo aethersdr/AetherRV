@@ -108,12 +108,19 @@ class N2kNode:
         return (self.claimed_at is not None and not self.lost
                 and time.monotonic() - self.claimed_at >= self.CLAIM_SETTLE)
 
-    def _send_claim(self) -> None:
+    def _send_claim(self, reason: str = "claim") -> None:
+        """reason "poll": answering a peer's ISO request for address claims. The Cerbo polls us every 10 s and the
+        IPG100 broadcasts the same request, so those replies are logged at DEBUG (they were ~57 % of the log).
+        First claims, moves and contests stay at INFO/WARNING."""
         msg = can.Message(arbitration_id=can_id(6, PGN_ADDRESS_CLAIM, self.address, 255),
                           data=self.name.to_bytes(8, "little"), is_extended_id=True)
-        self.bus.send("n2k", msg, self.gate)
+        poll = reason == "poll"
+        self.bus.send("n2k", msg, self.gate, quiet=poll)
+        if not poll or self.claimed_at is None:
+            log.info("n2k: claiming address %d (%s)", self.address, reason)
+        else:
+            log.debug("n2k: address claim %d re-sent (answering a request)", self.address)
         self.claimed_at = time.monotonic()
-        log.info("n2k: claiming address %d", self.address)
 
     def claim(self) -> None:
         free = [a for a in range(self.address, 252) if a not in self.taken] + \
@@ -144,8 +151,9 @@ class N2kNode:
                     except TxBlocked:
                         pass
                 else:                                               # we win: re-assert
+                    log.warning("n2k: address %d contested by a lower-priority NAME; re-asserting", src)
                     try:
-                        self._send_claim()
+                        self._send_claim("contest")
                     except TxBlocked:
                         pass
             else:
@@ -153,7 +161,7 @@ class N2kNode:
         elif pf == 0xEA and (ps in (255, self.address)) and len(msg.data) >= 3:   # ISO request
             if int.from_bytes(bytes(msg.data[:3]), "little") == PGN_ADDRESS_CLAIM and self.claimed_at is not None:
                 try:
-                    self._send_claim()
+                    self._send_claim("poll")
                 except TxBlocked:
                     pass
         elif src < 252:

@@ -45,8 +45,8 @@ class FakeBus:
     def __init__(self):
         self.sent = []
 
-    def send(self, device, msg, gate):
-        gate.check(device, "test")
+    def send(self, device, msg, gate, quiet=False):
+        gate.check(device, "test", quiet=quiet)
         self.sent.append(msg)
 
 
@@ -306,3 +306,21 @@ async def test_plain_on_to_trigger_channel_stays_blocked():
     status(n2k, 0, 32); status(n2k, 0, 33)
     r = await ctl.command("set", {"channel": 11, "on": True})
     assert not r["ok"] and bus.sent == []
+
+
+def test_claim_poll_reply_is_sent_but_logged_quietly(caplog):
+    import logging
+    import can
+    from aetherrv.switching import N2kNode, PGN_ADDRESS_CLAIM, can_id
+    from aetherrv.txgate import TxGate
+    bus = FakeBus()
+    node = N2kNode(bus, TxGate({"n2k": True}))
+    with caplog.at_level(logging.INFO):
+        node.claim()                                            # first claim: visible
+        assert any("claiming address 150 (claim)" in r.message for r in caplog.records)
+        caplog.clear()
+        req = can.Message(arbitration_id=can_id(6, 59904, 228, 150), data=PGN_ADDRESS_CLAIM.to_bytes(3, "little"),
+                          is_extended_id=True)
+        node.on_frame(req)                                      # the Cerbo's 10-s poll
+        assert len(bus.sent) == 2                               # still answered
+        assert not [r for r in caplog.records if r.levelno >= logging.INFO]   # but not at INFO

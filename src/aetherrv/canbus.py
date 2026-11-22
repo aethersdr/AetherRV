@@ -150,9 +150,9 @@ class CanBus:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30.0)
 
-    def send(self, device: str, msg: can.Message, gate: "TxGate") -> None:
+    def send(self, device: str, msg: can.Message, gate: "TxGate", quiet: bool = False) -> None:
         """The only transmit path. Refused unless `device` has tx_enabled in config."""
-        gate.check(device, f"{self.name} {msg.arbitration_id:X}#{bytes(msg.data).hex()}")
+        gate.check(device, f"{self.name} {msg.arbitration_id:X}#{bytes(msg.data).hex()}", quiet=quiet)
         if self._bus is None:
             raise can.CanOperationError(f"[{self.name}] bus not open")
         self._bus.send(msg)

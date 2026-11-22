@@ -632,3 +632,7 @@ Sections 1–31 use the old names. Mapping:
   - Fix: start-up runs last; every start view was scanned headless for load errors.
   - Also: in-place DOM morph for tappable containers, a `[data-goto]` guard, and a ctlPending watchdog.
   - Lesson: a headless test that stubs clicks proved nothing; the real-handler test with a command trap caught it. Once the trap failed to load and a real Cabin lights ON was sent; it was turned off on owner OK.
+- **2026-11-22, N2K address-claim chatter.**
+  - The Cerbo GX (src 228) sends an ISO request for PGN 60928 to AetherRV (150) every 10 s, and the IPG100 (40) broadcasts the same request. AetherRV answers each one, as NMEA 2000 requires.
+  - Bus cost: 0.2 frames/s of ~55 (0.36 %). Log cost: ~57 % of all journal lines.
+  - These poll replies are now logged at DEBUG (TxGate `quiet`). First claims, moves/contests and blocked transmits stay visible.
