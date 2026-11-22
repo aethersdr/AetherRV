@@ -1111,10 +1111,10 @@ function renderWxLoc() {
   const d0 = new Date(); d0.setHours(0, 0, 0, 0);
   const pct = t => Math.max(0, Math.min(100, (t - d0) / 864000));
   const len = Math.round((st.set - st.rise) / 60000), a = pct(st.rise), b = pct(st.set);
-  el.innerHTML = `<b>${hm(st.rise)}</b>
+  el.innerHTML = `<b>${hm(st.rise)}<small>sunrise</small></b>
     <div class="daybar"><i style="left:${a}%;width:${b - a}%"></i><b style="left:${pct(Date.now())}%"></b>
       <em style="left:${(a + b) / 2}%">${Math.floor(len / 60)} h ${len % 60} m daylight</em></div>
-    <b>${hm(st.set)}</b>`;
+    <b>${hm(st.set)}<small>sunset</small></b>`;
 }
 
 function renderWeather() {
