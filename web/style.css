@@ -1061,3 +1061,26 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 /* every WAN row the same height: the plain "off"/P# label gets the P# button's box */
 #wan-card .wans .prio:not(.prio-btn) { min-height: 36px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid transparent; padding: 4px 10px; box-sizing: border-box; }
+/* Climate: dial (drag the ring) with a vertical fan-speed slider to its right */
+.climate-grid > .dial-card { display: grid; grid-template-columns: minmax(0, 1fr) 104px; column-gap: 14px; place-items: stretch; }
+.dial-card .dial-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.dial-card .dial-ctl { display: flex; justify-content: center; }
+.dial-card .dial-ctl .ctl-val span { font-size: 15px; color: var(--muted); }
+.fan-col { display: flex; flex-direction: column; align-items: center; gap: 12px; min-height: 0; padding: 4px 0 2px; }
+.fan-col .fan-read b { font-size: 30px; }
+.fan-col .fan-read span { font-size: 13px; white-space: nowrap; }
+.fan-col #fan-auto { width: 100%; height: 64px; }
+.vslider { flex: 1; width: 100%; min-height: 160px; display: flex; justify-content: center; touch-action: none; cursor: grab; padding: 14px 0; }
+.vslider.dragging { cursor: grabbing; }
+.vslider.disabled { opacity: .4; cursor: default; }
+.vs-track { position: relative; width: 52px; height: 100%; border-radius: 26px; background: var(--track);
+  box-shadow: inset 0 0 0 1px var(--line); }
+.vs-fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 26px; min-height: 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--c-cabin) 55%, transparent), var(--c-cabin)); transition: height .35s ease; }
+.vs-thumb { position: absolute; left: -8px; right: -8px; height: 22px; margin-bottom: -11px; border-radius: 11px;
+  background: var(--ink); box-shadow: 0 2px 8px rgb(0 0 0 / .45); transition: bottom .35s ease; }
+.vslider.dragging .vs-fill, .vslider.dragging .vs-thumb { transition: none; }
+/* Auto: the MCS7 drives it; striped fill so it reads as automatic, still moving live */
+.vslider.auto .vs-fill { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c-cabin) 70%, transparent) 0 8px,
+  color-mix(in srgb, var(--c-cabin) 45%, transparent) 8px 16px); }
+.vslider.auto .vs-thumb { background: color-mix(in srgb, var(--ink) 75%, var(--c-cabin)); }

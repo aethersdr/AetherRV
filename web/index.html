@@ -88,25 +88,22 @@
     <section class="view" data-view="climate">
       <div class="climate-grid">
         <div class="card dial-card">
-          <div class="dial-area">
-            <div class="dial-wrap" id="dial"></div>
-            <div class="dial-center">
-              <div class="dial-temp" id="dial-temp">—</div>
-              <div class="muted" id="dial-label">cabin</div>
+          <div class="dial-main">
+            <div class="dial-area">
+              <div class="dial-wrap" id="dial"></div>
+              <div class="dial-center">
+                <div class="dial-temp" id="dial-temp">—</div>
+                <div class="muted" id="dial-label">cabin</div>
+              </div>
             </div>
+            <div class="dial-ctl"><div class="ctl-val"><b id="sp-val">—</b><span id="sp-note">setpoint</span></div></div>
           </div>
-          <div class="dial-ctl">
-            <div class="ctl-row">
-              <button class="ctl-btn" id="sp-down" aria-label="Lower setpoint">−</button>
-              <div class="ctl-val"><b id="sp-val">—</b><span id="sp-note">setpoint</span></div>
-              <button class="ctl-btn" id="sp-up" aria-label="Raise setpoint">+</button>
+          <div class="fan-col">
+            <div class="ctl-val sm fan-read"><b id="fan-val">—</b><span id="fan-note">fan</span></div>
+            <div class="vslider" id="fan-slider" role="slider" aria-label="Fan speed" aria-valuemin="0" aria-valuemax="100">
+              <div class="vs-track"><div class="vs-fill" id="fan-fill"></div><div class="vs-thumb" id="fan-thumb"></div></div>
             </div>
-            <div class="ctl-row fan">
-              <button class="ctl-pill" id="fan-auto">Auto</button>
-              <button class="ctl-btn sm" id="fan-down" aria-label="Fan slower">−</button>
-              <div class="ctl-val sm"><b id="fan-val">—</b><span id="fan-note">fan</span></div>
-              <button class="ctl-btn sm" id="fan-up" aria-label="Fan faster">+</button>
-            </div>
+            <button class="ctl-pill" id="fan-auto">Auto</button>
           </div>
         </div>
         <div class="heaters"><div id="heaters" class="heater-list"></div></div>

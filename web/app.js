@@ -645,6 +645,7 @@ function control(cmd, value, label, device = "rixens") {
   toast(`${label}…`, "busy");
   ctlWaiters[id] = r => { clearTimeout(ctlPending?.timer); ctlPending = null; spPending = cmd === "setpoint" ? null : spPending;
     if (cmd === "shore_limit") limPending = null;
+    if (cmd === "fan") fanPending = null;
     toast(r.ok ? `${label}: ${r.detail}` : `${label} failed: ${r.detail}`, r.ok ? "ok" : "bad"); render(); };
   // Watchdog: a lost result (socket dropped mid-command, or sent while reconnecting) must never leave every
   // control on this screen dead. Longer than any backend verify window (Starlink install verifies for 90 s).
@@ -658,6 +659,7 @@ function dropPending(id, why) {
   clearTimeout(p.timer); delete ctlWaiters[p.id];
   ctlPending = null; spPending = p.cmd === "setpoint" ? null : spPending;
   if (p.cmd === "shore_limit") limPending = null;
+  if (p.cmd === "fan") fanPending = null;
   toast(`${p.label}: ${why}`, "bad"); render();
 }
 const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok", n2k: "n2k.controls_ok", peplink: "peplink.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
@@ -720,32 +722,59 @@ const endDrag = ev => {
 $("#dial").addEventListener("pointerup", endDrag);
 $("#dial").addEventListener("pointercancel", ev => { if (spDragging) { spDragging = false; spPending = null; renderClimate(); } });
 
-function nudgeFan(d) {
+// Fan speed: a vertical slider beside the dial. Drag to set a manual speed (5 % steps, sent once on release);
+// in Auto it follows the MCS7's live PID output, so the thumb moves on its own.
+let fanDrag = false, fanPending = null;
+const fanPct = ev => {
+  const r = $("#fan-slider .vs-track").getBoundingClientRect();
+  return Math.max(0, Math.min(100, Math.round((1 - (ev.clientY - r.top) / r.height) * 20) * 5));
+};
+$("#fan-slider").addEventListener("pointerdown", ev => {
+  if (!canControl() || ctlPending) return;
+  ev.preventDefault();
+  $("#fan-slider").setPointerCapture(ev.pointerId);
+  fanDrag = true; fanPending = fanPct(ev);
+  renderClimateControls();
+});
+$("#fan-slider").addEventListener("pointermove", ev => {
+  if (!fanDrag) return;
+  const v = fanPct(ev);
+  if (v !== fanPending) { fanPending = v; renderClimateControls(); }
+});
+$("#fan-slider").addEventListener("pointerup", () => {
+  if (!fanDrag) return;
+  fanDrag = false;
   const f = S["climate.rixens.fan_speed"];
-  const base = typeof f === "number" ? f : 50;
-  const next = Math.min(100, Math.max(0, Math.round((base + d) / 10) * 10));
-  control("fan", next, `Fan ${next}%`);
-}
+  if (fanPending != null && f !== fanPending) control("fan", fanPending, `Fan ${fanPending}%`);   // also leaves Auto
+  else fanPending = null;
+  renderClimateControls();
+});
+$("#fan-slider").addEventListener("pointercancel", () => { fanDrag = false; fanPending = null; renderClimateControls(); });
+
 function renderClimateControls() {
   const ok = canControl() && !ctlPending;
   const live = S["climate.rixens.live"];
   const sp = spDisplay();
   $("#sp-val").textContent = sp == null ? "—" : `${sp}°`;
   $("#sp-note").textContent = !live ? "setpoint (MCS7 not connected)" : spDragging ? "setpoint · release to set" : spPending != null ? "setpoint · sending…" :
-    !CAN_CTL ? "setpoint · view only" : !S["climate.rixens.controls_ok"] ? "setpoint · control off" : "setpoint";
+    !CAN_CTL ? "setpoint · view only" : !S["climate.rixens.controls_ok"] ? "setpoint · control off" : "setpoint · drag the ring";
   const f = S["climate.rixens.fan_speed"];
   const fa = S["climate.rixens.fan_auto_pct"], fanOn = S["climate.rixens.fan_running"];
-  $("#fan-val").textContent = f == null ? "—" : f === "auto" ? (fa == null ? "Auto" : `${fanOn === false ? 0 : fa}%`)
-    : f === "off" ? "Off" : `${f}%`;
-  $("#fan-note").textContent = f === "auto" ? "fan · auto" : "fan";
+  const auto = f === "auto" && fanPending == null;
+  const pos = fanPending != null ? fanPending : f === "auto" ? (fanOn === false ? 0 : fa) : f === "off" ? 0 : (typeof f === "number" ? f : null);
+  $("#fan-val").textContent = fanPending != null ? `${fanPending}%` : f == null ? "—" : pos == null ? (auto ? "Auto" : "—") : `${pos}%`;
+  $("#fan-note").textContent = fanDrag ? "fan · release to set" : fanPending != null ? "fan · sending…" : auto ? "fan · auto" : f === "off" ? "fan · off" : "fan";
+  const sl = $("#fan-slider");
+  sl.classList.toggle("auto", auto);
+  sl.classList.toggle("disabled", !ok && !fanDrag);
+  sl.classList.toggle("dragging", fanDrag);
+  sl.setAttribute("aria-valuenow", pos ?? 0);
+  $("#fan-fill").style.height = `${pos ?? 0}%`;
+  $("#fan-thumb").style.bottom = `${pos ?? 0}%`;
   $("#fan-auto").classList.toggle("on", f === "auto");
-  for (const id of ["#sp-down", "#sp-up", "#fan-auto", "#fan-down", "#fan-up"]) $(id).disabled = !ok;
+  $("#fan-auto").disabled = !ok;
 }
-$("#sp-down").addEventListener("click", () => nudgeSetpoint(-1));
-$("#sp-up").addEventListener("click", () => nudgeSetpoint(+1));
 $("#fan-auto").addEventListener("click", () => control("fan", "auto", "Fan auto"));
-$("#fan-down").addEventListener("click", () => nudgeFan(-10));
-$("#fan-up").addEventListener("click", () => nudgeFan(+10));
 $("#heaters").addEventListener("click", e => {
   const b = e.target.closest("[data-src]"); if (!b || b.disabled) return;
   const k = b.dataset.src, on = !b.classList.contains("sel");
