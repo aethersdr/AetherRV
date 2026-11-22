@@ -240,7 +240,7 @@ $("#ic-freezer").innerHTML = icon("snow");
 function coldStatus(role) {
   const t = S[`climate.${role}.temp`], max = S[`ui.${role}_max_c`];
   if (t == null) return { cls: "", label: "no sensor" };
-  if (S[`settings.${role}_off`]) return { cls: "", label: "off · alerts resume when cold" };
+  if (S[`settings.${role}_off`]) return { cls: "", label: "off" };
   if (max != null && t > max) return { cls: "warn", label: `above ${fmtT(max)}` };
   return { cls: "ok", label: "ok" };
 }
