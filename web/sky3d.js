@@ -197,6 +197,7 @@ export class Sky3D {
   constructor() {
     this.el = document.createElement("div");
     this.el.className = "sky3d";
+    this.el.dataset.morphSkip = "1";              // the page morphs its card around this canvas
     this.ok = false;
     try {
       this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });

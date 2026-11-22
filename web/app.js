@@ -2,6 +2,37 @@
 import { icon } from "./icons.js";
 import { timeChart, ring, dial, dialGeom, esc } from "./charts.js";
 
+// ── setHTML: update a container in place (morph) instead of replacing its children. The page re-renders on
+// every state update; replacing a button between a finger's touch-down and touch-up makes the browser drop
+// the tap (a mouse click is short enough to slip between updates, a touch on the kiosk often isn't). Morphing
+// keeps the same element under the finger and only patches text and attributes that actually changed.
+// Elements marked data-morph-skip (e.g. the persistent 3D sky canvas) are left alone.
+function morphNode(a, b) {
+  if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) { a.replaceWith(b); return; }
+  if (a.nodeType === 3 || a.nodeType === 8) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return; }
+  if (a.nodeType !== 1) return;
+  if (a.dataset && a.dataset.morphSkip) return;
+  for (const { name } of [...a.attributes]) if (!b.hasAttribute(name)) a.removeAttribute(name);
+  for (const { name, value } of [...b.attributes]) if (a.getAttribute(name) !== value) a.setAttribute(name, value);
+  if (a.tagName === "BUTTON" || a.tagName === "INPUT") a.disabled = b.hasAttribute("disabled");
+  morphChildren(a, b);
+}
+function morphChildren(a, b) {
+  const an = [...a.childNodes], bn = [...b.childNodes];
+  for (let i = 0; i < bn.length; i++) {
+    if (i < an.length) morphNode(an[i], bn[i]); else a.appendChild(bn[i]);
+  }
+  for (let i = bn.length; i < an.length; i++) if (!(an[i].dataset && an[i].dataset.morphSkip)) an[i].remove();
+}
+function setHTML(el, html) {
+  if (!el || el._html === html) return;          // nothing changed: leave the DOM alone
+  el._html = html;
+  if (!el.firstChild) { el.innerHTML = html; return; }
+  const tpl = document.createElement("template"); tpl.innerHTML = html;
+  morphChildren(el, tpl.content);
+}
+const H = el => ({ set html(v) { setHTML(el, v); } });   // H(el).html = markup  ≡ morphing innerHTML
+
 const S = {};                       // live state mirror
 const $ = s => document.querySelector(s);
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -39,7 +70,15 @@ function go(v) {
   loadHistory();
 }
 for (const n of ["#nav", "#nav-foot"]) $(n).addEventListener("click", e => { const b = e.target.closest("button"); if (b) go(b.dataset.v); });
-document.addEventListener("click", e => { const g = e.target.closest("[data-goto]"); if (g) go(g.dataset.goto); });
+document.addEventListener("click", e => {
+  const g = e.target.closest("[data-goto]");
+  if (!g) return;
+  // A tap on (or just beside) a control inside a tappable card must never navigate, even if that control was
+  // momentarily disabled (e.g. while a command is pending) and the browser handed the click to the card.
+  const ctl = e.target.closest("button, input, select, a, .home-sp, .no-goto");
+  if (ctl && ctl !== g && g.contains(ctl)) return;
+  go(g.dataset.goto);
+});
 
 // ── Top bar ──────────────────────────────────────────────────────────────────
 function tick() {
@@ -244,7 +283,7 @@ function renderHome() {
     ? `<span class="pill">not connected</span>`
     : `<span class="pill ${heating ? "heat" : ""}">${icon(heating ? "flame" : "snow")}${heating ? "Heating" : "Idle"}</span>`;
   const tanks = S["victron.tanks"] || [];
-  $("#tanks").innerHTML = tanks.length ? tanks.map(t => `
+  H($("#tanks")).html = tanks.length ? tanks.map(t => `
     <div class="tank">
       <div class="tank-body"><div class="tank-fill" style="height:${Math.max(0, Math.min(100, t.level ?? 0))}%;background:color-mix(in srgb, var(${TANK_COLOR[t.type] || "--c-batt"}) 70%, transparent)"></div>
         <div class="tank-pct">${t.level == null ? "—" : Math.round(t.level) + "%"}</div></div>
@@ -263,11 +302,11 @@ const MODES = [[3, "On"], [1, "Charger only"], [2, "Inverter only"], [4, "Off"]]
 function renderPowerControls() {
   const V = k => S[`victron.vebus.${k}`], M = k => S[`victron.mppt.${k}`];
   const el = $("#pwr-ctl");
-  if (!V("instance") && !M("instance")) { el.innerHTML = `<div class="card-h"><h2>Inverter & solar</h2></div><div class="muted">${S["victron.connected"] ? "No MultiPlus or MPPT reported by the Cerbo." : "Cerbo GX not connected."}</div>`; return; }
+  if (!V("instance") && !M("instance")) { H(el).html = `<div class="card-h"><h2>Inverter & solar</h2></div><div class="muted">${S["victron.connected"] ? "No MultiPlus or MPPT reported by the Cerbo." : "Cerbo GX not connected."}</div>`; return; }
   const ok = canControlDev("victron") && !ctlPending;
   const mode = V("mode"), lim = limPending ?? V("current_limit");
   const why = !CAN_CTL ? "view only" : !S["victron.controls_ok"] ? "control off" : "";
-  el.innerHTML = `<div class="card-h"><h2>Inverter & solar</h2><span class="muted">${esc(why)}</span></div>
+  H(el).html = `<div class="card-h"><h2>Inverter & solar</h2><span class="muted">${esc(why)}</span></div>
     <div class="pwr-row">
       <div class="pwr-blk pwr-main"><div class="pwr-t">${icon("inverter")}<div><b>${esc(V("name") || "MultiPlus")}</b>
         <span>${esc(VEBUS_STATE[V("state")] ?? "—")}${V("ac_out_w") != null ? ` · ${fmtW(V("ac_out_w"))} AC out` : ""}${V("shore_connected") ? " · on shore" : ""}</span></div></div>
@@ -604,11 +643,22 @@ function control(cmd, value, label, device = "rixens") {
   const id = ++ctlSeq;
   ctlPending = { id, cmd, label, device };
   toast(`${label}…`, "busy");
-  ctlWaiters[id] = r => { ctlPending = null; spPending = cmd === "setpoint" ? null : spPending;
+  ctlWaiters[id] = r => { clearTimeout(ctlPending?.timer); ctlPending = null; spPending = cmd === "setpoint" ? null : spPending;
     if (cmd === "shore_limit") limPending = null;
     toast(r.ok ? `${label}: ${r.detail}` : `${label} failed: ${r.detail}`, r.ok ? "ok" : "bad"); render(); };
-  sendWS({ type: "control", device, cmd, value, id });
+  // Watchdog: a lost result (socket dropped mid-command, or sent while reconnecting) must never leave every
+  // control on this screen dead. Longer than any backend verify window (Starlink install verifies for 90 s).
+  ctlPending.timer = setTimeout(() => dropPending(id, "no confirmation received — check its status"), cmd === "install_update" ? 150e3 : 60e3);
+  if (!sendWS({ type: "control", device, cmd, value, id })) { dropPending(id, "not sent — no connection"); return; }
   render();
+}
+function dropPending(id, why) {
+  if (!ctlPending || (id != null && ctlPending.id !== id)) return;
+  const p = ctlPending;
+  clearTimeout(p.timer); delete ctlWaiters[p.id];
+  ctlPending = null; spPending = p.cmd === "setpoint" ? null : spPending;
+  if (p.cmd === "shore_limit") limPending = null;
+  toast(`${p.label}: ${why}`, "bad"); render();
 }
 const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok", n2k: "n2k.controls_ok", peplink: "peplink.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
 function askConfirm(title, detail, onYes) {
@@ -829,7 +879,7 @@ function renderSwitches() {
       ${s.kind === "dimmer" && live ? `<input class="sw-dim" type="range" min="1" max="100" value="${s.level ?? 100}" data-dim="${s.channel}" aria-label="${esc(s.name)} brightness">` : ""}</div>`;
   const inputs = S["switching.inputs"] || [];
   const groups = [...new Set(list.map(s => s.group || "Switches"))];
-  $("#switches").innerHTML = (inputs.length ? `<div class="sw-group"><h3>Vehicle inputs</h3><div class="sw-inputs">${inputs.map(i =>
+  H($("#switches")).html = (inputs.length ? `<div class="sw-group"><h3>Vehicle inputs</h3><div class="sw-inputs">${inputs.map(i =>
       `<span class="sw-in ${i.on ? "on" : ""}">${icon(i.icon || "toggle")}<b>${esc(i.name)}</b><span>${i.on == null ? "—" : i.on ? "On" : "Off"}${i.volts != null ? ` · ${(+i.volts).toFixed(1)} V` : ""}</span></span>`).join("")}</div></div>` : "") +
     (list.length ? groups.map(g => {
       const items = list.filter(s => (s.group || "Switches") === g);
@@ -931,7 +981,7 @@ const SEV = { warning: 1, serious: 2, critical: 3 };
 const SEV_LABEL = { warning: "Warning", serious: "Serious", critical: "Critical" };
 let soundOn = store.get("vp.sound", "1") === "1";
 const ago = t => { const s = Date.now() / 1000 - t; return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
-function sendWS(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+function sendWS(o) { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; } return false; }
 
 // Wake the (kiosk) screen when a critical alert fires: a critical id that wasn't critical+unacked on the last
 // update (new, re-raised, or escalated). The kiosk block below sets kioskWake; elsewhere it stays null.
@@ -983,7 +1033,7 @@ function renderAlerts() {
   $("#alerts-summary").textContent = act.length ? `${act.length} active · ${act.filter(a => !a.acked).length} unacknowledged` : "";
   $("#btn-sound").innerHTML = `${icon(soundOn ? "bell" : "bellOff")}${soundOn ? "Sound on" : "Sound off"}`;
   $("#btn-ackall").disabled = !act.some(a => !a.acked);
-  $("#alerts-list").innerHTML = act.length ? act.map(a => `
+  H($("#alerts-list")).html = act.length ? act.map(a => `
     <div class="alert-card sev-${a.severity} ${a.acked ? "acked" : ""}">
       <div class="alert-ic">${icon(a.severity === "warning" ? "alert" : SRC_ICON[a.source] || "alert")}</div>
       <div class="alert-body"><div class="alert-sev">${icon("alert")}${SEV_LABEL[a.severity]}${a.acked ? " · acknowledged" : ""}</div>
@@ -1583,11 +1633,12 @@ function sky3dSlot(map) {
   return `<div class="sky3d-slot"></div>`;
 }
 function mountSky3d() {
-  const slot = sky3d && $("#sl-card .sky3d-slot");
-  if (!slot) return;
-  slot.replaceWith(sky3d.el);
+  if (!sky3d) return;
+  const slot = $("#sl-card .sky3d-slot");
+  if (slot) slot.replaceWith(sky3d.el);          // first render (the card is morphed around it afterwards)
+  if (!sky3d.el.isConnected) return;
   sky3d.setMap(S["starlink.obstruction_map"], S["starlink.azimuth"], S["starlink.elevation"]);
-  sky3d.start();
+  sky3d.start();                                  // no-op while running; resumes after the view was hidden
 }
 
 $("#sl-card").addEventListener("click", e => {
@@ -1616,7 +1667,7 @@ function renderNetwork() {
   const slAlerts = (S["starlink.alerts"] || []);
   const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
   const updReady = on != null && S["starlink.update_state"] === "REBOOT_REQUIRED";
-  $("#sl-card").innerHTML = reach == null ? `<div class="card-h"><h2>Starlink</h2></div><div class="muted">Not enabled.</div>` : `
+  H($("#sl-card")).html = reach == null ? `<div class="card-h"><h2>Starlink</h2></div><div class="muted">Not enabled.</div>` : `
     <div class="sl-body">
       <div class="sl-left">
         <h2 class="sl-title" title="${esc(slTip)}"><span class="led ${slLed}"></span>Starlink</h2>
@@ -1650,7 +1701,7 @@ function renderNetwork() {
   const cw = wans.find(w => w.cellular);
   const c = cw?.cellular;
   const allow = (S["peplink.allowance"] || []).find(a => cw && a.conn === cw.id && (a.sim == null || a.sim === c?.sim));
-  $("#cell-card").innerHTML = !c ? `<div class="card-h"><h2>Cellular</h2></div><div class="muted">${S["peplink.reachable"] == null ? "Not enabled." : "No cellular WAN."}</div>` : `
+  H($("#cell-card")).html = !c ? `<div class="card-h"><h2>Cellular</h2></div><div class="muted">${S["peplink.reachable"] == null ? "Not enabled." : "No cellular WAN."}</div>` : `
     <div class="card-h"><h2 class="sl-title" title="${esc(cw.message || "")}"><span class="led led-${esc(cw.led)}"></span>Cellular</h2></div>
     <div class="cell-main">
       <div class="cell-sig">${bars(c.signal_level ?? 0)}<div><b>${esc(c.network || "")}</b><span>${esc(c.carrier || "")}${c.roaming && c.roaming !== "home" ? " · " + esc(c.roaming) : ""}</span></div></div>
@@ -1668,7 +1719,7 @@ function renderNetwork() {
   const wifis = wans.filter(w => w.wifi && w.enabled);
   const ww = wifis.find(w => w.connected) || wifis[0];
   const wf = ww?.wifi;
-  $("#wwan-card").innerHTML = !ww ? `<div class="card-h"><h2>WWAN</h2></div><div class="muted">${S["peplink.reachable"] == null ? "Not enabled." : "No Wi-Fi WAN enabled."}</div>` : `
+  H($("#wwan-card")).html = !ww ? `<div class="card-h"><h2>WWAN</h2></div><div class="muted">${S["peplink.reachable"] == null ? "Not enabled." : "No Wi-Fi WAN enabled."}</div>` : `
     <div class="card-h"><h2 class="sl-title" title="${esc(ww.message || "")}"><span class="led led-${esc(ww.led)}"></span>WWAN</h2></div>
     <div class="cell-main">
       <div class="cell-sig">${bars(ww.connected ? (wf.level ?? 0) : 0)}<div><b>${esc(wf.ssid || "—")}</b><span>${esc(ww.name)}</span></div></div>
@@ -1696,7 +1747,7 @@ function renderNetwork() {
 </div>
        ${w.enabled && wanEdit === w.id && canControlDev("peplink") ? `<div class="wan-pick"><span>Priority for ${esc(w.name)}</span>
          <div class="seg">${[1, 2, 3, 4].map(p => `<button data-wan="${w.id}" data-prio="${p}" class="${w.priority === p ? "on" : ""}">P${p}</button>`).join("")}</div></div>` : ""}`;
-  if (!wanDrag) $("#wan-card").innerHTML = `<div class="card-h"><h2>WAN priority</h2><span class="muted">${S["peplink.reachable"] === false ? "router unreachable" : ""}</span></div>` +
+  if (!wanDrag) H($("#wan-card")).html = `<div class="card-h"><h2>WAN priority</h2><span class="muted">${S["peplink.reachable"] === false ? "router unreachable" : ""}</span></div>` +
     (wanList.length + wanOff.length ? `<div class="wans ${canDrag ? "can-drag" : ""}">${wanList.map(wanRow).join("")}
        <div class="wan-sep"><span>Disabled</span></div>${wanOff.map(wanRow).join("")}</div>`
       : `<div class="muted">${S["peplink.reachable"] == null ? "Peplink not enabled." : "No WAN data."}</div>`);
@@ -1813,7 +1864,7 @@ let ws;
 function connect() {
   ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
   ws.onopen = () => { schedule(); loadHistory(); };
-  ws.onclose = () => { schedule(); setTimeout(connect, 2000); };
+  ws.onclose = () => { dropPending(null, "connection lost — result unknown, check its status"); schedule(); setTimeout(connect, 2000); };
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
     if (m.type === "hello") { CAN_CTL = !!m.control; CTL_WHO = m.who || "viewer"; render(true); }
@@ -1844,11 +1895,11 @@ function renderQuick() {
   const tag = document.querySelector(".quick-card .demo-tag");
   if (real.length) {
     if (tag) { tag.textContent = canControlDev("n2k") ? "live" : "view only"; tag.classList.toggle("live-tag", canControlDev("n2k")); }
-    $("#quick-sw").innerHTML = real.map(s =>
+    H($("#quick-sw")).html = real.map(s =>
       `<button class="quick-btn${s.on ? " on" : ""}${s.state === "stale" ? " na" : ""}" data-sw="${esc(s.id)}">${icon(s.icon || "toggle")}<span>${esc(s.name)}</span></button>`).join("");
     return;
   }
-  $("#quick-sw").innerHTML = QUICK_DEMO.map(([n, ic], i) =>
+  H($("#quick-sw")).html = QUICK_DEMO.map(([n, ic], i) =>
     `<button class="quick-btn${quickOn.has(i) ? " on" : ""}" data-i="${i}">${icon(ic)}<span>${esc(n)}</span></button>`).join("");
 }
 $("#quick-sw").addEventListener("click", ev => {
@@ -1863,7 +1914,7 @@ renderQuick();
 function renderHeatQuick() {
   const R = k => S[`climate.rixens.${k}`];
   const live = R("live"), srcs = R("sources") || [], avail = R("available") || {};
-  $("#heat-quick").innerHTML = HQ.map(b => {
+  H($("#heat-quick")).html = HQ.map(b => {
     let on = false, st = "", note = "", usable = false;
     if (b.kind === "src") {
       on = srcs.includes(b.k); st = R(b.k) || "off";
