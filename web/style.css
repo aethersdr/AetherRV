@@ -1042,3 +1042,7 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .net-pair .cell-card .cell-sig b { font-size: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 .net-pair .cell-card .cell-sig > div { min-width: 0; }
 .net-pair .cell-card .card-h .pill { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* WAN priority rows: grab handle on the left */
+#wan-card .wan { grid-template-columns: 14px 14px 26px 1fr auto auto; }
+#wan-card .wan .grip { display: flex; align-items: center; justify-content: center; color: var(--muted); opacity: .7; cursor: grab; }
+#wan-card .wan .grip svg { width: 10px; height: 16px; fill: currentColor; }

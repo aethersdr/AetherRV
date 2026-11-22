@@ -1628,7 +1628,7 @@ function renderNetwork() {
     .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99) || (b.connected - a.connected) || a.id - b.id);
   $("#wan-card").innerHTML = `<div class="card-h"><h2>WAN priority</h2><span class="muted">${S["peplink.reachable"] === false ? "router unreachable" : ""}</span></div>` +
     (wanList.length ? `<div class="wans">${wanList.map(w => `<div class="wan ${w.name === S["peplink.active"] ? "active" : ""}">
-       <span class="led led-${esc(w.led)}"></span>${icon(w.starlink ? "dish" : w.cellular ? "signal" : w.wifi ? "wifi" : "router")}
+       <span class="grip" aria-hidden="true"><svg viewBox="0 0 10 16"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg></span><span class="led led-${esc(w.led)}"></span>${icon(w.starlink ? "dish" : w.cellular ? "signal" : w.wifi ? "wifi" : "router")}
        <div><b>${esc(w.name)}</b><span>${esc(w.message)}${w.uptime ? " · up " + dur(w.uptime) : ""}</span></div>
        ${canControlDev("peplink") ? `<button class="prio prio-btn ${wanEdit === w.id ? "on" : ""}" data-wan="${w.id}" ${ctlPending ? "disabled" : ""}>${w.priority != null ? "P" + w.priority : "—"}</button>`
          : `<span class="prio">${w.priority != null ? "P" + w.priority : ""}</span>`}
