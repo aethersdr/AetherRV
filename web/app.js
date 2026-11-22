@@ -915,16 +915,27 @@ function renderSwitches() {
       <div><div class="name">${esc(s.name)}</div><div class="st"><i></i>${label(s)}${s.amps ? `<span class="sw-amps">${(+s.amps).toFixed(1)} A${s.rating_a ? ` / ${s.rating_a}` : ""}</span>` : ""}<span class="sw-id">ch ${s.channel}</span></div></div></button>
       ${s.kind === "dimmer" && live ? `<input class="sw-dim" type="range" min="1" max="100" value="${s.level ?? 100}" data-dim="${s.channel}" aria-label="${esc(s.name)} brightness">` : ""}</div>`;
   const inputs = S["switching.inputs"] || [];
-  const groups = [...new Set(list.map(s => s.group || "Switches"))];
-  H($("#switches")).html = (inputs.length ? `<div class="sw-group"><h3>Vehicle inputs</h3><div class="sw-inputs">${inputs.map(i =>
-      `<span class="sw-in ${i.on ? "on" : ""}">${icon(i.icon || "toggle")}<b>${esc(i.name)}</b><span>${i.on == null ? "—" : i.on ? "On" : "Off"}${i.volts != null ? ` · ${(+i.volts).toFixed(1)} V` : ""}</span></span>`).join("")}</div></div>` : "") +
-    (list.length ? groups.map(g => {
-      const items = list.filter(s => (s.group || "Switches") === g);
-      return `<div class="sw-group"><h3>${esc(g)} <span class="muted">· ${items.filter(s => s.on).length} on</span></h3>
-        <div class="switch-grid">${items.map(tile).join("")}</div></div>`;
-    }).join("") :
-    `<div class="switch-grid"><div class="empty-state">${icon("toggle")}<div>No switch banks decoded yet.</div></div></div>`);
+  const board = $("#switches");
+  if (!list.length) { H(board).html = `<div class="empty-state">${icon("toggle")}<div>No switch banks decoded yet.</div></div>`; return; }
+  // One board: each group is an outlined box of w×h tiles, packed densely into a C-column grid (biggest first),
+  // so everything fits on one screen (4 rows or fewer on the kiosk) instead of one row per group.
+  const C = Math.max(2, Math.min(6, Math.floor((board.clientWidth || 1750) / 300)));
+  const shape = n => { let h = n > 3 ? 2 : 1, w = Math.ceil(n / h); if (w > C) { w = C; h = Math.ceil(n / C); } return [w, h]; };
+  const boxes = [...new Set(list.map(s => s.group || "Switches"))].map(g => {
+    const items = list.filter(s => (s.group || "Switches") === g), [w, h] = shape(items.length);
+    return { w, h, html: `<h3>${esc(g)} <span class="muted">· ${items.filter(s => s.on).length} on</span></h3>
+      <div class="sw-tiles" style="grid-template-columns:repeat(${w},1fr)">${items.map(tile).join("")}</div>` };
+  });
+  if (inputs.length) boxes.push({ w: Math.min(C, 2), h: 1, html: `<h3>Vehicle inputs</h3><div class="sw-inputs" style="grid-template-columns:repeat(${inputs.length},1fr)">${inputs.map(i =>
+      `<span class="sw-in ${i.on ? "on" : ""}">${icon(i.icon || "toggle")}<b>${esc(i.name)}</b><span>${i.on == null ? "—" : i.on ? "On" : "Off"}${i.volts != null ? ` · ${(+i.volts).toFixed(1)} V` : ""}</span></span>`).join("")}</div>` });
+  boxes.sort((a, b) => b.w * b.h - a.w * a.h);
+  H(board).html = boxes.map(b => `<section class="sw-box" style="grid-column:span ${b.w};grid-row:span ${b.h}">${b.html}</section>`).join("");
+  board.style.gridTemplateColumns = `repeat(${C},1fr)`;
+  // kiosk-sized screens: the board fills the space below the note exactly (rows share it); small screens scroll
+  const top = board.getBoundingClientRect().top;
+  board.style.height = innerWidth >= 1100 && top > 0 ? `${Math.max(420, innerHeight - top - 24)}px` : "";
 }
+addEventListener("resize", () => { if (view === "switches") renderSwitches(); });
 function toggleSwitch(id) {
   const s = (S["switches.list"] || []).find(x => x.id === id);
   if (!s) return;
