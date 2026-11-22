@@ -1561,8 +1561,11 @@ function renderNetwork() {
       <div><b>SIM ${c.sim ?? "—"}</b><span>active</span></div>
     </div>`;
 
+  // Priority order (P1 first; same priority: the one in use, then router order); disabled ("off") WANs hidden.
+  const wanList = wans.filter(w => w.enabled)
+    .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99) || (b.connected - a.connected) || a.id - b.id);
   $("#wan-card").innerHTML = `<div class="card-h"><h2>WAN priority</h2><span class="muted">${S["peplink.reachable"] === false ? "router unreachable" : ""}</span></div>` +
-    (wans.length ? `<div class="wans">${wans.map(w => `<div class="wan ${w.name === S["peplink.active"] ? "active" : ""}">
+    (wanList.length ? `<div class="wans">${wanList.map(w => `<div class="wan ${w.name === S["peplink.active"] ? "active" : ""}">
        <span class="led led-${esc(w.led)}"></span>${icon(w.starlink ? "dish" : w.cellular ? "signal" : w.wifi ? "wifi" : "router")}
        <div><b>${esc(w.name)}</b><span>${esc(w.message)}${w.uptime ? " · up " + dur(w.uptime) : ""}</span></div>
        <span class="prio">${w.enabled ? (w.priority != null ? "P" + w.priority : "") : "off"}</span>
