@@ -36,9 +36,7 @@ button { font: inherit; color: inherit; }
 
 /* ── Rail ─────────────────────────────────────────────── */
 .rail { background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 22px 0; gap: 18px; }
-.brand-mark { display: block; width: 44px; height: 44px; border-radius: 14px;
-  background: conic-gradient(from 210deg, var(--c-solar), var(--c-shore), var(--c-batt), var(--c-alt), var(--c-load), var(--c-solar)); opacity: .9;
-  mask: radial-gradient(circle at center, transparent 10px, #000 11px); }
+.brand-mark { display: block; width: 56px; height: 56px; border-radius: 50%; }   /* AetherSDR logo */
 #nav { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 0 12px; }
 #nav button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 0 12px; border: 0; border-radius: 18px;
   background: transparent; color: var(--muted); font-size: 16px; letter-spacing: .3px; transition: background .2s, color .2s; }
