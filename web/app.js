@@ -1221,11 +1221,11 @@ function renderWeather() {
   renderForecast();
 }
 // Dark map (AetherMap-style luminance ramp, basemap only). Separate remembered choices for day and night
-// mode: day defaults to off, night defaults to ON, so switching to night mode darkens the map automatically.
+// mode; both default to ON. A screen that toggled it keeps its own choice.
 const isNight = () => document.documentElement.classList.contains("night");
 const wxDarkKey = () => isNight() ? "vp.wxdark.night" : "vp.wxdark";
 function applyWxDark() {
-  const on = store.get(wxDarkKey(), isNight() ? "1" : "0") === "1";
+  const on = store.get(wxDarkKey(), "1") === "1";              // dark map by default (owner, 2026-11-22), day and night
   $(".wx-wrap").classList.toggle("dark-map", on); $("#wx-dark").classList.toggle("on", on);
 }
 $("#wx-dark").addEventListener("click", () => {
