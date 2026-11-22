@@ -984,11 +984,12 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .wx-card .card-h .wx-loc { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; margin: 0 24px;
   font-size: 14px; color: var(--muted); white-space: nowrap; }
 .wx-card .card-h .wx-loc:empty { display: none; }
-.wx-card .card-h .wx-loc > b { color: var(--ink); font-weight: 600; font-size: 14px; }
-.wx-card .card-h .wx-loc .daybar { flex: 1 1 auto; min-width: 60px; height: 6px; margin: 0; overflow: visible; }
-.wx-card .card-h .wx-loc .daybar em { position: absolute; bottom: calc(100% + 5px); transform: translateX(-50%); font-style: normal;
+.wx-card .card-h .wx-loc > b { color: var(--ink); font-weight: 600; font-size: 19px; }
+.wx-card .card-h .wx-loc .daybar { flex: 1 1 auto; min-width: 60px; height: 10px; margin: 0; overflow: visible; }
+.wx-card .card-h .wx-loc .daybar em { position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); font-style: normal;
   font-size: 13px; color: var(--muted); pointer-events: none; }   /* floats in the header padding: no added height */
-.wx-card .card-h .wx-loc .daybar b { top: -3px; height: 12px; width: 3px; }
+.wx-card .card-h .wx-loc .daybar b { top: -4px; height: 18px; width: 4px; }
 .wx-card .card-h .wx-loc > span { flex: none; }
 #wx-sub { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
 #wx-sub small { font-size: 13px; color: var(--muted); }
+.wx-card > .card-h > h2 { position: relative; top: -10px; }   /* nudged up without changing the header height */
