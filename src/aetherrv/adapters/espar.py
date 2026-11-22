@@ -93,9 +93,7 @@ class EsparAdapter(CaptureOnlyAdapter):
         p = "climate.espar."
         asleep = self.last_rx is None or now - self.last_rx > ASLEEP_S
         st, cmd = self.st, self.cmd
-        if self.last_rx is None:
-            state = None                                  # never heard: "not connected"
-        elif asleep:
+        if asleep:                                        # also: nothing heard yet since start (it sleeps when idle)
             state = "off"
         elif st.get("name") == "fault" or (st.get("fault") and st.get("name") != "idle"):
             state = "error"
@@ -113,7 +111,8 @@ class EsparAdapter(CaptureOnlyAdapter):
         running = state in ("heating", "fan", "starting", "cooldown")
         return {
             p + "state": state,
-            p + "asleep": asleep if self.last_rx is not None else None,
+            p + "asleep": asleep,
+            p + "heard": self.last_rx is not None,
             p + "mode": None if asleep else cmd.get("mode"),
             p + "setpoint_c": None if asleep or cmd.get("mode") != "heat" else cmd.get("setpoint_c"),
             p + "room_c": None if asleep else cmd.get("room_c"),

@@ -18,7 +18,7 @@ def test_espar_cycle_from_the_van_capture(monkeypatch):
     import time as _t
     now = [1000.0]; monkeypatch.setattr(_t, "time", lambda: now[0])
     a = EsparAdapter("espar", State())
-    assert snap(a, now[0])["state"] is None                          # never heard: not connected
+    s = snap(a, now[0]); assert s["state"] == "off" and s["asleep"] is True and s["heard"] is False   # asleep since start
     a.on_frame(f(0x054, "0000FEFFDA020000")); a.on_frame(f(0x2C4, "030000001B020000"))
     s = snap(a, now[0])
     assert s["state"] == "off" and s["mode"] == "off" and s["room_c"] == 23.0 and s["heater_c"] == 3.9
