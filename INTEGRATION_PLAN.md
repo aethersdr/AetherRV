@@ -587,3 +587,9 @@ Sections 1–31 use the old names. Mapping:
 - **UI.** The battery popup gains "Individual batteries": per-battery SoC, V, A, Ah, cycles, cell spread, max temperature and cell voltages.
 - **Pi changes (owner-approved).** `pacman -S bluez bluez-utils` and bluetooth.service enabled; bleak + aiobmsble added as dependencies.
   - Side effect: the pacman mkinitcpio hook rebuilt /boot/initramfs-linux.img. That file is unused by the custom 7.3.5 boot (os_prefix 7.3.5/, which has no initramfs).
+- **2026-11-21, 1 Hz persistent connections (owner: like the phone app).**
+  - **Owner decision:** AetherRV holds one link per battery and polls 0x04 + 0x03 every second, 0x02 every 5 s. The modules take one connection, so the phone app can't connect meanwhile.
+  - **Root cause of the flaky connects** (btmon). On a FIRST contact, bluetoothd reads the GAP characteristic "Peripheral Preferred Connection Parameters" (2a04), which these modules never answer, so BlueZ hits its 30 s ATT timeout and drops the link. Within BlueZ's 30 s TemporaryTimeout the values are cached, so an immediate reconnect works in ~1.8 s. Confirmed on one battery: fail, OK, OK, then fail after 60 s.
+  - **The fix in the adapter:** reconnect at once (1 s) after a failed open, inside the connect lock; use StartNotify; clear stale BlueZ links at start. No BlueZ config change.
+  - **Ruled out:** the phone app, Wi-Fi coexistence, btmon, the GATT cache files.
+  - **Result:** all 4 connected at once and updating every second, stable over 3 min. Startup takes ~2.5 min (one 30 s first contact per battery).

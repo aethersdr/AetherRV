@@ -83,7 +83,7 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
             continue
         if kind == "epoch_ble":
             if d.get("enabled", False) and not demo:
-                adapters.append(EpochBleAdapter(state, d.get("battery", []), float(d.get("interval", 60))))
+                adapters.append(EpochBleAdapter(state, d.get("battery", []), float(d.get("interval", 1))))
             continue
         if kind in ("starlink", "peplink"):
             if not d.get("enabled", False):

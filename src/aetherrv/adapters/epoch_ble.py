@@ -13,9 +13,11 @@ query frame and a framed reply:
 
 Field positions come from aiobmsble's RoyPow plugin (Apache-2.0); its decoder is reused. Its own
 connection code is not, because these modules reject the standard Battery Level subscription and
-often fail the first ffe1 subscription, after which they drop the link. So each read is:
-connect → short settle → subscribe (on failure: disconnect, wait, reconnect, up to 3 tries) →
-3 queries → disconnect. The batteries are read one at a time, about once a minute.
+often fail the first ffe1 subscription, after which they drop the link.
+
+The adapter holds one connection per battery and polls ~1 Hz (owner choice: like the phone app).
+Connecting is serialized; a missed reply (3 s) or a dropped link → reconnect from scratch. The
+modules accept a single connection, so the phone app can't connect while AetherRV holds them.
 
 Only the three read queries are ever written; nothing that changes a setting.
 """
@@ -128,15 +130,23 @@ async def read_battery(address: str, settle: float = 0.8, tries: int = 3, timeou
 
 
 class EpochBleAdapter:
-    device = "epoch_ble"
-    STALE = 600.0        # s without a good read → that battery counts as not reporting
+    """Holds a connection to every battery and polls it about once a second (owner choice, 2026-11-21: the
+    modules accept one connection, so the phone app can't connect while AetherRV is)."""
 
-    def __init__(self, state: State, batteries: list[dict], interval: float = 60.0) -> None:
+    device = "epoch_ble"
+    STALE = 30.0          # s without a good reply → that battery counts as not reporting
+    PERIOD = 1.0          # s between polls of 0x04 + 0x03
+    CELLS_EVERY = 5       # polls between cell-voltage (0x02) queries
+    REPLY = 3.0           # s to wait for a reply before dropping the link and reconnecting
+
+    def __init__(self, state: State, batteries: list[dict], interval: float = 1.0) -> None:
         self.state = state
         self.batteries = [{"name": str(b.get("name") or b["address"]), "address": str(b["address"]),
                            "serial": str(b.get("serial", ""))} for b in batteries]
-        self.interval = interval
+        self.PERIOD = max(0.5, float(interval))
         self.last: dict[str, dict] = {}
+        self._connect_lock = asyncio.Lock()       # BlueZ copes badly with simultaneous connection attempts
+        self._dirty = False
 
     def publish(self, now: float | None = None) -> None:
         now = time.time() if now is None else now
@@ -144,8 +154,8 @@ class EpochBleAdapter:
         for b in self.batteries:
             d = self.last.get(b["address"], {})
             ok = bool(d.get("t")) and now - d["t"] <= self.STALE
-            rows.append({**b, **(d.get("data") or {}), "ok": ok, "age": round(now - d["t"], 0) if d.get("t") else None,
-                         "error": d.get("error")})
+            rows.append({**b, **(d.get("data") or {}), "ok": ok, "age": round(now - d["t"], 1) if d.get("t") else None,
+                         "connected": bool(d.get("connected")), "error": d.get("error")})
         good = [r for r in rows if r["ok"]]
         self.state.update({
             "batteries.ble": rows,
@@ -154,19 +164,111 @@ class EpochBleAdapter:
             "batteries.ble.current": round(sum(r["current"] for r in good if r.get("current") is not None), 2) if good else None,
         })
 
-    async def run(self) -> None:
-        while True:
-            start = time.monotonic()
-            for b in self.batteries:
+    async def _open(self, b: dict, fa: FrameAssembler, lost: asyncio.Event):
+        """Connect + subscribe. A FIRST contact always fails: bluetoothd reads the GAP 'Peripheral Preferred
+        Connection Parameters' (2a04), which these modules never answer (30 s ATT timeout). Within BlueZ's
+        30 s TemporaryTimeout it has those cached, so an immediate reconnect works in ~2 s."""
+        from bleak import BleakClient, BleakScanner
+        addr = b["address"]
+        last: Exception | None = None
+        for attempt in range(3):
+            dev = _DEVICES.get(addr) or await BleakScanner.find_device_by_address(addr, timeout=12)
+            if dev is None:
+                raise ConnectionError("not advertising (another device connected?)")
+            _DEVICES[addr] = dev
+            client = BleakClient(dev, timeout=20, disconnected_callback=lambda _c: lost.set())
+            try:
+                await client.connect()
+                await asyncio.sleep(0.8)
+                await client.start_notify(UART, lambda _ch, data: fa.feed(data), bluez={"use_start_notify": True})
+                return client
+            except Exception as e:
+                last = e
+                log.debug("epoch %s: open attempt %d: %s", b["name"], attempt + 1, e)
                 try:
-                    data = await asyncio.wait_for(read_battery(b["address"]), timeout=90)
-                    self.last[b["address"]] = {"t": time.time(), "data": data}
-                except Exception as e:
-                    prev = self.last.get(b["address"], {})
-                    self.last[b["address"]] = {**prev, "error": f"{type(e).__name__}: {e}"[:120]}
-                    log.info("epoch %s: read failed: %s", b["name"], e)
-                self.publish()
-            await asyncio.sleep(max(5.0, self.interval - (time.monotonic() - start)))
+                    await client.disconnect()
+                except Exception:
+                    pass
+                lost.clear()
+                await asyncio.sleep(1.0)                  # stay inside BlueZ's 30 s cache window
+        raise last or ConnectionError("connect failed")
+
+    async def _session(self, b: dict) -> None:
+        """One connection's life: connect (serialized) → poll until a reply is missed or the link drops."""
+        addr = b["address"]
+        rec = self.last.setdefault(addr, {})
+        fa = FrameAssembler()
+        lost = asyncio.Event()
+        async with self._connect_lock:
+            client = await self._open(b, fa, lost)
+        rec["connected"] = True
+        log.info("epoch %s: connected", b["name"])
+        try:
+            n = 0
+            while not lost.is_set():
+                started = time.monotonic()
+                cmds = (0x04, 0x03, 0x02) if n % self.CELLS_EVERY == 0 else (0x04, 0x03)
+                for cmd in cmds:
+                    fa.msgs.pop(cmd, None)
+                    await client.write_gatt_char(UART, query(cmd), response=False)
+                    end = time.monotonic() + self.REPLY
+                    while cmd not in fa.msgs and time.monotonic() < end and not lost.is_set():
+                        await asyncio.sleep(0.02)
+                    if cmd not in fa.msgs:
+                        raise TimeoutError(f"no reply to 0x{cmd:02x}")
+                merged = {**rec.get("msgs", {}), **fa.msgs}
+                rec.update({"msgs": merged, "data": decode(merged), "t": time.time(), "error": None})
+                self._dirty = True
+                n += 1
+                await asyncio.sleep(max(0.0, self.PERIOD - (time.monotonic() - started)))
+            raise ConnectionError("link dropped")
+        finally:
+            rec["connected"] = False
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+    async def _battery(self, b: dict) -> None:
+        backoff = 2.0
+        while True:
+            try:
+                await self._session(b)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                rec = self.last.setdefault(b["address"], {})
+                rec["error"] = f"{type(e).__name__}: {e}"[:120]
+                self._dirty = True
+                log.info("epoch %s: %s; reconnecting in %.0fs", b["name"], e, backoff)
+                _DEVICES.pop(b["address"], None)          # BlueZ forgets unconnected devices after 30 s: rescan
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)
+                continue
+            backoff = 2.0
+
+    @staticmethod
+    async def _clear_stale_links(addresses: list[str]) -> None:
+        """A previous backend process may have left BlueZ links up; the modules don't advertise while linked."""
+        for a in addresses:
+            try:
+                proc = await asyncio.create_subprocess_exec("bluetoothctl", "disconnect", a,
+                                                            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                await asyncio.wait_for(proc.wait(), 5)
+            except Exception:
+                pass
+
+    async def run(self) -> None:
+        await self._clear_stale_links([b["address"] for b in self.batteries])
+        tasks = [asyncio.create_task(self._battery(b), name=f"epoch-{b['name']}") for b in self.batteries]
+        try:
+            while True:
+                self.publish()                                   # ages tick even when nothing changed
+                self._dirty = False
+                await asyncio.sleep(1.0)
+        finally:
+            for t in tasks:
+                t.cancel()
 
 
 if __name__ == "__main__":                            # one-off check: python -m aetherrv.adapters.epoch_ble ADDR…
