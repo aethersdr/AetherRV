@@ -616,7 +616,13 @@ html.kiosk, html.kiosk * { cursor: none !important; }
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--c-batt) 35%, transparent); }
 .wx-pin i { display: block; width: 26px; height: 26px; border-radius: 50%; border: 3px solid #fab219; background: rgba(250,178,25,.25);
   box-shadow: 0 0 12px rgba(250,178,25,.6); }
-.wx-radar-ctl { position: absolute; left: 14px; bottom: 14px; z-index: 500; display: flex; align-items: center; gap: 12px;
+.wx-locate { position: absolute; left: 14px; bottom: 14px; z-index: 500; width: 64px; height: 64px; border-radius: 14px;
+  display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.wx-locate svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.wx-locate svg .dot { fill: currentColor; stroke: none; }
+.wx-locate:active { background: var(--surface-2); color: var(--c-batt); }
+.wx-radar-ctl { position: absolute; left: 90px; bottom: 14px; z-index: 500; display: flex; align-items: center; gap: 12px;
   background: rgba(14,17,22,.82); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px 6px 6px; font-size: 16px; color: var(--ink-2); }
 .wx-radar-ctl .ctl-pill { padding: 8px 18px; font-size: 16px; }
 .wx-hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none;

@@ -138,8 +138,7 @@
       <div class="card wx-card">
         <div class="card-h"><h2>Weather radar</h2><div class="wx-loc" id="wx-loc"></div><span class="muted" id="wx-sub"></span>
           <button class="ctl-pill wx-btn" id="wx-traffic" hidden>Traffic</button>
-          <button class="ctl-pill wx-btn" id="wx-dark">Dark map</button>
-          <button class="ctl-pill wx-btn" id="wx-recenter">Re-centre</button></div>
+          <button class="ctl-pill wx-btn" id="wx-dark">Dark map</button></div>
         <!-- AetherMap's dark basemap (AetherSDR BasemapStyle::darkImage): reversed luminance ramped from
              color.map.darkDetail (#c8d8e8) to color.map.darkBackground (#18212b); radar is not filtered. -->
         <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="wx-dark-filter" color-interpolation-filters="sRGB">
@@ -147,6 +146,9 @@
         <div class="wx-body">
           <div class="wx-wrap">
             <div id="wx-map"></div>
+            <button class="wx-locate" id="wx-recenter" aria-label="Re-centre on the van" title="Re-centre on the van">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3" class="dot"/>
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
             <div class="wx-radar-ctl"><button class="ctl-pill" id="wx-play">Play</button><span id="wx-time">—</span></div>
             <div class="wx-hint" id="wx-hint">Tap the map for that spot's forecast</div>
             <div class="wx-empty" id="wx-empty" hidden>Waiting for a GPS fix from the Peplink…</div>
