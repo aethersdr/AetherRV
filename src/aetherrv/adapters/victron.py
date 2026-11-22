@@ -73,6 +73,7 @@ class VictronAdapter:
         self._batts: dict[str, dict] = {}
         self._batts_dirty = False
         self._temps: dict[str, dict] = {}
+        self._notif: dict[int, dict] = {}
         # role -> (configured sensor: device instance or Custom name, fallback TemperatureType).
         # Names match case-insensitively. If a role isn't configured, the first sensor of its type is used.
         self.roles = {
@@ -256,12 +257,17 @@ class VictronAdapter:
                 await c.subscribe(f"N/{portal}/temperature/+/{f}")
             for path in CONTROL_PATHS:
                 await c.subscribe(f"N/{portal}/{path}")
+            await c.subscribe(f"N/{portal}/platform/0/Notifications/#")
             for f in ("Nad", "ModelName", "Manufacturer", "Serial", "FirmwareVersion", "CustomName", "DeviceInstance"):
                 await c.subscribe(f"N/{portal}/vecan/+/Devices/+/{f}")
             await c.publish(f"R/{portal}/keepalive", b"")
             return
         if rest.startswith("vecan/"):
             self._on_vecan(rest, value)
+            return
+        if rest.startswith("platform/0/Notifications/"):
+            self._on_notification(rest, value)
+            await self._on_control_path(rest, value)        # fresh-read / verify for ack_alarms
             return
         if rest.startswith("battery/"):
             self._on_battery(rest, value)
@@ -277,6 +283,18 @@ class VictronAdapter:
         key = WATCH.get(rest)
         if key:
             self.state.set(key, value)
+
+    def _on_notification(self, rest: str, value) -> None:
+        """Venus OS notifications (platform/0/Notifications/<n>/<field>): the alarms behind the buzzer."""
+        parts = rest.split("/")
+        if len(parts) == 5 and parts[3].isdigit():
+            self._notif.setdefault(int(parts[3]), {})[parts[4]] = value
+            self.state.set("victron.notifications", [
+                {"index": i, "active": bool(n.get("Active")), "type": n.get("Type"),
+                 "description": n.get("Description") or "", "device": n.get("DeviceName") or "",
+                 "acknowledged": bool(n.get("Acknowledged")), "silenced": bool(n.get("Silenced")),
+                 "since": n.get("DateTime")}
+                for i, n in sorted(self._notif.items()) if n.get("Active")])
 
     # ── Control (owner-approved 2026-11-20): MultiPlus mode, shore current limit, MPPT on/off ──────
     async def _on_control_path(self, rest: str, value) -> None:
@@ -381,6 +399,8 @@ class VictronAdapter:
             c, portal = self._client, self.portal
             if c is None or portal is None:
                 return {"ok": False, "detail": "not connected to the Cerbo"}
+            if cmd == "ack_alarms":                 # owner-requested 2026-11-21: acknowledge (silence) Cerbo alarms
+                return await self._ack_alarms(c, portal, client)
             try:
                 path, target = self.plan(cmd, value)
             except (ValueError, TypeError) as e:
@@ -401,6 +421,28 @@ class VictronAdapter:
                 return {"ok": True, "detail": "confirmed by the Cerbo"}
             self._log(cmd, value, "unverified", f"{path} still {self.vals.get(path)!r}", client)
             return {"ok": False, "detail": f"the Cerbo did not confirm (now {self.vals.get(path)!r}; not retried)"}
+
+
+    ACK_COUNT = ("platform/0/Notifications/NumberOfUnAcknowledgedAlarms",
+                 "platform/0/Notifications/NumberOfUnAcknowledgedWarnings")
+
+    async def _ack_alarms(self, c, portal: str, client: str) -> dict:
+        """Fresh read of the unacknowledged counts → AcknowledgeAll = 1 once → verify both reach 0."""
+        n0 = {p: self._upd.get(p, 0) for p in self.ACK_COUNT}
+        for p in self.ACK_COUNT:
+            await c.publish(f"R/{portal}/{p}", b"")
+        if not await self._wait(lambda: all(self._upd.get(p, 0) > n0[p] for p in self.ACK_COUNT), 4.0):
+            self._log("ack_alarms", 1, "failed", "no fresh notification counts", client)
+            return {"ok": False, "detail": "the Cerbo did not report its alarm counts"}
+        if not any(self.vals.get(p) for p in self.ACK_COUNT):
+            self._log("ack_alarms", 1, "noop", "nothing unacknowledged", client)
+            return {"ok": True, "detail": "nothing to acknowledge"}
+        await c.publish(f"W/{portal}/platform/0/Notifications/AcknowledgeAll", json.dumps({"value": 1}))  # once
+        if await self._wait(lambda: not any(self.vals.get(p) for p in self.ACK_COUNT), 8.0):
+            self._log("ack_alarms", 1, "ok", "unacknowledged alarms/warnings now 0", client)
+            return {"ok": True, "detail": "acknowledged on the Cerbo (buzzer off)"}
+        self._log("ack_alarms", 1, "unverified", f"counts still {[self.vals.get(p) for p in self.ACK_COUNT]}", client)
+        return {"ok": False, "detail": "the Cerbo did not confirm (not retried)"}
 
 
 VEBUS_MODES = {1: "charger only", 2: "inverter only", 3: "on", 4: "off"}

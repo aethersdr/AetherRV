@@ -111,6 +111,30 @@ def r_cold(s: State, c: dict):
             yield Finding(f"cold.{role}", "warning", f"{label} warm: {t:.1f} °C", f"Above {mx:.0f} °C.", "ruuvi")
 
 
+def r_switch_trip(s: State, c: dict):
+    """A load-controller channel latched in fault (its electronic breaker tripped). Reset = switch it off."""
+    for w in s.get("switches.list") or []:
+        if w.get("state") == "error" and w.get("channel"):
+            yield Finding(f"switch.trip.{w.get('bank')}.{w['channel']}", "serious", f"Breaker tripped: {w.get('name')}",
+                          f"The load controller shut off channel {w['channel']} (overcurrent or load fault) and holds it off. "
+                          "Reset switches it off and clears the fault; check the load and its current limit before using it again.",
+                          "n2k")
+
+
+CERBO_SEVERITY = {0: "warning", 1: "serious"}       # Venus notification Type: 0 warning, 1 alarm, 2 info
+
+
+def r_cerbo_notifications(s: State, c: dict):
+    """Mirror the Cerbo's active alarms/warnings (the ones that sound its buzzer)."""
+    for n in s.get("victron.notifications") or []:
+        sev = CERBO_SEVERITY.get(n.get("type"))
+        if n.get("active") and sev:
+            dev = f" ({n['device']})" if n.get("device") else ""
+            yield Finding(f"cerbo.notif.{n['index']}", sev, f"Cerbo: {n.get('description') or 'alarm'}{dev}",
+                          ("Acknowledged on the Cerbo." if n.get("acknowledged") else
+                           "Unacknowledged: the Cerbo's buzzer sounds until it is acknowledged."), "victron")
+
+
 def r_n2k_devices(s: State, c: dict):
     for d in s.get("n2k.devices") or []:
         if not d.get("online"):
@@ -219,6 +243,8 @@ def default_rules_base() -> list[Rule]:
         Rule("buses", r_buses, for_s=10, clear_s=10),
         Rule("victron", r_victron, for_s=60, clear_s=10),
         Rule("rixens", r_rixens, for_s=30, clear_s=10),
+        Rule("switch_trip", r_switch_trip, for_s=3, clear_s=5),
+        Rule("cerbo", r_cerbo_notifications, for_s=0, clear_s=5),
     ]
 
 

@@ -806,6 +806,8 @@ function renderAlerts() {
       <div class="alert-body"><div class="alert-sev">${icon("alert")}${SEV_LABEL[a.severity]}${a.acked ? " · acknowledged" : ""}</div>
         <h3>${esc(a.title)}</h3><p>${esc(a.detail)}</p><span class="muted">since ${ago(a.since)}</span></div>
       <div class="alert-btns">${/^cold\.(fridge|freezer)$/.test(a.id) && CAN_CTL ? `<button class="btn-soft" data-cold-off="${a.id.slice(5)}">${icon("toggle")}${a.id === "cold.fridge" ? "Fridge" : "Freezer"} is off</button>` : ""}
+      ${/^switch\.trip\.\d+\.\d+$/.test(a.id) && canControlDev("n2k") ? `<button class="btn-soft" data-trip="${a.id.split(".").pop()}">${icon("toggle")}Reset breaker</button>` : ""}
+      ${/^cerbo\.notif\.\d+$/.test(a.id) && canControlDev("victron") && !/^Acknowledged/.test(a.detail) ? `<button class="btn-soft" data-cerbo-ack="1">${icon("bell")}Acknowledge on Cerbo</button>` : ""}
       ${a.acked ? "" : `<button class="btn-soft" data-ack="${esc(a.id)}">Acknowledge</button>`}</div>
     </div>`).join("") :
     `<div class="all-clear">${icon("check")}<div><h3>All clear</h3><span class="muted">No active alerts.</span></div></div>`;
@@ -817,6 +819,11 @@ function renderAlerts() {
 }
 $("#alerts-list").addEventListener("click", e => {
   const b = e.target.closest("[data-ack]"); if (b) sendWS({ type: "ack", id: b.dataset.ack });
+  const tr = e.target.closest("[data-trip]");
+  if (tr) { const ch = +tr.dataset.trip, s = (S["switches.list"] || []).find(x => x.channel === ch);
+    askConfirm(`Reset ${s ? s.name : "channel " + ch}?`, "This switches the channel off, which clears the tripped breaker in the load controller. It stays off: check the load and its current limit before switching it on again.",
+      () => control("set", { channel: ch, on: false }, `${s ? s.name : "Channel " + ch} reset`, "n2k")); return; }
+  if (e.target.closest("[data-cerbo-ack]")) { control("ack_alarms", 1, "Cerbo alarm acknowledged", "victron"); return; }
   const o = e.target.closest("[data-cold-off]");
   if (o) { const r = o.dataset.coldOff, L = r === "fridge" ? "Fridge" : "Freezer";
     askConfirm(`${L} switched off?`, `Warm alerts for the ${r} stop now and turn back on by themselves once it's cold again (below ${fmtT(S[`ui.${r}_max_c`])}).`,

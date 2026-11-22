@@ -81,7 +81,7 @@ def test_log_persists(tmp_path):
 
 
 def test_default_rules_cover_all_sources():
-    assert {r.name for r in default_rules()} == {"battery", "cold", "n2k", "buses", "victron", "rixens", "starlink", "peplink", "netmon", "system", "bms"}
+    assert {r.name for r in default_rules()} == {"battery", "cold", "n2k", "buses", "victron", "rixens", "starlink", "peplink", "netmon", "system", "bms", "switch_trip", "cerbo"}
 
 
 def test_connectivity_rules():
@@ -113,3 +113,16 @@ def test_bms_rules():
     assert f["bms.alarm.512.CellImbalance"][0] == "warning" and f["bms.alarm.512.HighTemperature"][0] == "serious"
     assert f["bms.block.512.discharging"][0] == "serious" and "bms.block.512.charging" not in f
     assert "bms.modules.512" not in {x.id for x in r_bms(s, {"bms_expected_modules": 0})}
+
+
+def test_switch_trip_and_cerbo_notification_alerts():
+    from aetherrv.alerts import r_cerbo_notifications, r_switch_trip
+    s = State()
+    s.set("switches.list", [{"bank": 32, "channel": 4, "name": "Reverse lights", "state": "error"},
+                            {"bank": 32, "channel": 1, "name": "Spot", "state": "on"}])
+    assert [(f.id, f.severity) for f in r_switch_trip(s, {})] == [("switch.trip.32.4", "serious")]
+    s.set("victron.notifications", [
+        {"index": 0, "active": True, "type": 1, "description": "Breaker Tripped", "device": "CLMD16", "acknowledged": False},
+        {"index": 1, "active": True, "type": 2, "description": "info only", "device": "", "acknowledged": False}])
+    f = list(r_cerbo_notifications(s, {}))
+    assert [(x.id, x.severity, x.title) for x in f] == [("cerbo.notif.0", "serious", "Cerbo: Breaker Tripped (CLMD16)")]
