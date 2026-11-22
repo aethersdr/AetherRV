@@ -1676,7 +1676,7 @@ function renderNetwork() {
        <div><b>${esc(w.name)}</b><span>${esc(w.message)}${w.uptime ? " · up " + dur(w.uptime) : ""}</span></div>
        ${canControlDev("peplink") ? `<button class="prio prio-btn ${wanEdit === w.id ? "on" : ""}" data-wan="${w.id}" ${ctlPending ? "disabled" : ""}>${w.priority != null ? "P" + w.priority : "—"}</button>`
          : `<span class="prio">${w.priority != null ? "P" + w.priority : ""}</span>`}
-       ${w.name === S["peplink.active"] ? `<span class="pill ok-pill">in use</span>` : ""}</div>
+</div>
        ${wanEdit === w.id && canControlDev("peplink") ? `<div class="wan-pick"><span>Priority for ${esc(w.name)}</span>
          <div class="seg">${[1, 2, 3, 4].map(p => `<button data-wan="${w.id}" data-prio="${p}" class="${w.priority === p ? "on" : ""}">P${p}</button>`).join("")}</div></div>` : ""}`).join("")}</div>`
       : `<div class="muted">${S["peplink.reachable"] == null ? "Peplink not enabled." : "No WAN data."}</div>`);
