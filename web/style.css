@@ -1109,3 +1109,11 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-ev .t { color: var(--muted); font-variant-numeric: tabular-nums; } .sl-ev .d { color: var(--muted); font-variant-numeric: tabular-nums; }
 .sl-ev b { font-weight: 600; }
 #set-body .set-h .sl-reboot { margin-left: auto; }
+/* Home climate card: four evenly spread columns, consistent regular-weight labels, centred cabin reading */
+.climate-mini { justify-content: space-between; gap: 18px; padding: 0 6px; }
+.climate-mini .temp-big { align-items: center; }
+.climate-mini .temp-big small { margin-top: 6px; letter-spacing: .3px; }
+.climate-mini .temp-big small, .climate-mini .temp-side small { font-weight: 400; font-size: 16px; }
+.climate-mini .temp-side { gap: 14px; }
+.climate-mini .temp-side small { margin-top: -2px; }
+.climate-mini .coolant-therm { margin-left: 0; }
