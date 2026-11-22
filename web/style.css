@@ -1084,3 +1084,7 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .vslider.auto .vs-fill { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c-cabin) 70%, transparent) 0 8px,
   color-mix(in srgb, var(--c-cabin) 45%, transparent) 8px 16px); }
 .vslider.auto .vs-thumb { background: color-mix(in srgb, var(--ink) 75%, var(--c-cabin)); }
+/* setpoint readout sits in the dial's open bottom (between the ring's ends) */
+.dial-card .dial-area { margin-bottom: 0; }
+.dial-card .dial-area .dial-ctl { position: absolute; left: 0; right: 0; bottom: 2%; display: flex; justify-content: center; pointer-events: none; z-index: 1; }
+.dial-card .dial-area .dial-ctl .ctl-val b { font-size: 60px; }
