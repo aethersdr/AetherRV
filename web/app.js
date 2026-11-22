@@ -931,9 +931,11 @@ function renderSwitches() {
   boxes.sort((a, b) => b.w * b.h - a.w * a.h);
   H(board).html = boxes.map(b => `<section class="sw-box" style="grid-column:span ${b.w};grid-row:span ${b.h}">${b.html}</section>`).join("");
   board.style.gridTemplateColumns = `repeat(${C},1fr)`;
-  // kiosk-sized screens: the board fills the space below the note exactly (rows share it); small screens scroll
-  const top = board.getBoundingClientRect().top;
-  board.style.height = innerWidth >= 1100 && top > 0 ? `${Math.max(420, innerHeight - top - 24)}px` : "";
+  // kiosk-sized screens: the board takes 80 % of the view's content height below the note (rows share it), so
+  // nothing scrolls; small screens fall back to auto rows and scroll
+  const top = board.getBoundingClientRect().top, v = board.closest(".view");
+  const avail = v ? v.getBoundingClientRect().bottom - parseFloat(getComputedStyle(v).paddingBottom) - top - 2 : 0;
+  board.style.height = innerWidth >= 1100 && top > 0 && avail > 300 ? `${Math.round(avail * 0.8)}px` : "";
 }
 addEventListener("resize", () => { if (view === "switches") renderSwitches(); });
 function toggleSwitch(id) {
