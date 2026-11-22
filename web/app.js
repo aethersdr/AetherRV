@@ -1008,6 +1008,15 @@ function renderSystems() {
     html += card("router", `${esc(t.name)} <span class="muted">· ${esc(t.host)}</span>`, cls, st,
       t.up === false && t.hint ? `<div class="meta">${esc(t.hint)}</div>` : "");
   }
+  if (S["climate.espar.heard"] != null) {      // Espar heater bus (hat1): read-only decoder, adapters/espar.py
+    const E = k => S[`climate.espar.${k}`], awake = E("asleep") === false;
+    const cls = E("state") === "error" ? "bad" : awake ? "good" : "idle";
+    const st = !E("heard") ? "bus asleep · nothing heard since start"
+      : awake ? `awake · heater ${E("state")}${E("controller") ? " · EasyStart Pro on the bus" : ""}`
+      : `bus asleep (normal when idle) · last heard ${ago(E("last_seen"))}`;
+    html += card("flame", `Espar Airtronic S2 <span class="muted">· ${esc(S["bus.hat1.channel"] || "hat1")} · listen-only</span>`, cls, st,
+      `<div class="meta">${(S["espar.ids"] || []).length} frame IDs seen · read-only (the Pi never transmits on this bus)${E("fault") ? ` · fault ${esc(E("fault"))}` : ""}</div>`);
+  }
   const blocked = Object.values(S["tx.blocked"] || {}).reduce((a, b) => a + b, 0);
   const txOn = Object.entries(S["tx.enabled"] || {}).filter(([, v]) => v).map(([k]) => k);
   html += card("lock", "Transmit gate", txOn.length ? "good" : "idle",
