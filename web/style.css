@@ -1026,3 +1026,5 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-card .sl-title { margin: 0; font-size: 19px; font-weight: 600; color: var(--ink-2); letter-spacing: .4px; white-space: nowrap; }
 .sl-card .sl-kv b { font-size: 27px; }
 .sl-card .sl-kv span { font-size: 14px; }
+.sl-card .sl-kv > div, .sl-card .sl-speeds > div { text-align: center; }
+.sl-card .sl-left > .sl-title { align-self: start; margin-top: 6px; }   /* top-aligned with the stat values */
