@@ -648,6 +648,7 @@ function renderSwitches() {
     : live ? `Live: tap to switch. Keypad logic ${S["switching.automation"] ? "runs in AetherRV" : "is off"}.`
     : "Live from NMEA 2000. Switch control is off (n2k tx_enabled is not set), so tapping does nothing.";
   const label = s => s.state === "error" ? "Fault" : s.state === "n/a" ? "Not reporting" : s.state === "stale" ? "No data"
+    : (S["switching.triggers"] || []).some(g => g.channel === s.channel) ? (s.on ? "Unlocked · timer" : "Locked · tap to open")
     : (s.on ? (s.kind === "dimmer" && s.level != null && s.level < 100 ? `On · ${s.level}%` : "On") : "Off") + (s.blocked ? " · locked" : "")
       + (!s.on && s.requires_input != null && !((S["switching.inputs"] || []).find(i => i.input === s.requires_input) || {}).on
          ? ` · needs ${((S["switching.inputs"] || []).find(i => i.input === s.requires_input) || {}).name || "input"}` : "");
@@ -671,6 +672,11 @@ function toggleSwitch(id) {
   if (!s) return;
   if (!canControlDev("n2k") || !s.channel) { toast("Switch control is off (view only)"); return; }
   if (s.state === "stale" || s.state === "n/a") { toast(`${s.name}: no live status`, "bad"); return; }
+  const trig = (S["switching.triggers"] || []).find(g => g.channel === s.channel);
+  if (trig) {                       // momentary: the load controller's own timer switches it off
+    if (s.on) { toast(`${s.name}: active, the load controller switches it off`, "ok"); return; }
+    control("trigger", { trigger: trig.id }, trig.name, "n2k"); return;
+  }
   if (s.blocked && !s.on) { toast(`${s.name} is locked out (safety)`, "bad"); return; }
   if (!s.on && s.requires_input != null) {
     const inp = (S["switching.inputs"] || []).find(i => i.input === s.requires_input);

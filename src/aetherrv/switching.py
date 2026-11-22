@@ -196,6 +196,21 @@ class Binding:
     bank: int = 50
     lockout: float = 0.6
     last: float = field(default=0.0)
+    trigger: str | None = None     # fire a [[trigger]] instead of toggling channels
+
+
+@dataclass
+class Trigger:
+    """A momentary press of a load-controller VIRTUAL switch whose logic (e.g. a 10 s timer) lives in the
+    controller. AetherRV pulses the virtual switch on → off and watches the output it drives; if that
+    output is still on after `expect_off_s`, AetherRV switches it off directly (safety net) and says so."""
+    id: str
+    name: str
+    bank: int                      # virtual-switch bank instance (CLMD16: VirtualSwitchInstance)
+    switch: int                    # 1..12
+    channel: int                   # the output the controller's logic drives (to watch)
+    pulse_s: float = 1.0
+    expect_off_s: float = 12.0
 
 
 class SwitchController:
@@ -213,8 +228,11 @@ class SwitchController:
         self.bank = int(sw.get("bank", 32))
         self.automation = bool(sw.get("automation", True))
         self.channels = {int(c["channel"]): c for c in cfg.get("switch", []) if int(c.get("bank", self.bank)) == self.bank}
-        self.bindings = [Binding(int(b["keypad"]), int(b["button"]), [int(x) for x in b["channels"]],
-                                 int(b.get("bank", 50))) for b in cfg.get("binding", [])]
+        self.bindings = [Binding(int(b["keypad"]), int(b["button"]), [int(x) for x in b.get("channels", [])],
+                                 int(b.get("bank", 50)), trigger=b.get("trigger")) for b in cfg.get("binding", [])]
+        self.triggers = {str(g["id"]): Trigger(str(g["id"]), g.get("name", g["id"]), int(g["bank"]), int(g["switch"]),
+                                               int(g["channel"]), float(g.get("pulse_s", 1.0)),
+                                               float(g.get("expect_off_s", 12.0))) for g in cfg.get("trigger", [])}
         self.inputs = {int(i["input"]): i for i in cfg.get("input", [])}
         self.deb = {n: Debounced(hold=float(i.get("debounce_s", 0.3))) for n, i in self.inputs.items()}
         self._seq = 0
@@ -227,6 +245,8 @@ class SwitchController:
         n2k.bank_listeners.append(self.on_bank)
         state.set("n2k.controls_ok", gate.is_enabled(self.device))
         state.set("switching.automation", self.automation)
+        state.set("switching.triggers", [{"id": g.id, "name": g.name, "channel": g.channel, "bank": g.bank, "switch": g.switch}
+                                         for g in self.triggers.values()])
 
     # -- status helpers --
     def status(self) -> tuple[list | None, float | None]:
@@ -252,6 +272,12 @@ class SwitchController:
 
     # -- commands --
     async def command(self, cmd: str, value, client: str = "kiosk") -> dict:
+        if cmd == "trigger":
+            g = self.triggers.get(str((value or {}).get("trigger")))
+            if g is None:
+                return {"ok": False, "detail": "unknown trigger"}
+            async with self._locks.setdefault(g.channel, asyncio.Lock()):
+                return await self._trigger(g, client)
         try:
             ch = int((value or {}).get("channel"))
         except (TypeError, ValueError, AttributeError):
@@ -327,6 +353,82 @@ class SwitchController:
         self._log(cmd, value, "unverified", f"no matching status within {self.VERIFY:.0f}s", client)
         return {"ok": False, "detail": "the load controller did not confirm (it may refuse remote control for this channel; not retried)"}
 
+    def _bank_state(self, bank: int, idx: int) -> str | None:
+        b = self.n2k.banks.get((self.controller, bank))
+        if not b or time.time() - b["seen"] > self.FRESH:
+            return None
+        return b["states"][idx - 1]
+
+    async def _send_vsw(self, g: Trigger, on: bool) -> None:
+        self._seq = (self._seq + 1) & 7
+        self.node.send_fast(PGN_GROUP_FUNCTION, self.controller, switch_command(g.bank, g.switch, on), self._seq)
+
+    async def _wait(self, cond, timeout: float) -> bool:
+        end = time.time() + timeout
+        while time.time() < end:
+            if cond():
+                return True
+            await asyncio.sleep(0.1)
+        return cond()
+
+    async def _trigger(self, g: Trigger, client: str) -> dict:
+        """Pulse the virtual switch: fresh status → ON once → verify → OFF once after pulse_s → verify.
+        The output's on-time is the controller's job; _watch_off is only the safety net."""
+        tag = f"trigger:{g.id}"
+        try:
+            self.gate.check(self.device, tag)
+        except TxBlocked as e:
+            self._log(tag, None, "blocked", str(e), client)
+            return {"ok": False, "detail": "switch control is disabled (tx_enabled is off)"}
+        vsw, out = self._bank_state(g.bank, g.switch), self._bank_state(self.bank, g.channel)
+        if vsw is None or out is None:
+            self._log(tag, None, "failed", "no fresh status for the virtual switch or its output", client)
+            return {"ok": False, "detail": "no fresh status from the load controller; nothing sent"}
+        if out == "on" or vsw == "on":
+            self._log(tag, None, "noop", "already active", client)
+            return {"ok": True, "detail": f"{g.name}: already active"}
+        try:
+            await self._send_vsw(g, True)                                   # press: exactly once
+        except Exception as e:
+            self._log(tag, None, "failed", f"send ON: {e}", client)
+            return {"ok": False, "detail": "send failed (not retried)"}
+        started = time.time()
+        pressed = await self._wait(lambda: self._bank_state(g.bank, g.switch) == "on", 3.0)
+        await asyncio.sleep(max(0.0, g.pulse_s - (time.time() - started)))
+        try:
+            await self._send_vsw(g, False)                                  # release: always, exactly once
+        except Exception as e:
+            self._log(tag, None, "failed", f"send OFF: {e}", client)
+        self._spawn(self._watch_off(g, started, client))
+        if not pressed:
+            self._log(tag, None, "unverified", "virtual switch never reported ON", client)
+            return {"ok": False, "detail": "the load controller did not confirm the virtual switch (not retried)"}
+        fired = await self._wait(lambda: self._bank_state(self.bank, g.channel) == "on", 2.0)
+        self._log(tag, None, "ok" if fired else "unverified",
+                  f"virtual switch {g.bank}.{g.switch} pulsed; ch{g.channel} {'on' if fired else 'did not come on'}", client)
+        return ({"ok": True, "detail": f"{g.name}: on (the load controller turns it off)"} if fired else
+                {"ok": False, "detail": f"virtual switch pressed, but channel {g.channel} did not come on (check the controller's logic)"})
+
+    async def _watch_off(self, g: Trigger, started: float, client: str) -> None:
+        """Safety net: the controller should switch the output off by itself within expect_off_s."""
+        while time.time() - started < g.expect_off_s:
+            await asyncio.sleep(0.25)
+        if self._bank_state(self.bank, g.channel) != "on":
+            ran = round(time.time() - started, 1)
+            self.state.set(f"switching.trigger.{g.id}", {"ok": True, "t": round(started, 1)})
+            log.info("trigger %s: ch%d off within %.1fs (controller timer)", g.id, g.channel, ran)
+            return
+        self._log(f"trigger:{g.id}", None, "safety-off", f"ch{g.channel} still on after {g.expect_off_s:.0f}s: "
+                  "controller timer did not cut it off; switching it off directly", client)
+        self.state.set(f"switching.trigger.{g.id}", {"ok": False, "t": round(started, 1),
+                                                     "detail": f"{g.name}: the load controller's timer did not switch "
+                                                               f"channel {g.channel} off; AetherRV switched it off"})
+        try:
+            self._seq = (self._seq + 1) & 7
+            self.node.send_fast(PGN_GROUP_FUNCTION, self.controller, switch_command(self.bank, g.channel, False), self._seq)
+        except Exception as e:
+            log.error("trigger %s safety-off send failed: %s", g.id, e)
+
     # -- logic --
     def _spawn(self, coro) -> None:
         t = asyncio.get_running_loop().create_task(coro)
@@ -354,6 +456,11 @@ class SwitchController:
                 self._spawn(self._toggle(b))
 
     async def _toggle(self, b: Binding) -> None:
+        if b.trigger:
+            r = await self.command("trigger", {"trigger": b.trigger}, client=f"keypad:{b.keypad}.{b.button}")
+            if not r["ok"]:
+                log.info("keypad %d button %d → trigger %s: %s", b.keypad, b.button, b.trigger, r["detail"])
+            return
         first = self.channel_on(b.channels[0])
         if first is None:
             log.warning("keypad %d button %d: no fresh status, ignored", b.keypad, b.button)

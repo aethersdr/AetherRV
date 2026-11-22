@@ -121,6 +121,15 @@ def r_switch_trip(s: State, c: dict):
                           "n2k")
 
 
+def r_trigger_failsafe(s: State, c: dict):
+    """A load-controller timer that did not cut its output off (AetherRV's safety net had to)."""
+    for g in s.get("switching.triggers") or []:
+        r = s.get(f"switching.trigger.{g['id']}")
+        if r and r.get("ok") is False:
+            yield Finding(f"trigger.failsafe.{g['id']}", "serious", f"{g['name']}: controller timer failed",
+                          r.get("detail", "") + " Check the load controller's timer configuration.", "n2k")
+
+
 CERBO_SEVERITY = {0: "warning", 1: "serious"}       # Venus notification Type: 0 warning, 1 alarm, 2 info
 
 
@@ -245,6 +254,7 @@ def default_rules_base() -> list[Rule]:
         Rule("rixens", r_rixens, for_s=30, clear_s=10),
         Rule("switch_trip", r_switch_trip, for_s=3, clear_s=5),
         Rule("cerbo", r_cerbo_notifications, for_s=0, clear_s=5),
+        Rule("trigger", r_trigger_failsafe, for_s=0, clear_s=0),
     ]
 
 

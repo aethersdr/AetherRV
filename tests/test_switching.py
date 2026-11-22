@@ -249,3 +249,60 @@ async def test_interlocked_lights_go_off_when_ignition_goes_off_but_not_at_start
     await asyncio.sleep(0.05)
     payload = bytes(bus.sent[0].data)[2:] + bytes(bus.sent[1].data)[1:]
     assert payload[:10] == switch_command(32, 1, False)
+
+
+def setup_trigger():
+    s, n2k, node, bus, ctl = setup()
+    from aetherrv.switching import Trigger
+    ctl.triggers["drawer_locks"] = Trigger("drawer_locks", "Drawer locks", bank=33, switch=1, channel=11,
+                                           pulse_s=0.2, expect_off_s=0.8)
+    claimed(node); bus.sent.clear()
+    return s, n2k, node, bus, ctl
+
+
+def sent_payloads(bus):
+    return [bytes(bus.sent[i].data)[2:] + bytes(bus.sent[i + 1].data)[1:] for i in range(0, len(bus.sent), 2)]
+
+
+async def test_trigger_pulses_virtual_switch_and_controller_timer_cuts_off():
+    s, n2k, node, bus, ctl = setup_trigger()
+    status(n2k, 0, 32); status(n2k, 0, 33)
+
+    async def clmd16():                       # the controller: vsw ON → ch11 on; then its timer turns ch11 off
+        await asyncio.sleep(0.05); status(n2k, 0, 33, on=[1]); status(n2k, 0, 32, on=[11])
+        await asyncio.sleep(0.3); status(n2k, 0, 33)
+        await asyncio.sleep(0.2); status(n2k, 0, 32)
+
+    asyncio.get_running_loop().create_task(clmd16())
+    r = await ctl.command("trigger", {"trigger": "drawer_locks"})
+    assert r["ok"]
+    p = sent_payloads(bus)
+    assert p[0][:10] == switch_command(33, 1, True) and p[1][:10] == switch_command(33, 1, False)
+    await asyncio.sleep(1.0)
+    assert len(sent_payloads(bus)) == 2                          # no safety-off needed
+    assert s.get("switching.trigger.drawer_locks")["ok"] is True
+
+
+async def test_trigger_safety_net_switches_output_off_if_controller_does_not():
+    s, n2k, node, bus, ctl = setup_trigger()
+    status(n2k, 0, 32); status(n2k, 0, 33)
+
+    async def broken_timer():                 # vsw works, ch11 comes on, but never goes off
+        await asyncio.sleep(0.05); status(n2k, 0, 33, on=[1]); status(n2k, 0, 32, on=[11])
+        for _ in range(12):
+            await asyncio.sleep(0.1); status(n2k, 0, 32, on=[11]); status(n2k, 0, 33)
+
+    asyncio.get_running_loop().create_task(broken_timer())
+    await ctl.command("trigger", {"trigger": "drawer_locks"})
+    await asyncio.sleep(1.0)
+    p = sent_payloads(bus)
+    assert p[-1][:10] == switch_command(32, 11, False)           # safety net: direct OFF to the output
+    assert s.get("switching.trigger.drawer_locks")["ok"] is False
+
+
+async def test_plain_on_to_trigger_channel_stays_blocked():
+    s, n2k, node, bus, ctl = setup_trigger()
+    ctl.channels[11] = {"channel": 11, "name": "Drawer locks", "blocked": True, "blocked_reason": "use the trigger"}
+    status(n2k, 0, 32); status(n2k, 0, 33)
+    r = await ctl.command("set", {"channel": 11, "on": True})
+    assert not r["ok"] and bus.sent == []

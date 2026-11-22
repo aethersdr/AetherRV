@@ -81,6 +81,15 @@ tx_enabled = false
 # button = 4
 # channels = [4]
 #
+# [[device.n2k.trigger]]  # momentary press of a controller VIRTUAL switch whose logic (e.g. a timer) lives in
+# id = "drawer_locks"     #   the controller; AetherRV pulses it and switches the output off itself if the
+# name = "Drawer locks"   #   controller hasn't within expect_off_s. A tile on `channel` (and a binding with
+# bank = 33               #   trigger = "…") fires it.
+# switch = 1
+# channel = 11
+# pulse_s = 1.0
+# expect_off_s = 13.0
+#
 # [[device.n2k.input]]    # controller's wired inputs (bank indicator 16+N, volts in 127751 connection 15+N)
 # input = 4
 # name = "Reverse"
