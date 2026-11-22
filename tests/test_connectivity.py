@@ -371,3 +371,24 @@ def test_peplink_wifi_wan_fields():
     assert w4["wifi"] == {"ssid": "PTP", "strength": 0, "level": 5, "channel": 149, "band": "5 GHz"}
     assert "bssid" not in w4["wifi"]
     assert w3["wifi"]["ssid"] is None and w3["wifi"]["band"] is None          # scanning: still marked as Wi-Fi
+
+
+def test_peplink_order_targets_strict():
+    import pytest
+    from aetherrv.adapters.peplink import order_targets
+    cur = {"order": [1, 2, 4, 5], **{str(c): {"name": f"W{c}", "priority": p, "enable": c != 5}
+                                     for c, p in ((1, 3), (2, 2), (4, 1), (5, 1))}}
+    assert order_targets(cur, [4, 1, 2]) == {4: 1, 1: 2, 2: 3}
+    for bad in ([4, 1], [4, 1, 2, 5], [4, 4, 1, 2], [], "4,1,2", [4, 1, 9]):
+        with pytest.raises(ValueError):
+            order_targets(cur, bad)
+
+
+def test_peplink_set_order_one_post_only_changed():
+    import asyncio
+    w = _FakeWriter({1: 3, 2: 2, 4: 1})
+    r = asyncio.run(_pep(w).command("set_wan_order", {"order": [4, 1, 2]}, poll=0.01, verify_timeout=1))
+    assert r["ok"] and len(w.posts) == 1
+    assert w.posts[0] == {"instantActive": True, "list": [{"connId": 1, "priority": 2}, {"connId": 2, "priority": 3}]}
+    assert asyncio.run(_pep(w).command("set_wan_order", {"order": [4, 1, 2]}))["detail"] == "already in that order"
+    assert len(w.posts) == 1

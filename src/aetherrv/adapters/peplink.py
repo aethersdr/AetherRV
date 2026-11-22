@@ -164,6 +164,32 @@ def current_priority(current: dict, conn_id: int) -> int | None:
     return e.get("priority")
 
 
+def order_targets(current: dict, order: list) -> dict[int, int]:
+    """Drag-to-reorder: the enabled connections in `order` become P1, P2, P3, … (capped at P4). Every enabled
+    connection on the router must appear exactly once; disabled ones are never included. Strict → ValueError."""
+    if not isinstance(order, list) or not order or not all(isinstance(c, int) for c in order):
+        raise ValueError("order must be a list of connection ids")
+    if len(set(order)) != len(order):
+        raise ValueError("order repeats a connection")
+    for c in order:
+        current_priority(current, c)                      # shape + present + enabled
+    enabled = {c for c in current["order"] if isinstance(current.get(str(c)), dict) and current[str(c)].get("enable")}
+    if set(order) != enabled:
+        raise ValueError("order must list every enabled connection exactly once")
+    return {c: min(i + 1, 4) for i, c in enumerate(order)}
+
+
+def targets_payload(current: dict, targets: dict[int, int]) -> dict:
+    """POST body setting several connections' priorities in ONE change (only those connections are sent)."""
+    if not targets:
+        raise ValueError("nothing to change")
+    for c, p in targets.items():
+        current_priority(current, c)
+        if not 1 <= p <= 4:
+            raise ValueError("priority must be 1–4")
+    return {"instantActive": True, "list": [{"connId": c, "priority": p} for c, p in targets.items()]}
+
+
 def priority_payload(current: dict, conn_id: int, priority: int) -> dict:
     """Body for POST config.wan.connection.priority (Peplink API reference): ONLY the connection being changed,
     so no other link's settings are touched; instantActive applies it without a separate 'apply changes'."""
@@ -270,7 +296,7 @@ def _insecure_ctx() -> ssl.SSLContext:
 
 class PeplinkAdapter:
     device = "peplink"
-    COMMANDS = ("set_wan_priority",)
+    COMMANDS = ("set_wan_priority", "set_wan_order")
 
     def __init__(self, state: State, client: PeplinkClient, writer: PeplinkClient | None = None,
                  gate: TxGate | None = None, db: sqlite3.Connection | None = None) -> None:
@@ -294,7 +320,8 @@ class PeplinkAdapter:
 
     async def command(self, cmd: str, value=None, client: str = "kiosk", verify_timeout: float = 20.0,
                       poll: float = 2.0) -> dict:
-        """set_wan_priority {id, priority}: fresh read of the router's priority list → one POST → verify."""
+        """set_wan_priority {id, priority} | set_wan_order {order: [ids]}: fresh read of the router's priority
+        list → one POST with just the changed connections → verify they all show the new priority."""
         async with self._cmd_lock:
             try:
                 if self.gate is None:
@@ -310,29 +337,36 @@ class PeplinkAdapter:
                 self._log(cmd, value, "rejected", "no read-write API client", client)
                 return {"ok": False, "detail": "WAN control isn't set up (no read-write API client)"}
             try:
-                conn, prio = int(value["id"]), int(value["priority"])
+                if cmd == "set_wan_priority":
+                    req = {int(value["id"]): int(value["priority"])}
+                else:                                      # set_wan_order {order: [id, …]}
+                    req = [int(c) for c in value["order"]]
             except (TypeError, KeyError, ValueError):
                 self._log(cmd, value, "rejected", "bad value", client)
                 return {"ok": False, "detail": "bad request"}
             try:
                 cur = await asyncio.wait_for(self.writer.get("config.wan.connection.priority"), timeout=10)   # fresh
-                body = priority_payload(cur, conn, prio)
+                targets = req if cmd == "set_wan_priority" else order_targets(cur, req)
+                was = {c: current_priority(cur, c) for c in targets}
+                changed = {c: p for c, p in targets.items() if was[c] != p}
+                body = targets_payload(cur, changed) if changed else None
             except ValueError as e:
                 self._log(cmd, value, "rejected", str(e), client)
                 return {"ok": False, "detail": f"not sent: {e}"}
             except Exception as e:
                 self._log(cmd, value, "failed", f"read: {e}", client)
                 return {"ok": False, "detail": "router not reachable; nothing sent"}
-            was = current_priority(cur, conn)
-            if was == prio:
-                self._log(cmd, value, "noop", f"already P{prio}", client)
-                return {"ok": True, "detail": f"already P{prio}"}
+            name = lambda c: (cur.get(str(c)) or {}).get("name") or f"WAN {c}"
+            if not changed:
+                self._log(cmd, value, "noop", "already set", client)
+                return {"ok": True, "detail": "already in that order" if cmd == "set_wan_order" else f"already P{targets[next(iter(targets))]}"}
             try:
                 await asyncio.wait_for(self.writer.post_once("config.wan.connection.priority", body), timeout=10)  # once
             except Exception as e:
                 send_err = e                     # it may still have applied: verify, never resend
             else:
                 send_err = None
+            what = ", ".join(f"{name(c)} P{was[c]}→P{p}" for c, p in changed.items())
             deadline = time.monotonic() + verify_timeout
             while time.monotonic() < deadline:
                 await asyncio.sleep(poll)
@@ -340,15 +374,18 @@ class PeplinkAdapter:
                     wans = normalize_wans(await self.writer.get("status.wan.connection"))
                 except Exception:
                     continue                     # the router may be busy switching links
-                w = next((x for x in wans if x["id"] == conn), None)
-                if w and w.get("priority") == prio:
+                now = {x["id"]: x.get("priority") for x in wans}
+                if all(now.get(c) == p for c, p in changed.items()):
                     try:
                         await self._wan()
                     except Exception:
                         pass
-                    self._log(cmd, value, "ok", f"P{was} → P{prio}" + (f" (send raised {send_err})" if send_err else ""), client)
-                    return {"ok": True, "detail": f"{w['name']} is now P{prio}"}
-            self._log(cmd, value, "unverified", f"send={'error: ' + str(send_err) if send_err else 'ok'}; priority not seen", client)
+                    self._log(cmd, value, "ok", what + (f" (send raised {send_err})" if send_err else ""), client)
+                    if cmd == "set_wan_priority":
+                        c, p = next(iter(changed.items()))
+                        return {"ok": True, "detail": f"{name(c)} is now P{p}"}
+                    return {"ok": True, "detail": "new order: " + ", ".join(f"P{p} {name(c)}" for c, p in targets.items())}
+            self._log(cmd, value, "unverified", f"{what}; send={'error: ' + str(send_err) if send_err else 'ok'}; not seen", client)
             return {"ok": False, "detail": "the router didn't confirm the change (not retried)"}
 
     async def _wan(self) -> None:

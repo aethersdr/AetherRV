@@ -623,3 +623,7 @@ Sections 1–31 use the old names. Mapping:
   - **2026-11-21, update.** This firmware will not create API clients over a web session (`auth.client` returns 401 even for admin), so the writer is a read-write web login (`peplink_rw_user`/`peplink_rw_password`; the owner chose the admin account).
     - The GET shape is `{order:[…], "<id>":{name, group, priority, enable}}`. Per Peplink's API reference, the POST sends only the changed connection: `{instantActive:true, list:[{connId, priority}]}`. Connections disabled on the router are refused.
     - Dry-run checked against the live router. `[device.peplink] tx_enabled = true` is set (config backup `*.pre-peplink-tx-20261121`).
+- **2026-11-21, WAN drag-to-reorder.** Grab handles on the WAN priority rows.
+  - Dropping a row renumbers the enabled WANs P1, P2, P3… in list order (anything past P4 stays at P4), after one confirmation.
+  - `set_wan_order {order}`: strict `order_targets` (every enabled connection exactly once, disabled ones never sent); one POST containing only the connections whose priority changes; verified until all show the new priority.
+  - The card stops re-rendering while a drag is in progress. Tested on the Pi with CDP mouse events: drag, confirm dialog, cancel, nothing sent.

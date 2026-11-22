@@ -1043,6 +1043,11 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .net-pair .cell-card .cell-sig > div { min-width: 0; }
 .net-pair .cell-card .card-h .pill { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* WAN priority rows: grab handle on the left */
-#wan-card .wan { grid-template-columns: 14px 14px 26px 1fr auto auto; }
+#wan-card .wan { grid-template-columns: 26px 14px 26px 1fr auto auto; padding-left: 6px; }
 #wan-card .wan .grip { display: flex; align-items: center; justify-content: center; color: var(--muted); opacity: .7; cursor: grab; }
 #wan-card .wan .grip svg { width: 10px; height: 16px; fill: currentColor; }
+#wan-card .wans .wan { transition: transform .15s ease; }
+#wan-card .wans .wan.dragging { transition: none; position: relative; z-index: 3; box-shadow: 0 8px 24px rgb(0 0 0 / .45); border-color: var(--line); }
+#wan-card .wans:not(.can-drag) .grip { cursor: default; opacity: .35; }
+#wan-card .wans.can-drag .grip { touch-action: none; }
+#wan-card .wans.can-drag .wan.dragging .grip { cursor: grabbing; }

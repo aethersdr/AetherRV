@@ -1494,7 +1494,51 @@ function skyMap(m, az, size = 300) {
 }
 
 // WAN priority (Peplink, read-write API client): tap P# → pick P1–P4 → confirm → fresh read, one send, verify.
-let wanEdit = null;
+let wanEdit = null, wanDrag = null;
+// Drag a row by its grab handle to reorder: on drop the list becomes P1, P2, P3… (one confirm, one router change).
+$("#wan-card").addEventListener("pointerdown", e => {
+  const grip = e.target.closest(".can-drag .grip");
+  if (!grip || !canControlDev("peplink") || ctlPending || wanDrag) return;
+  e.preventDefault();
+  if (wanEdit != null) { wanEdit = null; renderNetwork(); }
+  const rows = [...$("#wan-card").querySelectorAll(".wans > .wan")];
+  const row = rows.find(r => r.contains(e.target)) || grip.closest(".wan");
+  const from = rows.indexOf(row);
+  if (from < 0) return;
+  const pitch = rows.length > 1 ? rows[1].offsetTop - rows[0].offsetTop : row.offsetHeight;
+  wanDrag = { id: e.pointerId, rows, row, from, to: from, y0: e.clientY, pitch };
+  grip.setPointerCapture(e.pointerId);
+  row.classList.add("dragging");
+});
+$("#wan-card").addEventListener("pointermove", e => {
+  const d = wanDrag;
+  if (!d || e.pointerId !== d.id) return;
+  const dy = e.clientY - d.y0;
+  const max = d.rows.length - 1;
+  d.to = Math.max(0, Math.min(max, Math.round((d.from * d.pitch + dy) / d.pitch)));
+  d.row.style.transform = `translateY(${Math.max(-d.from * d.pitch, Math.min((max - d.from) * d.pitch, dy))}px)`;
+  d.rows.forEach((r, i) => {
+    if (r === d.row) return;
+    const shift = d.to > d.from && i > d.from && i <= d.to ? -d.pitch : d.to < d.from && i < d.from && i >= d.to ? d.pitch : 0;
+    r.style.transform = shift ? `translateY(${shift}px)` : "";
+  });
+});
+const endWanDrag = e => {
+  const d = wanDrag;
+  if (!d || e.pointerId !== d.id) return;
+  d.rows.forEach(r => { r.style.transform = ""; r.classList.remove("dragging"); });
+  wanDrag = null;
+  const ids = d.rows.map(r => +r.dataset.wid);
+  ids.splice(d.to, 0, ...ids.splice(d.from, 1));
+  renderNetwork();
+  if (e.type === "pointercancel" || d.to === d.from) return;
+  const name = id => ((S["peplink.wans"] || []).find(w => w.id === id) || {}).name || `WAN ${id}`;
+  askConfirm("Change the WAN order?",
+    `New priorities: ${ids.map((id, i) => `P${Math.min(i + 1, 4)} ${name(id)}`).join(", ")}. The router re-evaluates which link carries traffic right away; if the active connection changes, internet drops for a few seconds and remote (Tailscale) access may reconnect.`,
+    () => control("set_wan_order", { order: ids }, "WAN order", "peplink"));
+};
+$("#wan-card").addEventListener("pointerup", endWanDrag);
+$("#wan-card").addEventListener("pointercancel", endWanDrag);
 $("#wan-card").addEventListener("click", e => {
   const b = e.target.closest("button[data-wan]");
   if (!b || !canControlDev("peplink") || ctlPending) return;
@@ -1626,8 +1670,8 @@ function renderNetwork() {
   // Priority order (P1 first; same priority: the one in use, then router order); disabled ("off") WANs hidden.
   const wanList = wans.filter(w => w.enabled)
     .sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99) || (b.connected - a.connected) || a.id - b.id);
-  $("#wan-card").innerHTML = `<div class="card-h"><h2>WAN priority</h2><span class="muted">${S["peplink.reachable"] === false ? "router unreachable" : ""}</span></div>` +
-    (wanList.length ? `<div class="wans">${wanList.map(w => `<div class="wan ${w.name === S["peplink.active"] ? "active" : ""}">
+  if (!wanDrag) $("#wan-card").innerHTML = `<div class="card-h"><h2>WAN priority</h2><span class="muted">${S["peplink.reachable"] === false ? "router unreachable" : ""}</span></div>` +
+    (wanList.length ? `<div class="wans ${canControlDev("peplink") && !ctlPending && wanList.length > 1 ? "can-drag" : ""}">${wanList.map(w => `<div class="wan ${w.name === S["peplink.active"] ? "active" : ""}" data-wid="${w.id}">
        <span class="grip" aria-hidden="true"><svg viewBox="0 0 10 16"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg></span><span class="led led-${esc(w.led)}"></span>${icon(w.starlink ? "dish" : w.cellular ? "signal" : w.wifi ? "wifi" : "router")}
        <div><b>${esc(w.name)}</b><span>${esc(w.message)}${w.uptime ? " · up " + dur(w.uptime) : ""}</span></div>
        ${canControlDev("peplink") ? `<button class="prio prio-btn ${wanEdit === w.id ? "on" : ""}" data-wan="${w.id}" ${ctlPending ? "disabled" : ""}>${w.priority != null ? "P" + w.priority : "—"}</button>`
