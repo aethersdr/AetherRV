@@ -32,6 +32,7 @@ from .history import History
 from .state import State
 from .txgate import TxGate
 from .traffic import TrafficTiles
+from .radar import RadarRecorder
 from .settings import AdminClient, AutoTimezone, Prefs, RemoteAuth
 from .web import make_app
 
@@ -236,8 +237,10 @@ async def amain(cfg: dict) -> None:
     adapters.append(ColdRearm(state, prefs))
     tt_key = load_secrets(cfg).get("tomtom_api_key", "")
     traffic = TrafficTiles(tt_key) if tt_key else None
+    radar = RadarRecorder(state, Path(cfg.get("radar", {}).get("dir", "/var/lib/aetherrv/radar")))
+    adapters.append(radar)
     state.set("traffic.available", traffic is not None)
-    runner = web.AppRunner(make_app(state, static, history, alerts, controls, admin=admin, prefs=prefs, traffic=traffic,
+    runner = web.AppRunner(make_app(state, static, history, alerts, controls, admin=admin, prefs=prefs, traffic=traffic, radar=radar,
                                     auth=RemoteAuth(admin, control_subnets=web_cfg.get("control_subnets", []),
                                                     tailnet=web_cfg.get("control_tailnet", "owner"))))
     await runner.setup()

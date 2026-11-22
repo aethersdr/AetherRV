@@ -1140,7 +1140,7 @@ function sunTimes(lat, lon, date = new Date()) {
 // Tapping the map pins a spot and loads that spot's 7-day forecast; Re-centre returns map + forecast to the van.
 // The view only auto-recentres when the van moves > 15 km, so panning/zooming isn't reset by GPS updates.
 let wxCenter = null, wxMap = null, wxVan = null, wxPin = null, fcPick = null;
-let rvFrames = [], rvHost = "", rvLayers = [], rvIdx = -1, rvTimer = null, rvAt = 0;
+let rvFrames = [], rvLayers = [], rvIdx = -1, rvNow = -1, rvTimer = null, rvAt = 0;
 const kmBetween = (a, b) => { const R = 6371, r = Math.PI / 180, dLat = (b[0] - a[0]) * r, dLon = (b[1] - a[1]) * r;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); };
 const fmtLL = (lat, lon) => `${Math.abs(lat).toFixed(3)}° ${lat >= 0 ? "N" : "S"}, ${Math.abs(lon).toFixed(3)}° ${lon >= 0 ? "E" : "W"}`;
@@ -1164,40 +1164,71 @@ function initWxMap() {
 }
 $("#wx-zin").addEventListener("click", () => wxMap && wxMap.zoomIn());
 $("#wx-zout").addEventListener("click", () => wxMap && wxMap.zoomOut());
+// Timeline = frames the Pi recorded (older than the source's 2 h; radar.py) + the source's 2 h + its 1 h forecast.
+// Only a small window of frames is attached to the map at a time (each is a set of decoded 512 px tiles).
 async function loadRadar() {
   if (Date.now() - rvAt < 10 * 60e3 && rvFrames.length) return;
   rvAt = Date.now();
   try {
     // LibreWXR: RainViewer-compatible API (same JSON + tile paths), crisper and deeper zoom — as used by AetherMap.
-    const j = await (await fetch("https://api.librewxr.net/public/weather-maps.json")).json();
-    rvHost = j.host; rvFrames = j.radar.past || [];
-    rvLayers.forEach(l => wxMap.removeLayer(l));
+    const [j, rec] = await Promise.all([
+      fetch("https://api.librewxr.net/public/weather-maps.json").then(r => r.json()),
+      fetch("/api/radar/recorded").then(r => r.json()).catch(() => ({ frames: [] }))]);
+    const past = j.radar.past || [], cast = j.radar.nowcast || [], oldest = past.length ? past[0].time : Infinity;
     // 512 px tiles (map zoom N → tile z N-1), colour scheme 6 (NWS-style), no smoothing — AetherMap's settings.
-    rvLayers = rvFrames.map(f => L.tileLayer(`${rvHost}${f.path}/512/{z}/{x}/{y}/6/0_0.png`,
-      { opacity: 0, tileSize: 512, zoomOffset: -1, maxNativeZoom: 11, maxZoom: 12, zIndex: 5, className: "wx-radar" }).addTo(wxMap));
-    const n = rvFrames.length;
-    $("#wx-tl-ticks").innerHTML = rvFrames.map((_, i) => `<i style="left:${n > 1 ? i / (n - 1) * 100 : 100}%"></i>`).join("");
-    showFrame(n - 1);
+    // Forecast URLs carry the index's timestamp so a cached forecast tile is never shown once it's observed.
+    const src = (f, q = "") => `${j.host}${f.path}/512/{z}/{x}/{y}/6/0_0.png${q}`;
+    const frames = [
+      ...(rec.frames || []).filter(t => t < oldest).map(t => ({ time: t, kind: "rec", url: `/api/radar/tile/${t}/{z}/{x}/{y}.png` })),
+      ...past.map(f => ({ time: f.time, kind: "past", url: src(f) })),
+      ...cast.map(f => ({ time: f.time, kind: "cast", url: src(f, `?g=${j.generated}`) }))];
+    if (!frames.length) throw new Error("no frames");
+    const prev = rvFrames[rvIdx], wasNow = !prev || rvIdx === rvNow;
+    rvLayers.forEach(l => l && wxMap.removeLayer(l));
+    rvFrames = frames; rvLayers = frames.map(() => null); rvIdx = -1;
+    rvNow = frames.map(f => f.kind).lastIndexOf("past"); if (rvNow < 0) rvNow = frames.length - 1;
+    const n = frames.length, pc = i => n > 1 ? i / (n - 1) * 100 : 100;
+    $("#wx-tl-ticks").innerHTML = frames.map((f, i) => `<i class="${f.kind}${i === rvNow ? " now" : ""}" style="left:${pc(i)}%"></i>`).join("");
+    $("#wx-tl-cast").style.left = `${pc(rvNow)}%`;
+    $("#wx-tl-rec").style.width = `${pc(frames.findIndex(f => f.kind !== "rec"))}%`;
+    // keep the frame on screen across a refresh (by time); "now" stays "now"
+    let i = rvNow;
+    if (!wasNow) { const k = frames.findIndex(f => f.time >= prev.time); i = k < 0 ? n - 1 : k; }
+    showFrame(i);
   } catch (e) { $("#wx-time").textContent = "radar unavailable"; }
 }
+function rvLayer(i) {
+  const f = rvFrames[i];
+  // Recorded frames exist at tile zooms 4-7 only (map 5-8): Leaflet scales them outside that (native zoom = map zoom).
+  return rvLayers[i] ||= L.tileLayer(f.url, { opacity: 0, tileSize: 512, zoomOffset: -1, maxZoom: 12, zIndex: 5, className: "wx-radar",
+    ...(f.kind === "rec" ? { minNativeZoom: 5, maxNativeZoom: 8 } : { maxNativeZoom: 11 }) });
+}
+const fmtAgo = m => m < 60 ? `${m} min ago` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""} ago`;
 function showFrame(i) {
-  if (!rvLayers.length) return;
-  if (rvIdx >= 0 && rvLayers[rvIdx]) rvLayers[rvIdx].setOpacity(0);
+  const n = rvFrames.length;
+  if (!n) return;
+  // attach the shown frame plus one behind and three ahead (prefetch for playback); detach the rest
+  const keep = new Set([-1, 0, 1, 2, 3].map(d => (i + d + n) % n));
+  rvLayers.forEach((l, k) => { if (l && !keep.has(k) && wxMap.hasLayer(l)) wxMap.removeLayer(l); });
+  keep.forEach(k => { const l = rvLayer(k); if (!wxMap.hasLayer(l)) l.setOpacity(0).addTo(wxMap); });
+  if (rvIdx >= 0 && rvLayers[rvIdx] && rvIdx !== i) rvLayers[rvIdx].setOpacity(0);
   rvIdx = i; rvLayers[i].setOpacity(0.85);
-  const t = new Date(rvFrames[i].time * 1000), ago = Math.round((Date.now() - t) / 60e3);
-  $("#wx-time").textContent = `${t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${ago} min ago`;
-  const p = rvLayers.length > 1 ? i / (rvLayers.length - 1) * 100 : 100;
-  $("#wx-tl-fill").style.width = `${p}%`; $("#wx-tl-thumb").style.left = `${p}%`;
+  const f = rvFrames[i], t = new Date(f.time * 1000), mins = Math.round((t - Date.now()) / 60e3);
+  const hm = t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  $("#wx-time").textContent = f.kind === "cast" ? `${hm} · forecast +${Math.max(0, mins)} min` : `${hm} · ${fmtAgo(Math.max(0, -mins))}`;
+  $("#wx-tl").classList.toggle("cast", f.kind === "cast");
+  const p = n > 1 ? i / (n - 1) * 100 : 100, pNow = n > 1 ? rvNow / (n - 1) * 100 : 100;
+  $("#wx-tl-fill").style.width = `${Math.min(p, pNow)}%`; $("#wx-tl-thumb").style.left = `${p}%`;   // fill stops at "now"
   $("#wx-tl-track").setAttribute("aria-valuenow", i);
 }
 // Radar timeline: play/pause icon + a rail with one tick per frame; drag (or tap) the rail to scrub.
 function rvStop() { if (rvTimer) { clearInterval(rvTimer); rvTimer = null; } $("#wx-tl").classList.remove("playing"); $("#wx-play").setAttribute("aria-label", "Play radar loop"); }
 $("#wx-play").addEventListener("click", () => {
   if (rvTimer) { rvStop(); return; }
-  if (!rvLayers.length) return;
+  if (!rvFrames.length) return;
   $("#wx-tl").classList.add("playing"); $("#wx-play").setAttribute("aria-label", "Pause radar loop");
-  if (rvIdx >= rvLayers.length - 1) showFrame(0);              // from the end: start over at the oldest frame
-  rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvLayers.length), 700 / rvSpeed());
+  if (rvIdx >= rvFrames.length - 1) showFrame(0);              // from the end: start over at the oldest frame
+  rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvFrames.length), 700 / rvSpeed());
 });
 // Loop speed: one button cycling 1× → 2× → 4× (1× = 700 ms a frame), remembered per screen.
 const RV_SPEEDS = [1, 2, 4];
@@ -1207,15 +1238,15 @@ rvSpeedLabel();
 $("#wx-speed").addEventListener("click", () => {
   store.set("vp.radar.speed", RV_SPEEDS[(RV_SPEEDS.indexOf(rvSpeed()) + 1) % RV_SPEEDS.length]);
   rvSpeedLabel();
-  if (rvTimer) { clearInterval(rvTimer); rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvLayers.length), 700 / rvSpeed()); }
+  if (rvTimer) { clearInterval(rvTimer); rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvFrames.length), 700 / rvSpeed()); }
 });
 {
   const track = $("#wx-tl-track"), rail = track.querySelector(".wx-tl-rail");
-  const at = e => { const r = rail.getBoundingClientRect(), n = rvLayers.length;
+  const at = e => { const r = rail.getBoundingClientRect(), n = rvFrames.length;
     return Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (n - 1)); };
   let drag = null;
   track.addEventListener("pointerdown", e => {
-    if (!rvLayers.length) return;
+    if (!rvFrames.length) return;
     rvStop(); drag = e.pointerId; track.setPointerCapture(e.pointerId); track.classList.add("drag");
     const i = at(e); if (i !== rvIdx) showFrame(i);
   });

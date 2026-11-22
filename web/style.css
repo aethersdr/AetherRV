@@ -651,7 +651,17 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-tl-thumb { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: #fff;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-batt) 45%, transparent); transition: transform .12s; }
 .wx-tl-track.drag .wx-tl-thumb { transform: scale(1.25); }
-.wx-tl-time { flex: none; width: 196px; text-align: right; font-size: 16px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* rail segments: Pi-recorded history (dimmer), the source's 2 h, then the 1 h forecast (dashed amber) after "now" */
+.wx-tl-rec { position: absolute; left: 0; top: -3px; bottom: -3px; border-radius: 4px; background: rgba(255,255,255,.07); }
+.wx-tl-cast { position: absolute; top: 0; right: 0; bottom: 0; border-radius: 2px; background: repeating-linear-gradient(90deg,
+  rgba(233,199,125,.75) 0 6px, transparent 6px 11px); z-index: 1; }
+.wx-tl-ticks i.rec { background: rgba(255,255,255,.22); height: 6px; margin-top: -3px; }
+.wx-tl-ticks i.cast { background: rgba(233,199,125,.7); }
+.wx-tl-ticks i.now { height: 18px; margin-top: -9px; width: 3px; background: #fff; }
+.wx-tl-fill { z-index: 2; } .wx-tl-thumb { z-index: 3; }
+.wx-tl.cast .wx-tl-time { color: #e9c77d; }
+.wx-tl.cast .wx-tl-thumb { box-shadow: 0 0 0 4px rgba(233,199,125,.5); }
+.wx-tl-time { flex: none; width: 236px; text-align: right; font-size: 16px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .wx-hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none;
   background: rgba(14,17,22,.82); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font-size: 15px; color: var(--ink-2); }
 .wx-base { filter: saturate(.8) brightness(.95); }

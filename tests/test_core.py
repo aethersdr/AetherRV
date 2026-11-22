@@ -276,3 +276,54 @@ async def test_traffic_tiles_proxy_cache_and_cap(aiohttp_client, tmp_path):
     assert (await c.get("/api/traffic/flow/bogus/5/1/2.png")).status == 404
     c2 = await aiohttp_client(make_app(State(), tmp_path))         # no key configured
     assert (await c2.get("/api/traffic/flow/major/5/1/2.png")).status == 404
+
+
+def test_radar_block_and_prune(tmp_path):
+    from aetherrv.radar import RadarRecorder, block
+    b = block(48.26, -116.72, 6, 3)                     # 3×3 centred on the van's tile
+    assert len(b) == 9 and (10, 22) in b
+    assert len(block(48.26, -116.72, 4, 2)) == 4 and len(block(89.9, 0, 3, 3)) == 6     # clipped at the pole
+    rec = RadarRecorder(State(), tmp_path, keep_s=3600)
+    for t in (1000, 5000, 9000):
+        (tmp_path / str(t)).mkdir(); (tmp_path / str(t) / "done").write_text("1")
+    (tmp_path / "9600").mkdir()                          # incomplete: not listed
+    assert rec.frames() == [1000, 5000, 9000]
+    rec.prune(now=9500)
+    assert rec.frames() == [9000]
+
+
+async def test_radar_poll_records_gaps_not_newest(tmp_path, aiohttp_client):
+    from aetherrv.radar import BLOCK, CLEAR_PNG, RadarRecorder
+    from aetherrv.web import make_app
+    st = State(); st.update({"location.lat": 48.26, "location.lon": -116.72})
+    now = int(__import__("time").time())
+    past = [{"time": now - 1200, "path": "/v2/radar/a"}, {"time": now - 600, "path": "/v2/radar/b"},
+            {"time": now, "path": "/v2/radar/c"}]
+    got = []
+
+    class R:
+        def __init__(self, status, body=b"", j=None): self.status, self.body, self.j = status, body, j
+        def raise_for_status(self): pass
+        async def json(self, content_type=None): return self.j
+        async def read(self): return self.body
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+
+    class S:
+        def get(self, url):
+            got.append(url)
+            if url.endswith("weather-maps.json"):
+                return R(200, j={"host": "https://h", "radar": {"past": past, "nowcast": [{"time": now + 600, "path": "/v2/radar/n"}]}})
+            return R(404 if "/b/" in url and "/7/" in url else 200, b"PNG")     # frame b: one zoom fails
+    rec = RadarRecorder(st, tmp_path)
+    await rec.poll(S())
+    tiles = sum(n * n for n in BLOCK.values())
+    assert rec.frames() == [now - 1200]                  # a saved; b incomplete → dropped; c (newest) skipped
+    assert not any("/c/" in u or "/n/" in u for u in got) and len([u for u in got if "/a/" in u]) == tiles
+    assert not (tmp_path / str(now - 600)).exists()
+    c = await aiohttp_client(make_app(st, tmp_path, radar=rec))
+    assert (await (await c.get("/api/radar/recorded")).json())["frames"] == [now - 1200]
+    r = await c.get(f"/api/radar/tile/{now - 1200}/6/10/22.png")
+    assert r.status == 200 and await r.read() == b"PNG"
+    r = await c.get(f"/api/radar/tile/{now - 1200}/6/0/0.png")
+    assert r.status == 200 and await r.read() == CLEAR_PNG

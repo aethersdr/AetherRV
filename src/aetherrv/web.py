@@ -24,7 +24,7 @@ LONG_VERBS = {"tailscale_install": 660, "update_check": 330}   # seconds (packag
 
 
 def make_app(state: State, static_dir: Path, history: History | None = None, alerts=None,
-             controls: dict | None = None, admin=None, prefs=None, auth=None, traffic=None) -> web.Application:
+             controls: dict | None = None, admin=None, prefs=None, auth=None, traffic=None, radar=None) -> web.Application:
     controls = controls or {}
 
     async def who_of(req: web.Request) -> str | None:
@@ -180,7 +180,25 @@ def make_app(state: State, static_dir: Path, history: History | None = None, ale
             return web.Response(status=status)
         return web.Response(body=body, content_type="image/png", headers={"Cache-Control": "max-age=240"})
 
+    async def api_radar_recorded(_req: web.Request) -> web.Response:
+        # Radar frames the Pi saved itself (radar.py), for the part of the timeline the source no longer serves.
+        return web.json_response({"frames": radar.frames() if radar else [], "zoom": [4, 7]})
+
+    async def api_radar_tile(req: web.Request) -> web.StreamResponse:
+        from .radar import CLEAR_PNG
+        m = req.match_info
+        try:
+            t, z, x, y = int(m["t"]), int(m["z"]), int(m["x"]), int(m["y"])
+        except ValueError:
+            raise web.HTTPBadRequest()
+        p = radar.tile(t, z, x, y) if radar else None
+        if p is None:                                      # outside the recorded block: clear, not an error tile
+            return web.Response(body=CLEAR_PNG, content_type="image/png", headers={"Cache-Control": "max-age=300"})
+        return web.FileResponse(p, headers={"Cache-Control": "max-age=86400", "Content-Type": "image/png"})
+
     app.router.add_get("/", index)
+    app.router.add_get("/api/radar/recorded", api_radar_recorded)
+    app.router.add_get("/api/radar/tile/{t}/{z}/{x}/{y}.png", api_radar_tile)
     app.router.add_get("/api/traffic/{kind}/{style}/{z}/{x}/{y}.png", api_traffic)
     app.router.add_get("/api/settings", api_settings)
     app.router.add_post("/api/settings/action", api_settings_action)
