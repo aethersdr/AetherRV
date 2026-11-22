@@ -13,7 +13,6 @@ or printed. The script:
   5. prints the shape of config.wan.connection.priority (no secrets), then logs out.
 """
 import getpass
-import http.cookiejar
 import json
 import os
 import shutil
@@ -34,14 +33,20 @@ def main() -> int:
     base = f"https://{host}/api"
     ctx = ssl.create_default_context()
     ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE        # the router's self-signed certificate
-    jar = http.cookiejar.CookieJar()
-    op = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx), urllib.request.HTTPCookieProcessor(jar))
+    op = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
+    cookies: dict[str, str] = {}       # kept by hand: Python's cookie jar drops the router's bare-IP session cookie
 
     def call(func, body=None, **q):
         url = f"{base}/{func}" + ("?" + "&".join(f"{k}={v}" for k, v in q.items()) if q else "")
         data = None if body is None else json.dumps(body).encode()
-        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-        with op.open(req, timeout=15) as r:
+        hdr = {"Content-Type": "application/json"}
+        if cookies:
+            hdr["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+        with op.open(urllib.request.Request(url, data=data, headers=hdr), timeout=15) as r:
+            for sc in r.headers.get_all("Set-Cookie") or []:
+                k, _, v = sc.split(";", 1)[0].partition("=")
+                if k.strip():
+                    cookies[k.strip()] = v.strip()
             return json.loads(r.read() or b"{}")
 
     print(f"Peplink router {host}: create the read-write API client for AetherRV's WAN priority control.")
@@ -57,6 +62,12 @@ def main() -> int:
         call("logout", {})
         return 1
     try:
+        chk = call("status.wan.connection")              # harmless read: proves the session is carried
+        if chk.get("stat") != "ok":
+            print(f"Logged in, but the session isn't accepted ({chk.get('code')} {chk.get('message')}; "
+                  f"cookies seen: {sorted(cookies)}). Nothing created.")
+            return 1
+        print("Session check: OK.")
         r = call("auth.client", {"action": "add", "name": NAME, "scope": "api"})
         if r.get("stat") != "ok":
             print(f"Creating the API client failed: {r.get('code')} {r.get('message')}")
