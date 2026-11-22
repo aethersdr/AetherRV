@@ -276,7 +276,8 @@ function renderHome() {
   for (const r of ["fridge", "freezer"]) {
     const st = coldStatus(r);
     $(`#home-${r}`).textContent = fmtT(S[`climate.${r}.temp`]);
-    $(`#home-${r}-l`).innerHTML = st.cls === "warn" ? `<span class="warn-t">${icon("alert")}${r} ${st.label}</span>` : r;
+    $(`#home-${r}-l`).innerHTML = st.cls === "warn" ? `<span class="warn-t">${icon("alert")}${r} ${st.label}</span>`
+      : S[`settings.${r}_off`] ? `${r} · off` : r;
   }
   const heating = S["climate.rixens.state"] === "heating" || S["climate.espar.state"] === "heating";
   $("#home-heat-pill").innerHTML = S["climate.rixens.state"] == null && S["climate.espar.state"] == null
@@ -573,7 +574,7 @@ function renderClimate() {
     [["fridge", "Fridge", "fridge"], ["freezer", "Freezer", "snow"]].map(([r, name, ic]) => {
       const st = coldStatus(r);
       return `<div class="cold-item ${st.cls}">${icon(st.cls === "warn" ? "alert" : ic)}<div><b>${fmtT(S[`climate.${r}.temp`])}</b>
-        <span>${name}${st.cls === "warn" ? ` · ${st.label}` : st.cls === "ok" ? ` · below ${fmtT(S[`ui.${r}_max_c`])}` : " · no sensor"}</span></div></div>`;
+        <span>${name} · ${st.cls === "ok" ? `below ${fmtT(S[`ui.${r}_max_c`])}` : st.label}</span></div></div>`;
     }).join("") + `</div>`;
   $("#heaters").innerHTML = heaters.map(h => {
     const on = h.state === "heating";
