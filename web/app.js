@@ -1197,7 +1197,17 @@ $("#wx-play").addEventListener("click", () => {
   if (!rvLayers.length) return;
   $("#wx-tl").classList.add("playing"); $("#wx-play").setAttribute("aria-label", "Pause radar loop");
   if (rvIdx >= rvLayers.length - 1) showFrame(0);              // from the end: start over at the oldest frame
-  rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvLayers.length), 700);
+  rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvLayers.length), 700 / rvSpeed());
+});
+// Loop speed: one button cycling 1× → 2× → 4× (1× = 700 ms a frame), remembered per screen.
+const RV_SPEEDS = [1, 2, 4];
+const rvSpeed = () => { const v = +store.get("vp.radar.speed", 1); return RV_SPEEDS.includes(v) ? v : 1; };
+const rvSpeedLabel = () => { $("#wx-speed").textContent = `${rvSpeed()}×`; $("#wx-speed").title = `Loop speed ${rvSpeed()}× — tap to change`; };
+rvSpeedLabel();
+$("#wx-speed").addEventListener("click", () => {
+  store.set("vp.radar.speed", RV_SPEEDS[(RV_SPEEDS.indexOf(rvSpeed()) + 1) % RV_SPEEDS.length]);
+  rvSpeedLabel();
+  if (rvTimer) { clearInterval(rvTimer); rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvLayers.length), 700 / rvSpeed()); }
 });
 {
   const track = $("#wx-tl-track"), rail = track.querySelector(".wx-tl-rail");
