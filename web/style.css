@@ -995,4 +995,4 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .wx-card > .card-h > h2 { align-self: center; }   /* vertically centred on the sun line */
 .wx-card .card-h .wx-loc > b { position: relative; }
 .wx-card .card-h .wx-loc > b small { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 1px;
-  font-size: 12px; font-weight: 500; color: var(--muted); }   /* hangs below the time: the time stays on the line */
+  font-size: 16px; font-weight: 400; color: var(--muted); }   /* hangs below the time: the time stays on the line */
