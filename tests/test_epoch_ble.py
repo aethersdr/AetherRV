@@ -40,5 +40,5 @@ def test_publish_counts_only_fresh_batteries():
     a.last["B"] = {"t": 1000.0, "data": {"soc": 100, "current": -5.81}}
     a.publish(now=1030.0)
     assert s.get("batteries.ble.reporting") == 1 and s.get("batteries.ble.current") == -5.81
-    a.publish(now=1000.0 + 700)
+    a.publish(now=1000.0 + 31)
     assert s.get("batteries.ble.reporting") == 0
