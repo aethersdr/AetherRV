@@ -1088,3 +1088,10 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .dial-card .dial-area { margin-bottom: 0; }
 .dial-card .dial-area .dial-ctl { position: absolute; left: 0; right: 0; bottom: 2%; display: flex; justify-content: center; pointer-events: none; z-index: 1; }
 .dial-card .dial-area .dial-ctl .ctl-val b { font-size: 60px; }
+/* dial sized to fit BOTH the width and height of its area (it overflowed into the fan column when the
+   column was narrower than it was tall) */
+.dial-card .dial-area { container-type: size; }
+.dial-card .dial-area .dial-wrap { inset: 0; margin: auto; width: min(94cqw, 94cqh); height: min(94cqw, 94cqh); aspect-ratio: auto; }
+.dial-card .dial-area .dial-wrap svg { width: 100%; height: 100%; }
+.dial-card .dial-temp { font-size: min(108px, 19cqmin); }
+.dial-card .dial-area .dial-ctl .ctl-val b { font-size: min(60px, 10.5cqmin); }
