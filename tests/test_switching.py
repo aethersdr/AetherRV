@@ -228,3 +228,24 @@ async def test_ignition_interlock_refuses_on_until_ignition():
     ctl.VERIFY = 0.2
     await ctl.command("set", {"channel": 1, "on": True})
     assert len(bus.sent) == 2                      # now it is sent
+
+
+async def test_interlocked_lights_go_off_when_ignition_goes_off_but_not_at_startup():
+    s, n2k, node, bus, ctl = setup()
+    ctl.channels[1]["requires_input"] = 2
+    ctl.inputs[2] = {"input": 2, "name": "Ignition"}
+    from aetherrv.switching import Debounced
+    ctl.deb[2] = Debounced(hold=0.3)
+    claimed(node); bus.sent.clear()
+    t0 = time.time()
+    status(n2k, 0, 32, on=[1], now=t0)               # spots on, ignition OFF at startup (ind 18 off)
+    ctl.tick(t0 + 1)
+    await asyncio.sleep(0.05)
+    assert bus.sent == []                             # startup value: never acted on
+    status(n2k, 0, 32, on=[1, 18], now=t0 + 2)       # ignition on
+    ctl.tick(t0 + 2.5)
+    status(n2k, 0, 32, on=[1], now=t0 + 3)           # ignition off
+    ctl.tick(t0 + 3.5)
+    await asyncio.sleep(0.05)
+    payload = bytes(bus.sent[0].data)[2:] + bytes(bus.sent[1].data)[1:]
+    assert payload[:10] == switch_command(32, 1, False)

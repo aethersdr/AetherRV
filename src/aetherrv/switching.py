@@ -367,10 +367,17 @@ class SwitchController:
         now = time.time() if now is None else now
         for n, d in self.deb.items():
             first = d.value is None
-            if d.settle(now) and not first and self.automation:
+            if not d.settle(now) or first:
+                continue                     # no change, or the first value after start: never act on it
+            name = self.inputs[n].get("name", n)
+            if self.automation:
                 for ch in self.inputs[n].get("follow", []):
-                    self._spawn(self.command("set", {"channel": int(ch), "on": bool(d.value)},
-                                             client=f"input:{self.inputs[n].get('name', n)}"))
+                    self._spawn(self.command("set", {"channel": int(ch), "on": bool(d.value)}, client=f"input:{name}"))
+            if d.value is False:
+                # interlocked channels (requires_input = n) go off when their input goes off (owner, 2026-11-21)
+                for ch, conf in self.channels.items():
+                    if conf.get("requires_input") is not None and int(conf["requires_input"]) == n and self.channel_on(ch):
+                        self._spawn(self.command("set", {"channel": ch, "on": False}, client=f"interlock:{name} off"))
         loads = self.n2k.volts
         self.state.set("switching.inputs", [
             {"input": n, "name": i.get("name", f"Input {n}"), "icon": i.get("icon", "toggle"),
