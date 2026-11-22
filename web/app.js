@@ -315,13 +315,14 @@ function bankScene(names) {
     `<linearGradient id="${id}" ${attrs}>${stops.map(([o, c, a = 1]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${a}"/>`).join("")}</linearGradient>`;
   // aethersdr.com tokens: --bg-2/--bg-3 navy, --cyan-deep #3aa7ff → --cyan #5de3ff → --aqua #8ef7e6 (their --grad);
   // low SoC uses their line tokens --l-hpsdr #F2B441 (amber) and --l-native #EE7355 (coral).
-  const hues = { blue: ["#0e1a2a", "#3aa7ff", "#5de3ff", "#8ef7e6"], amber: ["#2a1d08", "#c98a1c", "#F2B441", "#fbe0a6"],
-                 red: ["#2a120c", "#c4523a", "#EE7355", "#f9c2b3"] };
+  // (toned down: the gradient's bright end is reserved for a thin highlight, not the whole body)
+  const hues = { blue: ["#0a1422", "#1d5f9e", "#3aa7ff", "#6fd0ea"], amber: ["#1f1606", "#8a5f14", "#c9942f", "#e9c77d"],
+                 red: ["#1f0d09", "#8a3a29", "#c9604a", "#e9a594"] };
   let defs = "";
   for (const [k, [d0, d1, d2, d3]] of Object.entries(hues)) {
-    defs += grad(`bg-side-${k}`, [[0, d0], [.16, d1], [.46, d2], [.6, d3], [.82, d1], [1, d0]]);
-    defs += `<radialGradient id="bg-top-${k}" cx=".45" cy=".35" r=".75"><stop offset="0" stop-color="${d3}"/><stop offset=".55" stop-color="${d2}"/><stop offset="1" stop-color="${d1}"/></radialGradient>`;
-    defs += `<radialGradient id="bg-pool-${k}"><stop offset="0" stop-color="${d2}" stop-opacity=".75"/><stop offset="1" stop-color="${d2}" stop-opacity="0"/></radialGradient>`;
+    defs += grad(`bg-side-${k}`, [[0, d0], [.18, d1], [.5, d2], [.58, d3], [.68, d2], [.86, d1], [1, d0]]);
+    defs += `<radialGradient id="bg-top-${k}" cx=".45" cy=".35" r=".8"><stop offset="0" stop-color="${d2}"/><stop offset=".6" stop-color="${d1}"/><stop offset="1" stop-color="${d0}"/></radialGradient>`;
+    defs += `<radialGradient id="bg-pool-${k}"><stop offset="0" stop-color="${d2}" stop-opacity=".5"/><stop offset="1" stop-color="${d2}" stop-opacity="0"/></radialGradient>`;
   }
   defs += grad("bg-scan", [[0, "#8ef7e6", 0], [.5, "#8ef7e6", .55], [1, "#8ef7e6", 0]], 'x1="0" x2="0" y1="0" y2="1"')
        + grad("bg-slab", [[0, "#0e1a2a"], [1, "#060b13"]], 'x1="0" x2="0" y1="0" y2="1"')
@@ -390,9 +391,9 @@ function updateBankScene(batts, bankAmps) {
     const hue = soc == null ? "blue" : soc < 15 ? "red" : soc < 30 ? "amber" : "blue";
     $(`#bg-s${i}`)?.classList.toggle("off", soc == null);
     $(`#bg-pool${i}`)?.setAttribute("fill", `url(#bg-pool-${hue})`);
-    $(`#bg-pool${i}`)?.setAttribute("opacity", soc == null ? 0 : (.25 + .75 * soc / 100).toFixed(2));
+    $(`#bg-pool${i}`)?.setAttribute("opacity", soc == null ? 0 : (.12 + .3 * soc / 100).toFixed(2));
     $(`#bg-halo${i}`)?.setAttribute("fill", `url(#bg-pool-${hue})`);
-    $(`#bg-halo${i}`)?.setAttribute("opacity", soc == null ? 0 : (.12 + .28 * soc / 100).toFixed(2));
+    $(`#bg-halo${i}`)?.setAttribute("opacity", soc == null ? 0 : (.04 + .1 * soc / 100).toFixed(2));
     for (let k = 0; k < 4; k++) {
       const f = soc == null ? 0 : Math.max(0, Math.min(1, (soc - 25 * k) / 25));
       const yb = BS.yb0 - k * BS.step, yt = yb - BS.dh;
