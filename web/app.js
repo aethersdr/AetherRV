@@ -313,18 +313,21 @@ function bankScene(names) {
   const n = names.length, W = BS.w, cxs = names.map((_, i) => (i + .5) * W / n);
   const grad = (id, stops, attrs = 'x1="0" x2="1" y1="0" y2="0"') =>
     `<linearGradient id="${id}" ${attrs}>${stops.map(([o, c, a = 1]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${a}"/>`).join("")}</linearGradient>`;
-  const hues = { blue: ["#0b2a6b", "#1d4ed8", "#60a5fa", "#bfdbfe"], amber: ["#5a2c04", "#b45309", "#f59e0b", "#fde68a"],
-                 red: ["#5c0b0b", "#b91c1c", "#f87171", "#fecaca"] };
+  // aethersdr.com tokens: --bg-2/--bg-3 navy, --cyan-deep #3aa7ff → --cyan #5de3ff → --aqua #8ef7e6 (their --grad);
+  // low SoC uses their line tokens --l-hpsdr #F2B441 (amber) and --l-native #EE7355 (coral).
+  const hues = { blue: ["#0e1a2a", "#3aa7ff", "#5de3ff", "#8ef7e6"], amber: ["#2a1d08", "#c98a1c", "#F2B441", "#fbe0a6"],
+                 red: ["#2a120c", "#c4523a", "#EE7355", "#f9c2b3"] };
   let defs = "";
   for (const [k, [d0, d1, d2, d3]] of Object.entries(hues)) {
-    defs += grad(`bg-side-${k}`, [[0, d0], [.18, d1], [.5, d2], [.62, d3], [.8, d1], [1, d0]]);
+    defs += grad(`bg-side-${k}`, [[0, d0], [.16, d1], [.46, d2], [.6, d3], [.82, d1], [1, d0]]);
     defs += `<radialGradient id="bg-top-${k}" cx=".45" cy=".35" r=".75"><stop offset="0" stop-color="${d3}"/><stop offset=".55" stop-color="${d2}"/><stop offset="1" stop-color="${d1}"/></radialGradient>`;
     defs += `<radialGradient id="bg-pool-${k}"><stop offset="0" stop-color="${d2}" stop-opacity=".75"/><stop offset="1" stop-color="${d2}" stop-opacity="0"/></radialGradient>`;
   }
-  defs += grad("bg-scan", [[0, "#fff", 0], [.5, "#e0f2fe", .55], [1, "#fff", 0]], 'x1="0" x2="0" y1="0" y2="1"')
-       + grad("bg-slab", [[0, "#0c1f3f"], [1, "#061226"]], 'x1="0" x2="0" y1="0" y2="1"')
-       + grad("bg-spark", [[0, "#38bdf8", .45], [1, "#38bdf8", 0]], 'x1="0" x2="0" y1="0" y2="1"')
-       + `<radialGradient id="bg-slabtop" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#1e3a8a" stop-opacity=".85"/><stop offset="1" stop-color="#0a1a3a" stop-opacity=".9"/></radialGradient>
+  defs += grad("bg-scan", [[0, "#8ef7e6", 0], [.5, "#8ef7e6", .55], [1, "#8ef7e6", 0]], 'x1="0" x2="0" y1="0" y2="1"')
+       + grad("bg-slab", [[0, "#0e1a2a"], [1, "#060b13"]], 'x1="0" x2="0" y1="0" y2="1"')
+       + grad("bg-spark", [[0, "#5de3ff", .42], [1, "#3aa7ff", 0]], 'x1="0" x2="0" y1="0" y2="1"')
+       + grad("bg-sparkline", [[0, "#3aa7ff"], [.42, "#5de3ff"], [1, "#8ef7e6"]])
+       + `<radialGradient id="bg-slabtop" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#12233a" stop-opacity=".95"/><stop offset="1" stop-color="#0a121e" stop-opacity=".95"/></radialGradient>
           <filter id="bg-glow" filterUnits="userSpaceOnUse" x="0" y="0" width="${BS.w}" height="${BS.h}"><feGaussianBlur stdDeviation="3.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
   const pY = BS.yb0 + 12, slab = `<ellipse cx="${W / 2}" cy="${pY + 12}" rx="${W / 2 - 8}" ry="36" fill="url(#bg-slab)"/>
     <ellipse cx="${W / 2}" cy="${pY}" rx="${W / 2 - 8}" ry="36" fill="url(#bg-slabtop)" class="bg-slab-top"/>

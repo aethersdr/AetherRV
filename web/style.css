@@ -915,37 +915,37 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 
 /* 3D battery-bank scene (Energy) */
 .bank-scene { width: 100%; height: auto; max-height: 300px; overflow: visible; }
-.bank-scene .bg-dim { fill: rgba(59, 130, 246, .07); stroke: rgba(125, 180, 255, .32); stroke-width: 1.2; }
-.bank-scene .bg-dim-top { fill: rgba(96, 165, 250, .09); stroke: rgba(147, 197, 253, .42); stroke-width: 1.2; }
-.bank-scene .bg-rim { fill: none; stroke: rgba(219, 234, 254, .55); stroke-width: 1.2; }
+.bank-scene .bg-dim { fill: rgba(18, 34, 56, .55); stroke: rgba(120, 190, 230, .28); stroke-width: 1.2; }   /* aethersdr --panel / --line-hi */
+.bank-scene .bg-dim-top { fill: rgba(28, 52, 84, .65); stroke: rgba(120, 190, 230, .4); stroke-width: 1.2; }   /* --panel-hi */
+.bank-scene .bg-rim { fill: none; stroke: rgba(142, 247, 230, .5); stroke-width: 1.2; }
 .bank-scene .bg-surface { stroke: rgba(255, 255, 255, .7); stroke-width: 1; }
 .bank-scene .bg-stack.off { opacity: .5; } .bank-scene .bg-stack.off .bg-rim { stroke-dasharray: 4 4; }
 .bank-scene .bg-stack.off .bg-ring, .bank-scene .bg-stack.off .bg-scan { display: none; }
-.bank-scene .bg-pct { fill: #fff; font-size: 30px; font-weight: 800; text-anchor: middle; letter-spacing: -.5px;
-  paint-order: stroke; stroke: rgba(2, 8, 28, .85); stroke-width: 5px; }
-.bank-scene .bg-name { fill: #7dd3fc; font-size: 14px; font-weight: 700; letter-spacing: 3px; text-anchor: middle; opacity: .9; }
-.bank-scene .bg-slab-line { fill: none; stroke: rgba(56, 189, 248, .28); stroke-width: 1; stroke-dasharray: 2 6; }
-.bank-scene .bg-slab-edge { fill: none; stroke: #38bdf8; stroke-width: 2; opacity: .75; }
-.bank-scene .bg-bus-p, .bank-scene .bg-post-p { stroke: #ef4444; stroke-width: 5; fill: none; stroke-linecap: round; }
-.bank-scene .bg-bus-n, .bank-scene .bg-post-n { stroke: #3b82f6; stroke-width: 5; fill: none; stroke-linecap: round; }
+.bank-scene .bg-pct { fill: #eaf2fb; font-size: 30px; font-weight: 800; text-anchor: middle; letter-spacing: -.5px;
+  paint-order: stroke; stroke: rgba(6, 11, 19, .88); stroke-width: 5px; }
+.bank-scene .bg-name { fill: #7bf2dc; font-size: 14px; font-weight: 700; letter-spacing: 3px; text-anchor: middle; opacity: .9; }
+.bank-scene .bg-slab-line { fill: none; stroke: rgba(120, 190, 230, .28); stroke-width: 1; stroke-dasharray: 2 6; }
+.bank-scene .bg-slab-edge { fill: none; stroke: #5de3ff; stroke-width: 2; opacity: .75; }
+.bank-scene .bg-bus-p, .bank-scene .bg-post-p { stroke: #EE7355; stroke-width: 5; fill: none; stroke-linecap: round; }
+.bank-scene .bg-bus-n, .bank-scene .bg-post-n { stroke: #3aa7ff; stroke-width: 5; fill: none; stroke-linecap: round; }
 .bank-scene .bg-post-p, .bank-scene .bg-post-n { stroke-width: 4; }
 .bank-scene .bg-pol { font-size: 22px; font-weight: 800; }
-.bank-scene .bg-pol-p { fill: #f87171; text-anchor: end; } .bank-scene .bg-pol-n { fill: #60a5fa; text-anchor: start; }
-.bank-scene .bg-flow { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 3 15; opacity: 0; }
+.bank-scene .bg-pol-p { fill: #EE7355; text-anchor: end; } .bank-scene .bg-pol-n { fill: #5de3ff; text-anchor: start; }
+.bank-scene .bg-flow { fill: none; stroke: #8ef7e6; stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 3 15; opacity: 0; }
 .bank-scene.chg .bg-flow, .bank-scene.dis .bg-flow { opacity: .9; animation: bg-flow var(--flow-dur, 2s) linear infinite; }
 .bank-scene.chg .bg-flow { animation-direction: reverse; }
 @keyframes bg-flow { to { stroke-dashoffset: -18; } }
-.bank-scene .bg-ring { fill: none; stroke: #38bdf8; stroke-width: 1.6; opacity: 0;
+.bank-scene .bg-ring { fill: none; stroke: #5de3ff; stroke-width: 1.6; opacity: 0;
   transform-box: fill-box; transform-origin: center; animation: bg-ring 2.6s ease-out infinite; }
 @keyframes bg-ring { 0% { transform: scale(.75); opacity: .75; } 100% { transform: scale(1.55); opacity: 0; } }
 .bank-scene .bg-scan { opacity: .2; animation: bg-scan 6s linear infinite; }
 .bank-scene.chg .bg-scan, .bank-scene.dis .bg-scan { opacity: .4; animation-duration: 2.8s; }
 .bank-scene.dis .bg-scan { animation-direction: reverse; }
 @keyframes bg-scan { from { transform: translateY(0); } to { transform: translateY(-165px); } }
-.bank-scene .bg-spark { fill: none; stroke: #38bdf8; stroke-width: 1.8; stroke-linejoin: round; }
+.bank-scene .bg-spark { fill: none; stroke: url(#bg-sparkline); stroke-width: 1.8; stroke-linejoin: round; }
 .bank-scene .bg-spark-area { fill: url(#bg-spark); }
-.bank-scene .bg-zero { stroke: rgba(148, 163, 184, .28); stroke-dasharray: 2 4; }
-.bank-scene .bg-amp { fill: var(--ink-2); font-size: 12px; font-weight: 600; }
+.bank-scene .bg-zero { stroke: rgba(120, 165, 210, .22); stroke-dasharray: 2 4; }
+.bank-scene .bg-amp { fill: #c4d4e8; font-size: 12px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .bank-scene * { animation: none !important; } }
 /* cheap glow: a wide translucent stroke under the line instead of a blur filter (filters repaint every frame) */
 .bank-scene .bg-halo-line { stroke-width: 12 !important; opacity: .28; }
