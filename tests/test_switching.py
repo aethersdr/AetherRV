@@ -56,16 +56,17 @@ def setup(tx=True):
     gate = TxGate({"n2k": tx})
     bus = FakeBus()
     node = N2kNode(bus, gate, preferred=150)
-    cfg = {"switching": {"controller": 0, "bank": 32},
-           "switch": [{"bank": 32, "channel": 1, "name": "Spot lights"},
-                      {"bank": 32, "channel": 4, "name": "Reverse lights"},
-                      {"bank": 32, "channel": 7, "name": "Dump valve"},
-                      {"bank": 32, "channel": 9, "name": "Drawer locks", "blocked": True,
+    cfg = {"switching": {"controller": 0, "bank": 32, "vsw_bank": 33, "press_s": 0.05},
+           "switch": [{"bank": 32, "channel": 1, "name": "Spot lights", "press": 1},
+                      {"bank": 32, "channel": 4, "name": "Reverse lights", "press": 4},
+                      {"bank": 32, "channel": 7, "name": "Dump valve", "press": 9},
+                      {"bank": 32, "channel": 9, "name": "Drawer locks", "press": 3, "blocked": True,
                        "blocked_reason": "drawer locks are blocked until the CLMD16 cut-off timer is back"},
-                      {"bank": 32, "channel": 12, "name": "Cabin lights", "kind": "dimmer"},
+                      {"bank": 32, "channel": 12, "name": "Cabin lights", "kind": "dimmer", "press": 12},
                       {"bank": 32, "channel": 16, "name": "Spare"}],
            "input": [{"input": 4, "name": "Reverse"}, {"input": 6, "name": "Dome", "debounce_s": 1.5}]}
     ctl = SwitchController(s, n2k, node, gate, cfg)
+    ctl.VERIFY = 0.4
     return s, n2k, node, bus, ctl
 
 
@@ -83,64 +84,114 @@ def claimed(node):
     node.claimed_at -= 1
 
 
-# ── controller ──
+def sent_payloads(bus):
+    return [bytes(bus.sent[i].data)[2:] + bytes(bus.sent[i + 1].data)[1:] for i in range(0, len(bus.sent), 2)]
+
+
+def ready(tx=True, on=(), vsw_on=()):
+    s, n2k, node, bus, ctl = setup(tx)
+    claimed(node); bus.sent.clear()
+    status(n2k, 0, 32, on=on); status(n2k, 0, 33, on=vsw_on)
+    return s, n2k, node, bus, ctl
+
+
+def press(switch, on):
+    return switch_command(33, switch, on)
+
+
+# ── controller: a set is a virtual-switch press, never a direct breaker command (owner 2026-11-22) ──
+async def test_set_presses_the_virtual_switch_once_and_verifies():
+    s, n2k, node, bus, ctl = ready()
+
+    async def clmd16():                       # its own logic switches ch1 on after the press
+        await asyncio.sleep(0.1); status(n2k, 0, 32, on=[1])
+
+    asyncio.get_running_loop().create_task(clmd16())
+    r = await ctl.command("set", {"channel": 1, "on": True}, client="test")
+    assert r["ok"], r
+    assert [p[:10] for p in sent_payloads(bus)] == [press(1, True), press(1, False)]     # ON, then OFF; nothing else
+    assert bus.sent[0].arbitration_id == 0x0DED0096
+
+
+async def test_never_sends_to_the_breaker_bank():
+    s, n2k, node, bus, ctl = ready(on=[12])
+    for cmd, val in (("set", {"channel": 1, "on": True}), ("set", {"channel": 12, "on": False}),
+                     ("set", {"channel": 7, "on": True}), ("dim", {"channel": 12, "level": 50})):
+        await ctl.command(cmd, val)
+    assert sent_payloads(bus) and all(p[:10] != switch_command(32, ch, on)
+                                      for p in sent_payloads(bus) for ch in range(1, 17) for on in (True, False))
+
+
+async def test_dim_is_refused_for_now():
+    s, n2k, node, bus, ctl = ready(on=[12])
+    r = await ctl.command("dim", {"channel": 12, "level": 50})
+    assert not r["ok"] and "Nothing was sent" in r["detail"] and bus.sent == []
+
+
+async def test_channel_without_a_virtual_switch_is_refused():
+    s, n2k, node, bus, ctl = ready()
+    r = await ctl.command("set", {"channel": 16, "on": True})
+    assert not r["ok"] and "no virtual switch" in r["detail"] and bus.sent == []
+
+
 async def test_blocked_when_tx_disabled_and_nothing_sent():
     s, n2k, node, bus, ctl = setup(tx=False)
-    status(n2k, 0, 32)
+    status(n2k, 0, 32); status(n2k, 0, 33)
     r = await ctl.command("set", {"channel": 1, "on": True})
     assert not r["ok"] and bus.sent == [] and s.get("n2k.controls_ok") is False
 
 
 async def test_needs_address_claim_and_fresh_status():
     s, n2k, node, bus, ctl = setup()
-    status(n2k, 0, 32)
+    status(n2k, 0, 32); status(n2k, 0, 33)
     assert not (await ctl.command("set", {"channel": 1, "on": True}))["ok"]          # no address yet
     claimed(node)
     bus.sent.clear()
-    status(n2k, 0, 32, now=time.time() - 10)                                          # stale
+    status(n2k, 0, 32, now=time.time() - 10)                                          # stale breakers
     r = await ctl.command("set", {"channel": 1, "on": True})
     assert not r["ok"] and "fresh" in r["detail"] and bus.sent == []
+    status(n2k, 0, 32); status(n2k, 0, 33, now=time.time() - 10)                      # stale virtual switches
+    r = await ctl.command("set", {"channel": 1, "on": True})
+    assert not r["ok"] and "virtual switches" in r["detail"] and bus.sent == []
 
 
-async def test_drawer_locks_refuse_on_but_allow_off():
-    s, n2k, node, bus, ctl = setup()
-    claimed(node); bus.sent.clear()
-    status(n2k, 0, 32)
+async def test_blocked_channel_refuses_on():
+    s, n2k, node, bus, ctl = ready()
     r = await ctl.command("set", {"channel": 9, "on": True})
     assert not r["ok"] and "cut-off" in r["detail"] and bus.sent == []
 
 
-async def test_set_sends_once_and_verifies_from_status():
-    s, n2k, node, bus, ctl = setup()
-    claimed(node); bus.sent.clear()
-    status(n2k, 0, 32)
-
-    async def clmd_obeys():
-        await asyncio.sleep(0.15)
-        status(n2k, 0, 32, on=[1])
-
-    asyncio.get_running_loop().create_task(clmd_obeys())
-    r = await ctl.command("set", {"channel": 1, "on": True}, client="test")
-    assert r["ok"]
-    assert len(bus.sent) == 2 and bus.sent[0].arbitration_id == 0x0DED0096         # 2 fast-packet frames, once
-    assert bytes(bus.sent[1].data)[1:] == H("01200201FFFFFF")
-
-
-async def test_unverified_is_not_retried():
-    s, n2k, node, bus, ctl = setup()
-    claimed(node); bus.sent.clear()
-    status(n2k, 0, 32)
-    ctl.VERIFY = 0.3
-    r = await ctl.command("set", {"channel": 4, "on": True})     # e.g. a channel the CLMD16 refuses
-    assert not r["ok"] and len(bus.sent) == 2
+async def test_not_switched_by_the_controller_is_reported_and_not_retried():
+    s, n2k, node, bus, ctl = ready()
+    r = await ctl.command("set", {"channel": 4, "on": True})     # the CLMD16's logic doesn't act
+    assert not r["ok"] and "didn't switch" in r["detail"]
+    assert [p[:10] for p in sent_payloads(bus)] == [press(4, True), press(4, False)]
 
 
 async def test_noop_when_already_in_state():
-    s, n2k, node, bus, ctl = setup()
-    claimed(node); bus.sent.clear()
-    status(n2k, 0, 32, on=[1])
+    s, n2k, node, bus, ctl = ready(on=[1])
     r = await ctl.command("set", {"channel": 1, "on": True})
     assert r["ok"] and bus.sent == []
+
+
+async def test_refuses_while_its_virtual_switch_is_already_on():
+    s, n2k, node, bus, ctl = ready(vsw_on=[1])
+    r = await ctl.command("set", {"channel": 1, "on": True})
+    assert not r["ok"] and "already pressed" in r["detail"] and bus.sent == []
+
+
+async def test_release_stuck_releases_only_our_switches_that_are_on():
+    s, n2k, node, bus, ctl = ready(vsw_on=[4, 5, 12])          # 5 isn't ours
+    assert ctl.owned_switches() == [1, 3, 4, 9, 12]
+    stuck = await ctl.release_stuck(wait=0.2)
+    assert stuck == [4, 12]
+    assert [p[:10] for p in sent_payloads(bus)] == [press(4, False), press(12, False)]
+
+
+async def test_release_stuck_skips_without_status():
+    s, n2k, node, bus, ctl = setup()
+    claimed(node); bus.sent.clear()
+    assert await ctl.release_stuck(wait=0.2) == [] and bus.sent == []
 
 
 async def test_keypad_presses_never_send():
@@ -188,37 +239,26 @@ def test_address_claim_moves_off_a_contested_address():
     assert node.address != 150 and bus.sent[-1].arbitration_id == (0x18EEFF00 | node.address)
 
 
-async def test_tripped_channel_off_clears_and_on_is_refused():
-    s, n2k, node, bus, ctl = setup()
-    claimed(node); bus.sent.clear()
-    status(n2k, 0, 32)
+async def test_tripped_channel_is_refused():
+    s, n2k, node, bus, ctl = ready()
     n2k.banks[(0, 32)]["states"][3] = "error"               # ch4 tripped
-    r = await ctl.command("set", {"channel": 4, "on": True})
-    assert not r["ok"] and "tripped" in r["detail"] and bus.sent == []
-
-    async def clears():
-        await asyncio.sleep(0.15)
-        status(n2k, 0, 32)                                   # CLMD16 reports ch4 off again
-
-    asyncio.get_running_loop().create_task(clears())
-    r = await ctl.command("set", {"channel": 4, "on": False})
-    assert r["ok"] and len(bus.sent) == 2
+    for on in (True, False):
+        r = await ctl.command("set", {"channel": 4, "on": on})
+        assert not r["ok"] and "tripped" in r["detail"]
+    assert bus.sent == []
 
 
-async def test_ignition_interlock_refuses_on_until_ignition():
-    s, n2k, node, bus, ctl = setup()
+async def test_ignition_interlock_refuses_on_until_ignition_and_explains_a_refusal():
+    s, n2k, node, bus, ctl = ready()
     ctl.channels[1]["requires_input"] = 2
     ctl.inputs[2] = {"input": 2, "name": "Ignition"}
     from aetherrv.switching import Debounced
     ctl.deb[2] = Debounced()
-    claimed(node); bus.sent.clear()
-    status(n2k, 0, 32)
     r = await ctl.command("set", {"channel": 1, "on": True})
     assert not r["ok"] and "Ignition" in r["detail"] and bus.sent == []
     ctl.deb[2].value = True
-    ctl.VERIFY = 0.2
-    await ctl.command("set", {"channel": 1, "on": True})
-    assert len(bus.sent) == 2                      # now it is sent
+    r = await ctl.command("set", {"channel": 1, "on": True})       # pressed; the fake CLMD16 doesn't act
+    assert not r["ok"] and len(sent_payloads(bus)) == 2
 
 
 def setup_trigger():
@@ -228,10 +268,6 @@ def setup_trigger():
                                            pulse_s=0.2, expect_off_s=0.8)
     claimed(node); bus.sent.clear()
     return s, n2k, node, bus, ctl
-
-
-def sent_payloads(bus):
-    return [bytes(bus.sent[i].data)[2:] + bytes(bus.sent[i + 1].data)[1:] for i in range(0, len(bus.sent), 2)]
 
 
 async def test_trigger_pulses_virtual_switch_and_controller_timer_cuts_off():

@@ -27,7 +27,7 @@ from .adapters.rixens import RixensAdapter
 from .adapters.rixens_http import RixensHttp, RixensHttpAdapter
 from .adapters.victron import VictronAdapter
 from .alerts import Alerts
-from .canbus import CanBus, prune_captures
+from .canbus import CanBus, FailoverBus, prune_captures
 from .history import History
 from .state import State
 from .txgate import TxGate
@@ -138,6 +138,9 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
         if bus is None:
             log.warning("device %s: bus %r not configured; skipping", dev, d.get("bus"))
             continue
+        if d.get("backup_bus") in buses:          # two paths to the same bus (e.g. hat0 + the Cerbo): one active
+            bus = FailoverBus(dev, bus, buses[d["backup_bus"]], state=state)
+            adapters.append(bus)
         if kind == "n2k":
             a = N2kAdapter(state, d.get("switch", []), show_unlabeled=bool(d.get("switching", {}).get("show_unlabeled", True)))
         elif kind == "rixens":
@@ -154,6 +157,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
             sw = d["switching"]
             node = N2kNode(bus, gate, preferred=int(sw.get("address", 150)), unique=int(sw.get("unique", 0x0AE7)))
             bus.add_handler(node.on_frame)
+            if isinstance(bus, FailoverBus):        # same NAME + address on the new path: announce it there
+                bus.on_switch.append(lambda _to, node=node: node.reassert())
             ctl = SwitchController(state, a, node, gate, d, db=history.db if history else None)
             adapters.append(ctl)
     gps = cfg.get("gps", {})
@@ -232,6 +237,8 @@ async def amain(cfg: dict) -> None:
                 "n2k": next((a for a in adapters if isinstance(a, SwitchController)), None),
                 "peplink": next((a for a in adapters if isinstance(a, PeplinkAdapter)), None)}
     admin = AdminClient(web_cfg.get("admin_socket", "/run/aetherrv-admin.sock"))
+    for fb in (a for a in adapters if isinstance(a, FailoverBus)):     # stuck-frame reset of the local CAN port
+        fb.reset = lambda iface: admin.call("can_reset", {"iface": iface}, timeout=10)
     prefs = Prefs(state, web_cfg.get("settings_path", "/var/lib/aetherrv/settings.json"))
     adapters.append(AutoTimezone(state, admin, prefs))
     adapters.append(ColdRearm(state, prefs))

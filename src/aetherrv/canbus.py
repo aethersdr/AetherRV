@@ -31,6 +31,7 @@ class BusStats:
     errors: int = 0
     ids: dict[int, int] = field(default_factory=dict)
     last_rx: float | None = None
+    last_good: float | None = None      # last frame another node sent (not an error frame, not our own echo)
     _window: list[float] = field(default_factory=list)
 
     def note(self, msg: can.Message) -> None:
@@ -40,6 +41,8 @@ class BusStats:
             self.errors += 1
         else:
             self.ids[msg.arbitration_id] = self.ids.get(msg.arbitration_id, 0) + 1
+            if getattr(msg, "is_rx", True):
+                self.last_good = time.time()
         self.last_rx = time.time()
         self._window.append(now)
 
@@ -61,6 +64,7 @@ class CanBus:
         bitrate: int | None = None,
         host: str | None = None,
         port: int | None = None,
+        own_echo: bool = False,
     ) -> None:
         self.name = name
         self.interface = interface
@@ -68,6 +72,7 @@ class CanBus:
         self.bitrate = bitrate
         self.host, self.port = host, port          # socketcand (CAN over TCP, e.g. the Cerbo GX's can0)
         self.capture_dir = capture_dir
+        self.own_echo = own_echo                   # socketcan: also receive our own frames once really sent (TX confirm)
         self.handlers: list[FrameHandler] = []
         self.stats = BusStats()
         self.connected = False
@@ -98,6 +103,8 @@ class CanBus:
             # Remote bus: bitrate is the remote side's; AetherRV never transmits on it (no send path for N2K).
             kw.update(host=self.host, port=int(self.port or 29536))
         # socketcan: bitrate/listen-only are owned by systemd-networkd, not by us.
+        if self.interface == "socketcan" and self.own_echo:
+            kw["receive_own_messages"] = True
         return can.Bus(**kw)
 
     def _open_capture(self) -> None:
@@ -164,6 +171,134 @@ class CanBus:
         if self._bus is not None:
             self._bus.shutdown()
             self._bus = None
+
+
+class FailoverBus:
+    """One logical bus over two paths to the SAME physical bus: a primary (the Pi's own CAN port) and a backup (e.g.
+    the Cerbo's socketcand). Frames are forwarded from the active path only (the other path hears the same frames)
+    and sends go out the active path only, through TxGate as always.
+
+    Failover: the primary goes silent (no frame from another node for FRESH_S) while the backup still hears the bus.
+    Both silent = the bus itself is quiet: stay put. Failback after FAILBACK_S of steady traffic on the primary.
+
+    A frame nobody ACKs is retried by the CAN chip forever (the MCP2515 has no one-shot mode; a node stays
+    error-passive, never bus-off, on ACK errors) and would go out whenever the wire came back. So on the primary:
+    refuse to send unless it heard the bus within SEND_FRESH_S, and expect each frame's TX echo within ECHO_S; a
+    missing echo resets the port at once (discarding the stuck frame) and fails over. A failed send is reported
+    as failed, never replayed on the other path.
+    """
+
+    FRESH_S, SEND_FRESH_S, FAILBACK_S, ECHO_S = 2.0, 1.0, 30.0, 0.25
+
+    def __init__(self, name: str, primary: CanBus, backup: CanBus, reset=None, state=None) -> None:
+        self.name, self.primary, self.backup = name, primary, backup
+        self.active = primary
+        self.reset = reset                         # async (iface) -> None: down/up the port (root helper)
+        self.state = state
+        self.handlers: list[FrameHandler] = []
+        self.on_switch: list[Callable[[CanBus], None]] = []
+        self.primary.own_echo = True
+        self._pending: dict[tuple[int, bytes], float] = {}
+        self._good_since: float | None = None
+        self._blocked_until = 0.0                  # after a stuck frame: no failback before this
+        primary.add_handler(lambda m: self._rx(primary, m))
+        backup.add_handler(lambda m: self._rx(backup, m))
+
+    # CanBus-like surface used by the adapters and N2kNode
+    @property
+    def channel(self) -> str:
+        return self.active.channel
+
+    def add_handler(self, h: FrameHandler) -> None:
+        self.handlers.append(h)
+
+    def link_up(self) -> bool:
+        return self.active.link_up()
+
+    @staticmethod
+    def fresh(bus: CanBus, within: float, now: float | None = None) -> bool:
+        g = bus.stats.last_good
+        return g is not None and (now or time.time()) - g < within and bus.link_up()
+
+    def _rx(self, src: CanBus, msg: can.Message) -> None:
+        if not getattr(msg, "is_rx", True):        # our own frame, confirmed sent (socketcan echo)
+            self._pending.pop((msg.arbitration_id, bytes(msg.data)), None)
+            return
+        if src is not self.active:
+            return
+        for h in self.handlers:
+            try:
+                h(msg)
+            except Exception:
+                log.exception("[%s] handler %r failed on %s", self.name, h, msg)
+
+    def send(self, device: str, msg: can.Message, gate: "TxGate", quiet: bool = False) -> None:
+        bus = self.active
+        if not self.fresh(bus, self.SEND_FRESH_S if bus is self.primary else self.FRESH_S):
+            raise can.CanOperationError(f"[{self.name}] {bus.name} isn't hearing the bus; not sent")
+        bus.send(device, msg, gate, quiet=quiet)
+        if bus is self.primary:
+            key = (msg.arbitration_id, bytes(msg.data))
+            self._pending[key] = time.time()
+            try:
+                asyncio.get_running_loop().call_later(self.ECHO_S, self._check_echo, key)
+            except RuntimeError:                   # no loop (tests calling synchronously)
+                pass
+
+    def _check_echo(self, key: tuple[int, bytes]) -> None:
+        if self._pending.pop(key, None) is None or self.active is not self.primary:
+            return
+        log.error("[%s] %s: frame %X not sent within %.0f ms (no ACK: wiring?); resetting the port, switching to %s",
+                  self.name, self.primary.name, key[0], self.ECHO_S * 1000, self.backup.name)
+        self._pending.clear()
+        self._blocked_until = time.time() + self.FAILBACK_S
+        if self.reset is not None:
+            asyncio.ensure_future(self._do_reset())
+        self._switch(self.backup, "a frame was not acknowledged")
+
+    async def _do_reset(self) -> None:
+        try:
+            await self.reset(self.primary.channel)
+            log.warning("[%s] %s reset (pending frame discarded)", self.name, self.primary.name)
+        except Exception as e:                     # noqa: BLE001
+            log.error("[%s] %s reset failed: %s", self.name, self.primary.name, e)
+
+    def _switch(self, to: CanBus, why: str) -> None:
+        if to is self.active:
+            return
+        self.active, self._good_since = to, None
+        (log.info if to is self.primary else log.warning)("[%s] now via %s (%s)", self.name, to.name, why)
+        self._publish()
+        for cb in self.on_switch:
+            try:
+                cb(to)
+            except Exception:                      # noqa: BLE001
+                log.exception("[%s] switch callback failed", self.name)
+
+    def _publish(self) -> None:
+        if self.state is not None:
+            self.state.update({f"{self.name}.path": self.active.name,
+                               f"{self.name}.path_backup": self.active is self.backup})
+
+    def tick(self, now: float | None = None) -> None:
+        now = now or time.time()
+        p_ok, b_ok = self.fresh(self.primary, self.FRESH_S, now), self.fresh(self.backup, self.FRESH_S, now)
+        if self.active is self.primary:
+            if not p_ok and b_ok:
+                self._switch(self.backup, f"{self.primary.name} silent")
+            return
+        if p_ok and now >= self._blocked_until:
+            self._good_since = self._good_since or now
+            if now - self._good_since >= self.FAILBACK_S:
+                self._switch(self.primary, f"{self.primary.name} steady again")
+        else:
+            self._good_since = None
+
+    async def run(self) -> None:
+        self._publish()
+        while True:
+            await asyncio.sleep(0.5)
+            self.tick()
 
 
 async def replay(path: Path, bus: can.BusABC, speed: float = 1.0, loop_forever: bool = False) -> None:

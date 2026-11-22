@@ -194,6 +194,12 @@ def r_buses(s: State, c: dict):
             continue
         if s.get(f"bus.{n}.connected") is False:
             yield Finding(f"bus.down.{n}", "serious", f"CAN bus {n} down", f"Interface {s.get(f'bus.{n}.channel')} is not up.", "can")
+    for k in s.snapshot():
+        if k.endswith(".path_backup") and s.get(k):
+            dev = k[:-len(".path_backup")]
+            yield Finding(f"path.backup.{dev}", "warning", f"{dev.upper()}: on the backup path ({s.get(f'{dev}.path')})",
+                          "The Pi's own CAN connection to this bus went silent or failed to send; running through the backup. "
+                          "Check the CAN wiring to the Pi.", "can")
 
 
 def r_victron(s: State, c: dict):

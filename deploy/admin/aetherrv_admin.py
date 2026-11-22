@@ -412,7 +412,23 @@ def v_update_status(_a: dict) -> dict:
     return {"state": st, "log": log_tail, "check": check, "last": _read_kv("/var/lib/aetherrv-update/last")}
 
 
+CAN_PORTS = {"hat0", "hat1", "fd0", "fd1"}
+
+
+def v_can_reset(a: dict) -> dict:
+    """Down/up a local CAN port: discards a frame stuck waiting for an ACK (the MCP2515 retries forever)."""
+    iface = a.get("iface")
+    if iface not in CAN_PORTS:
+        raise Bad("invalid iface")
+    for st in ("down", "up"):
+        rc, _, err = run(["ip", "link", "set", iface, st], timeout=10)
+        if rc:
+            raise Bad(err.strip() or f"ip link set {st} failed")
+    return {"iface": iface}
+
+
 VERBS = {
+    "can_reset": v_can_reset,
     "status": v_status,
     "set_hostname": v_set_hostname,
     "set_timezone": v_set_timezone,

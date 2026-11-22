@@ -123,6 +123,15 @@ class N2kNode:
             log.debug("n2k: address claim %d re-sent (answering a request)", self.address)
         self.claimed_at = time.monotonic()
 
+    def reassert(self) -> None:
+        """Re-send our claim (e.g. after the N2K path changed); quiet if transmit is off or the path is down."""
+        if self.claimed_at is None:
+            return
+        try:
+            self._send_claim("path change")
+        except Exception as e:                      # noqa: BLE001
+            log.info("n2k: claim on the new path not sent (%s)", e)
+
     def claim(self) -> None:
         free = [a for a in range(self.address, 252) if a not in self.taken] + \
                [a for a in range(0, self.address) if a not in self.taken]
@@ -216,6 +225,10 @@ class SwitchController:
 
     device = "n2k"
     FRESH = 3.0       # s: newest status must be at most this old (CLMD16 reports every 1.5 s)
+    # Owner 2026-11-22: AetherRV never bypasses the CLMD16's logic. It sends no direct breaker commands
+    # (126208 for 127501 / 127500 on the breaker bank). A `set` presses the channel's virtual switch
+    # (`press = N`, bank `vsw_bank`), which feeds the same controller logic as the keypad button. The
+    # only direct send left is the drawer-lock safety-off in _watch_off.
     VERIFY = 4.0      # s: the CLMD16 broadcasts a changed status immediately
 
     def __init__(self, state: State, n2k, node: N2kNode, gate: TxGate, cfg: dict,
@@ -224,6 +237,8 @@ class SwitchController:
         sw = cfg.get("switching", {})
         self.controller = int(sw.get("controller", 0))       # CLMD16 source address
         self.bank = int(sw.get("bank", 32))
+        self.vsw_bank = int(sw.get("vsw_bank", 33))           # the controller's virtual-switch bank instance
+        self.press_s = float(sw.get("press_s", 0.4))          # a press: ON, this long, OFF (a tap, not a hold)
         self.channels = {int(c["channel"]): c for c in cfg.get("switch", []) if int(c.get("bank", self.bank)) == self.bank}
         self.triggers = {str(g["id"]): Trigger(str(g["id"]), g.get("name", g["id"]), int(g["bank"]), int(g["switch"]),
                                                int(g["channel"]), float(g.get("pulse_s", 1.0)),
@@ -290,62 +305,76 @@ class SwitchController:
         if conf is None:
             self._log(cmd, value, "rejected", "channel not configured", client)
             return {"ok": False, "detail": f"channel {ch} is not configured"}
+        if cmd == "dim":
+            self._log(cmd, value, "rejected", "dimming runs in the load controller (hold-to-dim); not built yet", client)
+            return {"ok": False, "detail": "Dimming goes through the load controller's own hold-to-dim, which AetherRV "
+                                           "can't drive yet. Nothing was sent."}
+        if cmd != "set":
+            self._log(cmd, value, "rejected", "not an allowed command", client)
+            return {"ok": False, "detail": f"command {cmd!r} is not allowed"}
+        name = conf.get("name", f"channel {ch}")
+        on = bool(value.get("on"))
+        want = "on" if on else "off"
+        if on and conf.get("blocked"):
+            self._log(cmd, value, "rejected", f"channel blocked: {conf.get('blocked_reason', '')}", client)
+            return {"ok": False, "detail": conf.get("blocked_reason") or f"{name} is blocked"}
+        press = conf.get("press")
+        if press is None:
+            self._log(cmd, value, "rejected", "no virtual switch configured for this channel", client)
+            return {"ok": False, "detail": f"{name} has no virtual switch, so AetherRV can't ask the load controller "
+                                           "to switch it. Nothing was sent."}
+        press = int(press)
+        need = conf.get("requires_input")
+        if on and need is not None:              # extra caution on top of the controller's own interlock
+            d = self.deb.get(int(need))
+            if d is None or d.value is not True:
+                nm = self.inputs.get(int(need), {}).get("name", f"input {need}")
+                self._log(cmd, value, "rejected", f"interlock: {nm} is not on", client)
+                return {"ok": False, "detail": f"{name} needs {nm} on"}
         st, age = self.status()
         if st is None or age > self.FRESH:
             self._log(cmd, value, "failed", "no fresh 127501 from the load controller", client)
             return {"ok": False, "detail": "no fresh status from the load controller; nothing sent"}
-        cur = st[ch - 1]                      # "on" | "off" | "error" (tripped) | None
-        if cmd == "set":
-            on = bool(value.get("on"))
-            if on and conf.get("blocked"):
-                self._log(cmd, value, "rejected", f"channel blocked: {conf.get('blocked_reason', '')}", client)
-                return {"ok": False, "detail": conf.get("blocked_reason") or f"{conf.get('name', ch)} is blocked"}
-            need = conf.get("requires_input")
-            if on and need is not None:          # interlock: e.g. high-draw lights only with the ignition on
-                d = self.deb.get(int(need))
-                if d is None or d.value is not True:
-                    nm = self.inputs.get(int(need), {}).get("name", f"input {need}")
-                    self._log(cmd, value, "rejected", f"interlock: {nm} is not on", client)
-                    return {"ok": False, "detail": f"{conf.get('name', ch)} needs {nm} on"}
-            if cur == ("on" if on else "off"):  # a tripped channel ("error") still takes OFF: that clears the trip
-                self._log(cmd, value, "noop", "already in requested state", client)
-                return {"ok": True, "detail": "already " + ("on" if on else "off")}
-            if on and cur == "error":
-                self._log(cmd, value, "rejected", "channel is tripped; switch it off first to clear", client)
-                return {"ok": False, "detail": f"{conf.get('name', ch)} is tripped (fault). Switch it off to clear, then on."}
-            payload = switch_command(self.bank, ch, on)
-            want = "on" if on else "off"
-            verify = lambda: (self.status()[0] or [None] * 28)[ch - 1] == want and self.status()[1] <= self.FRESH  # noqa: E731
-        elif cmd == "dim":
-            if conf.get("kind") != "dimmer":
-                return {"ok": False, "detail": f"{conf.get('name', ch)} is not a dimmer"}
-            level = int(value.get("level"))
-            if not 0 <= level <= 100:
-                return {"ok": False, "detail": "level must be 0–100"}
-            payload = dim_command(ch, level)
-            lc = lambda: self.n2k.loads.get((self.controller, ch - 1)) or {}     # noqa: E731
-            verify = lambda: lc().get("duty") == level and time.time() - lc().get("seen", 0) < self.VERIFY  # noqa: E731
-        else:
-            self._log(cmd, value, "rejected", "not an allowed command", client)
-            return {"ok": False, "detail": f"command {cmd!r} is not allowed"}
-        self._seq = (self._seq + 1) & 7
+        cur = st[ch - 1]                          # "on" | "off" | "error" (tripped) | None
+        if cur == want:
+            self._log(cmd, value, "noop", "already in requested state", client)
+            return {"ok": True, "detail": f"already {want}"}
+        if cur == "error":
+            self._log(cmd, value, "rejected", "channel is tripped", client)
+            return {"ok": False, "detail": f"{name} is tripped (fault). Clear it at the load controller."}
+        vs = self._bank_state(self.vsw_bank, press)
+        if vs is None:
+            self._log(cmd, value, "failed", f"no fresh status for virtual switch {self.vsw_bank}.{press}", client)
+            return {"ok": False, "detail": "no fresh status for the load controller's virtual switches; nothing sent"}
+        if vs == "on":
+            self._log(cmd, value, "rejected", f"virtual switch {self.vsw_bank}.{press} is already on (held or stuck)", client)
+            return {"ok": False, "detail": f"{name}: its virtual switch is already pressed (held or stuck). Nothing sent."}
+        pulse = float(conf.get("press_s", self.press_s))
         sent_at = time.time()
-        try:
-            self.node.send_fast(PGN_GROUP_FUNCTION, self.controller, payload, self._seq)   # exactly once
+        try:                                      # press: exactly one ON, then exactly one OFF
+            self._send_press(press, True)
         except TxBlocked as e:
             self._log(cmd, value, "blocked", str(e), client)
             return {"ok": False, "detail": str(e)}
         except Exception as e:
-            self._log(cmd, value, "failed", f"send: {e}", client)
+            self._log(cmd, value, "failed", f"send ON: {e}", client)
             return {"ok": False, "detail": "send failed (not retried)"}
-        while time.time() - sent_at < self.VERIFY:
-            await asyncio.sleep(0.1)
+        await asyncio.sleep(pulse)
+        try:
+            self._send_press(press, False)
+        except Exception as e:                    # startup release (release_stuck) clears it next time
+            self._log(cmd, value, "failed", f"send OFF (release): {e}", client)
+        def done() -> bool:
             b = self.n2k.banks.get((self.controller, self.bank))
-            if b and b["seen"] >= sent_at and verify():
-                self._log(cmd, value, "ok", "confirmed by status", client)
-                return {"ok": True, "detail": "confirmed by the load controller"}
-        self._log(cmd, value, "unverified", f"no matching status within {self.VERIFY:.0f}s", client)
-        return {"ok": False, "detail": "the load controller did not confirm (it may refuse remote control for this channel; not retried)"}
+            return bool(b) and b["seen"] >= sent_at and b["states"][ch - 1] == want
+        if await self._wait(done, self.VERIFY):
+            self._log(cmd, value, "ok", f"virtual switch {self.vsw_bank}.{press} pressed; ch{ch} {want}", client)
+            return {"ok": True, "detail": f"{name} {want}"}
+        why = "its logic decides when it acts"
+        if need is not None and self.deb.get(int(need)) is not None and self.deb[int(need)].value is not True:
+            why = f"{self.inputs.get(int(need), {}).get('name', f'input {need}')} is off"
+        self._log(cmd, value, "unverified", f"virtual switch {self.vsw_bank}.{press} pressed; ch{ch} stayed {cur} ({why})", client)
+        return {"ok": False, "detail": f"Pressed, but the load controller didn't switch {name} {want} ({why}). Not retried."}
 
     def _bank_state(self, bank: int, idx: int) -> str | None:
         b = self.n2k.banks.get((self.controller, bank))
@@ -356,6 +385,32 @@ class SwitchController:
     async def _send_vsw(self, g: Trigger, on: bool) -> None:
         self._seq = (self._seq + 1) & 7
         self.node.send_fast(PGN_GROUP_FUNCTION, self.controller, switch_command(g.bank, g.switch, on), self._seq)
+
+    def _send_press(self, switch: int, on: bool) -> None:
+        self._seq = (self._seq + 1) & 7
+        self.node.send_fast(PGN_GROUP_FUNCTION, self.controller, switch_command(self.vsw_bank, switch, on), self._seq)
+
+    def owned_switches(self) -> list[int]:
+        """Virtual switches AetherRV presses (bank vsw_bank): channel `press` numbers and trigger switches."""
+        sws = {int(c["press"]) for c in self.channels.values() if c.get("press") is not None}
+        sws |= {g.switch for g in self.triggers.values() if g.bank == self.vsw_bank}
+        return sorted(sws)
+
+    async def release_stuck(self, wait: float = 10.0) -> list[int]:
+        """At start-up: a virtual switch of ours that reads ON was left pressed (the Pi died mid-press).
+        Release each one once (a falling edge: the controller's logic acts on presses, not releases)."""
+        if not await self._wait(lambda: self._bank_state(self.vsw_bank, 1) is not None, wait):
+            log.warning("no virtual-switch status (bank %d): stuck-switch check skipped", self.vsw_bank)
+            return []
+        stuck = [n for n in self.owned_switches() if self._bank_state(self.vsw_bank, n) == "on"]
+        for n in stuck:
+            try:
+                self._send_press(n, False)
+                self._log("release", {"switch": n}, "ok", f"virtual switch {self.vsw_bank}.{n} was on at start-up; released",
+                          "startup")
+            except Exception as e:
+                self._log("release", {"switch": n}, "failed", f"send OFF: {e}", "startup")
+        return stuck
 
     async def _wait(self, cond, timeout: float) -> bool:
         end = time.time() + timeout
@@ -463,6 +518,8 @@ class SwitchController:
             await asyncio.sleep(0.5 if self.node.claimed_at else backoff)
             if not self.gate.is_enabled(self.device):
                 break                                    # tx disabled: read-only (inputs still published)
+        if self.node.ready:
+            self._spawn(self.release_stuck())
         while True:
             self.tick()
             self.state.set("n2k.address", self.node.address if self.node.ready else None)

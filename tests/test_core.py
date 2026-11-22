@@ -357,3 +357,71 @@ def test_radar_flow_pair_finds_known_shift(tmp_path):
     (tmp_path / "c" / "6" / "11" / "21.png").parent.mkdir(parents=True)        # different block → no flow
     (tmp_path / "c" / "6" / "11" / "21.png").write_bytes(b"")
     assert flow_pair(tmp_path / "a", tmp_path / "c") is None
+
+
+class _FakePath:
+    """A CanBus stand-in: records sends; `hear()` feeds a frame through its handlers like a real reader."""
+    def __init__(self, name):
+        from aetherrv.canbus import BusStats
+        self.name, self.channel, self.stats, self.handlers, self.sent, self.own_echo = name, name, BusStats(), [], [], False
+    def add_handler(self, h): self.handlers.append(h)
+    def link_up(self): return True
+    def send(self, device, msg, gate, quiet=False): gate.check(device, "x"); self.sent.append(msg)
+    def hear(self, msg):
+        self.stats.note(msg)
+        for h in self.handlers: h(msg)
+
+
+def _frame(i=0x09F20100, data=b"\x01", rx=True):
+    import can
+    return can.Message(arbitration_id=i, data=data, is_extended_id=True, is_rx=rx)
+
+
+def test_failover_bus_paths(monkeypatch):
+    import time as _t
+    import can, pytest
+    from aetherrv.canbus import FailoverBus
+    from aetherrv.txgate import TxGate
+    now = [1000.0]; monkeypatch.setattr(_t, "time", lambda: now[0])
+    hat, cerbo = _FakePath("hat0"), _FakePath("n2k_cerbo")
+    st = State(); fb = FailoverBus("n2k", hat, cerbo, state=st)
+    got, switched = [], []
+    fb.add_handler(got.append); fb.on_switch.append(switched.append)
+    gate = TxGate({"n2k": True})
+    hat.hear(_frame()); cerbo.hear(_frame())               # same physical bus: both paths hear it
+    assert len(got) == 1                                    # forwarded once, from the active path
+    fb.send("n2k", _frame(rx=False), gate)
+    assert len(hat.sent) == 1 and not cerbo.sent
+    now[0] += 3; cerbo.hear(_frame()); fb.tick()            # hat0 silent, the Cerbo still hears the bus → backup
+    assert fb.active is cerbo and switched == [cerbo] and st.get("n2k.path_backup") is True
+    fb.send("n2k", _frame(rx=False), gate); assert len(cerbo.sent) == 1
+    now[0] += 1; hat.hear(_frame()); cerbo.hear(_frame()); fb.tick()
+    assert fb.active is cerbo                               # no instant failback
+    for _ in range(31):
+        now[0] += 1; hat.hear(_frame()); cerbo.hear(_frame()); fb.tick()
+    assert fb.active is hat and st.get("n2k.path_backup") is False
+    now[0] += 5; fb.tick()                                  # both silent = the bus is quiet: stay put
+    assert fb.active is hat
+    with pytest.raises(can.CanOperationError):              # but don't send into silence
+        fb.send("n2k", _frame(rx=False), gate)
+
+
+async def test_failover_bus_unacked_frame_resets_and_fails_over():
+    import asyncio
+    from aetherrv.canbus import FailoverBus
+    from aetherrv.txgate import TxGate
+    hat, cerbo = _FakePath("hat0"), _FakePath("n2k_cerbo")
+    resets = []
+    async def reset(iface): resets.append(iface)
+    fb = FailoverBus("n2k", hat, cerbo, reset=reset); fb.ECHO_S = 0.05
+    gate = TxGate({"n2k": True})
+    hat.hear(_frame()); cerbo.hear(_frame())
+    msg = _frame(0x0DED0096, b"\x11\x22", rx=False)
+    fb.send("n2k", msg, gate); hat.hear(_frame(0x0DED0096, b"\x11\x22", rx=False))   # echoed = really sent
+    await asyncio.sleep(0.1)
+    assert fb.active is hat and not resets
+    fb.send("n2k", msg, gate)                               # no echo: stuck in the chip
+    await asyncio.sleep(0.1)
+    assert resets == ["hat0"] and fb.active is cerbo and len(cerbo.sent) == 0      # not replayed on the backup
+    hat.hear(_frame()); fb.tick()
+    assert fb.active is cerbo                               # failback held off after a stuck frame
