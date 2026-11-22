@@ -624,6 +624,14 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-locate svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .wx-locate svg .dot { fill: currentColor; stroke: none; }
 .wx-locate:active { background: rgba(14,17,22,.85); color: var(--c-batt); }
+.wx-zoom { position: absolute; right: 14px; bottom: 110px; z-index: 500; width: 64px; display: flex; flex-direction: column;
+  border-radius: 14px; overflow: hidden; background: rgba(14,17,22,.62); border: 1px solid var(--line);
+  backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }   /* same glass as the locate button, stacked above it */
+.wx-zoom button { height: 64px; display: grid; place-items: center; background: transparent; border: 0; color: var(--ink); }
+.wx-zoom button + button { border-top: 1px solid var(--line); }
+.wx-zoom svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.wx-zoom button:active { background: rgba(14,17,22,.5); color: var(--c-batt); }
+.wx-zoom button:disabled { color: var(--muted); opacity: .5; }
 .wx-tl { position: absolute; left: 14px; right: 90px; bottom: 34px; z-index: 500; height: 64px; display: flex; align-items: center;
   gap: 14px; padding: 0 18px 0 8px; border-radius: 14px; background: rgba(14,17,22,.62); border: 1px solid var(--line);
   backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }   /* same glass as the locate button, same row */

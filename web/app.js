@@ -1146,7 +1146,7 @@ const kmBetween = (a, b) => { const R = 6371, r = Math.PI / 180, dLat = (b[0] - 
 const fmtLL = (lat, lon) => `${Math.abs(lat).toFixed(3)}° ${lat >= 0 ? "N" : "S"}, ${Math.abs(lon).toFixed(3)}° ${lon >= 0 ? "E" : "W"}`;
 function initWxMap() {
   if (wxMap || !window.L) return;
-  wxMap = L.map("wx-map", { zoomControl: true, attributionControl: true, zoomSnap: 0.5, tap: true }).setView([45, -110], 7);
+  wxMap = L.map("wx-map", { zoomControl: false, attributionControl: true, zoomSnap: 0.5, tap: true }).setView([45, -110], 7);
   // OpenStreetMap standard tiles (no key; light use per the OSM tile policy), shown as-is (AetherMap's default look).
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 12, className: "wx-base",
     attribution: "© OpenStreetMap contributors · Radar © LibreWXR" }).addTo(wxMap);
@@ -1157,8 +1157,13 @@ function initWxMap() {
     fc = null; fcAt = 0; fcErr = null;
     renderWeather();
   });
+  // Zoom +/- are our own glass buttons stacked above the locate button (Leaflet's control is off).
+  const zoomState = () => { $("#wx-zin").disabled = wxMap.getZoom() >= wxMap.getMaxZoom(); $("#wx-zout").disabled = wxMap.getZoom() <= wxMap.getMinZoom(); };
+  wxMap.on("zoomend", zoomState); zoomState();
   loadRadar();
 }
+$("#wx-zin").addEventListener("click", () => wxMap && wxMap.zoomIn());
+$("#wx-zout").addEventListener("click", () => wxMap && wxMap.zoomOut());
 async function loadRadar() {
   if (Date.now() - rvAt < 10 * 60e3 && rvFrames.length) return;
   rvAt = Date.now();
