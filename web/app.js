@@ -1550,13 +1550,19 @@ function renderNetwork() {
   $("#net-chart-title").textContent = netTitle();       // follows WAN failover live
   if (netHistKeys().join(",") !== netSig) loadHistory();   // state arrived after the first fetch (or WAN changed)
   const on = S["starlink.online"], reach = S["starlink.reachable"];
+  // Status dot: the router's view of the Starlink WAN when the Peplink is monitored (green = carrying traffic,
+  // amber = standby), so it matches the Cellular/WWAN dots; else the dish's own state. Unreachable dish = red.
+  const slWan = (S["peplink.wans"] || []).find(w => w.starlink && w.enabled);
+  const dishTxt = on ? "dish online" : reach ? "dish " + String(S["starlink.state"] || "").replace(/_/g, " ").toLowerCase() : "dish unreachable";
+  const slLed = !reach ? "led-red" : slWan ? `led-${slWan.led}` : on ? "led-green" : "led-yellow";
+  const slTip = slWan ? `${slWan.message || ""} · ${dishTxt}` : dishTxt;
   const slAlerts = (S["starlink.alerts"] || []);
   const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
   const updReady = on != null && S["starlink.update_state"] === "REBOOT_REQUIRED";
   $("#sl-card").innerHTML = reach == null ? `<div class="card-h"><h2>Starlink</h2></div><div class="muted">Not enabled.</div>` : `
     <div class="sl-body">
       <div class="sl-left">
-        <h2 class="sl-title" title="${on ? "Online" : reach ? esc(String(S["starlink.state"] || "").replace(/_/g, " ").toLowerCase()) : "Unreachable"}"><span class="led ${on ? "led-green" : reach ? "led-yellow" : "led-red"}"></span>Starlink</h2>
+        <h2 class="sl-title" title="${esc(slTip)}"><span class="led ${slLed}"></span>Starlink</h2>
         <div class="sl-speeds">
           <div><span class="arrow">↓</span><b>${mbps(S["starlink.down_mbps"])}</b><small>Mbps down</small></div>
           <div><span class="arrow up">↑</span><b>${mbps(S["starlink.up_mbps"])}</b><small>Mbps up</small></div>
