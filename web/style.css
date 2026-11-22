@@ -624,9 +624,22 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-locate svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .wx-locate svg .dot { fill: currentColor; stroke: none; }
 .wx-locate:active { background: rgba(14,17,22,.85); color: var(--c-batt); }
-.wx-radar-ctl { position: absolute; left: 14px; bottom: 14px; z-index: 500; display: flex; align-items: center; gap: 12px;
-  background: rgba(14,17,22,.82); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px 6px 6px; font-size: 16px; color: var(--ink-2); }
-.wx-radar-ctl .ctl-pill { padding: 8px 18px; font-size: 16px; }
+.wx-tl { position: absolute; left: 14px; right: 90px; bottom: 34px; z-index: 500; height: 64px; display: flex; align-items: center;
+  gap: 14px; padding: 0 18px 0 8px; border-radius: 14px; background: rgba(14,17,22,.62); border: 1px solid var(--line);
+  backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }   /* same glass as the locate button, same row */
+.wx-tl-play { width: 48px; height: 48px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--ink);
+  background: transparent; border: 0; }
+.wx-tl-play:active { background: rgba(255,255,255,.08); }
+.wx-tl-play svg { width: 28px; height: 28px; fill: currentColor; }
+.wx-tl .i-pause, .wx-tl.playing .i-play { display: none; } .wx-tl.playing .i-pause { display: inline; }
+.wx-tl-track { flex: 1; align-self: stretch; display: flex; align-items: center; padding: 0 10px; touch-action: none; cursor: pointer; }
+.wx-tl-rail { position: relative; flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.22); }
+.wx-tl-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--c-batt); }
+.wx-tl-ticks i { position: absolute; top: 50%; width: 2px; height: 10px; margin: -5px 0 0 -1px; border-radius: 1px; background: rgba(255,255,255,.35); }
+.wx-tl-thumb { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c-batt) 45%, transparent); transition: transform .12s; }
+.wx-tl-track.drag .wx-tl-thumb { transform: scale(1.25); }
+.wx-tl-time { flex: none; width: 196px; text-align: right; font-size: 16px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .wx-hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none;
   background: rgba(14,17,22,.82); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font-size: 15px; color: var(--ink-2); }
 .wx-base { filter: saturate(.8) brightness(.95); }

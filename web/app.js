@@ -1170,7 +1170,9 @@ async function loadRadar() {
     // 512 px tiles (map zoom N → tile z N-1), colour scheme 6 (NWS-style), no smoothing — AetherMap's settings.
     rvLayers = rvFrames.map(f => L.tileLayer(`${rvHost}${f.path}/512/{z}/{x}/{y}/6/0_0.png`,
       { opacity: 0, tileSize: 512, zoomOffset: -1, maxNativeZoom: 11, maxZoom: 12, zIndex: 5, className: "wx-radar" }).addTo(wxMap));
-    showFrame(rvFrames.length - 1);
+    const n = rvFrames.length;
+    $("#wx-tl-ticks").innerHTML = rvFrames.map((_, i) => `<i style="left:${n > 1 ? i / (n - 1) * 100 : 100}%"></i>`).join("");
+    showFrame(n - 1);
   } catch (e) { $("#wx-time").textContent = "radar unavailable"; }
 }
 function showFrame(i) {
@@ -1179,12 +1181,33 @@ function showFrame(i) {
   rvIdx = i; rvLayers[i].setOpacity(0.85);
   const t = new Date(rvFrames[i].time * 1000), ago = Math.round((Date.now() - t) / 60e3);
   $("#wx-time").textContent = `${t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${ago} min ago`;
+  const p = rvLayers.length > 1 ? i / (rvLayers.length - 1) * 100 : 100;
+  $("#wx-tl-fill").style.width = `${p}%`; $("#wx-tl-thumb").style.left = `${p}%`;
+  $("#wx-tl-track").setAttribute("aria-valuenow", i);
 }
+// Radar timeline: play/pause icon + a rail with one tick per frame; drag (or tap) the rail to scrub.
+function rvStop() { if (rvTimer) { clearInterval(rvTimer); rvTimer = null; } $("#wx-tl").classList.remove("playing"); $("#wx-play").setAttribute("aria-label", "Play radar loop"); }
 $("#wx-play").addEventListener("click", () => {
-  if (rvTimer) { clearInterval(rvTimer); rvTimer = null; $("#wx-play").textContent = "Play"; showFrame(rvLayers.length - 1); return; }
-  $("#wx-play").textContent = "Pause";
+  if (rvTimer) { rvStop(); return; }
+  if (!rvLayers.length) return;
+  $("#wx-tl").classList.add("playing"); $("#wx-play").setAttribute("aria-label", "Pause radar loop");
+  if (rvIdx >= rvLayers.length - 1) showFrame(0);              // from the end: start over at the oldest frame
   rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvLayers.length), 700);
 });
+{
+  const track = $("#wx-tl-track"), rail = track.querySelector(".wx-tl-rail");
+  const at = e => { const r = rail.getBoundingClientRect(), n = rvLayers.length;
+    return Math.round(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (n - 1)); };
+  let drag = null;
+  track.addEventListener("pointerdown", e => {
+    if (!rvLayers.length) return;
+    rvStop(); drag = e.pointerId; track.setPointerCapture(e.pointerId); track.classList.add("drag");
+    const i = at(e); if (i !== rvIdx) showFrame(i);
+  });
+  track.addEventListener("pointermove", e => { if (drag !== e.pointerId) return; const i = at(e); if (i !== rvIdx) showFrame(i); });
+  const end = e => { if (drag !== e.pointerId) return; drag = null; track.classList.remove("drag"); };
+  track.addEventListener("pointerup", end); track.addEventListener("pointercancel", end);
+}
 // Sun + position strip at the top of the Weather card (moved from the Network page's Location card).
 function renderWxLoc() {
   // One line in the card header: sunrise ▬ sunset, with the daylight length floating above the lit span.
