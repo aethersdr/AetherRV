@@ -146,20 +146,27 @@ def normalize_location(resp: dict) -> dict:
     }
 
 
-def priority_payload(current: dict, conn_id: int, priority: int) -> dict:
-    """Body for POST config.wan.connection.priority: the router's current list with ONE connection's priority
-    changed. Strict about the shape: anything unexpected raises ValueError, so nothing is sent."""
-    lst = current.get("list") if isinstance(current, dict) else None
-    if not isinstance(lst, list) or not lst or not all(isinstance(e, dict) and isinstance(e.get("connId"), int) for e in lst):
+def current_priority(current: dict, conn_id: int) -> int | None:
+    """Priority of one connection from GET config.wan.connection.priority, whose shape on this firmware is
+    {"order": [1, 2, …], "1": {"name", "group", "priority", "enable"}, …}. Strict: unexpected shape → ValueError."""
+    order = current.get("order") if isinstance(current, dict) else None
+    if not isinstance(order, list) or not order or not all(isinstance(c, int) for c in order):
         raise ValueError(f"unexpected config.wan.connection.priority shape: {str(current)[:200]}")
-    if not any(e["connId"] == conn_id for e in lst):
+    e = current.get(str(conn_id))
+    if conn_id not in order or not isinstance(e, dict) or "priority" not in e:
         raise ValueError(f"connection {conn_id} is not in the router's priority list")
+    if not e.get("enable"):
+        raise ValueError(f"connection {conn_id} is disabled on the router")
+    return e.get("priority")
+
+
+def priority_payload(current: dict, conn_id: int, priority: int) -> dict:
+    """Body for POST config.wan.connection.priority (Peplink API reference): ONLY the connection being changed,
+    so no other link's settings are touched; instantActive applies it without a separate 'apply changes'."""
+    current_priority(current, conn_id)                     # validates shape + connection
     if not 1 <= priority <= 4:
         raise ValueError("priority must be 1–4")
-    out = [{**e, "priority": priority} if e["connId"] == conn_id else dict(e) for e in lst]
-    if not any(isinstance(e.get("priority"), int) for e in out):
-        raise ValueError("would leave no connection with a priority")
-    return {"instantActive": True, "list": out}
+    return {"instantActive": True, "list": [{"connId": conn_id, "priority": priority}]}
 
 
 # ── Client ───────────────────────────────────────────────────────────────────
@@ -312,7 +319,7 @@ class PeplinkAdapter:
             except Exception as e:
                 self._log(cmd, value, "failed", f"read: {e}", client)
                 return {"ok": False, "detail": "router not reachable; nothing sent"}
-            was = next((e.get("priority") for e in cur["list"] if e["connId"] == conn), None)
+            was = current_priority(cur, conn)
             if was == prio:
                 self._log(cmd, value, "noop", f"already P{prio}", client)
                 return {"ok": True, "detail": f"already P{prio}"}

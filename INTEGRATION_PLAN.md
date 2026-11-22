@@ -620,3 +620,6 @@ Sections 1–31 use the old names. Mapping:
   - **Command:** `set_wan_priority {id, priority 1–4}` goes through TxGate. A fresh GET of the priority list feeds a strict payload builder (any unexpected shape means nothing is sent); one POST (`instantActive`), never retried; then status.wan.connection is polled until the priority shows. Every attempt goes to command_log.
   - **Kiosk:** tap P# to get a P1–P4 picker, then a confirmation.
   - **Status:** off until `[device.peplink] tx_enabled = true` and the read-write client exist, and the GET shape has been checked against the builder.
+  - **2026-11-21, update.** This firmware will not create API clients over a web session (`auth.client` returns 401 even for admin), so the writer is a read-write web login (`peplink_rw_user`/`peplink_rw_password`; the owner chose the admin account).
+    - The GET shape is `{order:[…], "<id>":{name, group, priority, enable}}`. Per Peplink's API reference, the POST sends only the changed connection: `{instantActive:true, list:[{connId, priority}]}`. Connections disabled on the router are refused.
+    - Dry-run checked against the live router. `[device.peplink] tx_enabled = true` is set (config backup `*.pre-peplink-tx-20261121`).
