@@ -593,3 +593,8 @@ Sections 1–31 use the old names. Mapping:
   - **The fix in the adapter:** reconnect at once (1 s) after a failed open, inside the connect lock; use StartNotify; clear stale BlueZ links at start. No BlueZ config change.
   - **Ruled out:** the phone app, Wi-Fi coexistence, btmon, the GATT cache files.
   - **Result:** all 4 connected at once and updating every second, stable over 3 min. Startup takes ~2.5 min (one 30 s first contact per battery).
+- **2026-11-21, Energy screen v2 (owner).** The battery card spans the top two rows. The six power readings are smaller; MultiPlus sits above the Shore limit + MPPT cards.
+  - **Main glyph:** four batteries in parallel inside one big battery. A red + bus runs to the + terminal and the − bus to −; each battery fills to its own Bluetooth SoC.
+  - **Card data, modeled on the EPOCH app:** bank SoC/state/V/A/time to go, Ah remaining of 4 × 460, and VAVG/VDIFF/VLO/VHI across all 16 cells.
+  - **Temperatures:** the four BMS sensors are assumed to be T1, T2, Ambient, MOS in that order.
+  - **Per-battery table:** SoC, V, A, VA, cycles, Ah/460, and charge/discharge MOS.

@@ -269,7 +269,7 @@ function renderPowerControls() {
   const why = !CAN_CTL ? "view only" : !S["victron.controls_ok"] ? "control off" : "";
   el.innerHTML = `<div class="card-h"><h2>Inverter & solar</h2><span class="muted">${esc(why)}</span></div>
     <div class="pwr-row">
-      <div class="pwr-blk"><div class="pwr-t">${icon("inverter")}<div><b>${esc(V("name") || "MultiPlus")}</b>
+      <div class="pwr-blk pwr-main"><div class="pwr-t">${icon("inverter")}<div><b>${esc(V("name") || "MultiPlus")}</b>
         <span>${esc(VEBUS_STATE[V("state")] ?? "—")}${V("ac_out_w") != null ? ` · ${fmtW(V("ac_out_w"))} AC out` : ""}${V("shore_connected") ? " · on shore" : ""}</span></div></div>
         <div class="seg mode-seg">${MODES.map(([m, l]) => `<button data-mode="${m}" class="${mode === m ? "on" : ""}" ${ok && V("mode_adjustable") && mode !== m ? "" : "disabled"}>${l}</button>`).join("")}</div></div>
       <div class="pwr-blk sm"><div class="pwr-t">${icon("plug")}<div><b>Shore limit</b><span>${V("limit_adjustable") ? "AC input current" : "not adjustable now"}</span></div></div>
@@ -301,18 +301,72 @@ $("#pwr-ctl").addEventListener("click", e => {
   }
 });
 
+// ── Battery bank card: Lynx shunt for the bank, EPOCH batteries over Bluetooth for each battery ──
+const BATT_AH = 460;                         // EPOCH B12460A nominal capacity per battery
+function bankGlyph(batts, w = 560, h = 260) {
+  // One big battery made of N smaller ones wired in parallel: + bus (red) to the + terminal, − bus to −.
+  const n = Math.max(1, batts.length), pad = 26, top = 40, body = h - 30;
+  const cw = (w - 2 * pad - 30 - 28 - (n - 1) * 18) / n, ch = body - top - 46;   // inside the shell, clear of the nub
+  let cells = "", tabs = "";
+  batts.forEach((b, i) => {
+    const x = pad + 14 + i * (cw + 18), y = top + 34;
+    const soc = b.ok ? Math.max(0, Math.min(100, b.soc ?? 0)) : null, fh = soc == null ? 0 : (ch - 8) * soc / 100;
+    cells += `<rect x="${x}" y="${y}" width="${cw}" height="${ch}" rx="9" class="g-cell ${b.ok ? "" : "g-na"}"/>
+      <rect x="${x + 4}" y="${y + ch - 4 - fh}" width="${cw - 8}" height="${fh}" rx="6" fill="${soc == null ? "none" : socColor(soc)}" opacity=".85"/>
+      <text x="${x + cw / 2}" y="${y + ch / 2 + 2}" class="g-soc">${soc == null ? "—" : Math.round(soc) + "%"}</text>
+      <text x="${x + cw / 2}" y="${y + ch + 22}" class="g-name">${esc(b.name)}</text>`;
+    const px = x + cw * .28, nx = x + cw * .72;
+    tabs += `<rect x="${px - 7}" y="${y - 9}" width="14" height="9" rx="2" class="g-tab-p"/><rect x="${nx - 7}" y="${y - 9}" width="14" height="9" rx="2" class="g-tab-n"/>
+      <line x1="${px}" y1="${y - 9}" x2="${px}" y2="${top + 14}" class="g-wire-p"/><line x1="${nx}" y1="${y - 9}" x2="${nx}" y2="${top + 24}" class="g-wire-n"/>`;
+  });
+  const x0 = pad + 14 + (cw * .28), x1 = pad + 14 + (n - 1) * (cw + 18) + cw * .72;
+  return `<svg class="bank-glyph" viewBox="0 0 ${w} ${h}" role="img" aria-label="${n} batteries in parallel">
+    <rect x="${pad}" y="${top - 12}" width="${w - 2 * pad - 30}" height="${body - top + 12}" rx="22" class="g-shell"/>
+    <rect x="${w - pad - 30}" y="${top + (body - top) / 2 - 34}" width="22" height="56" rx="7" class="g-nub"/>
+    <line x1="${x0}" y1="${top + 14}" x2="${w - pad - 44}" y2="${top + 14}" class="g-bus-p"/>
+    <path d="M${w - pad - 44} ${top + 14} V${top + (body - top) / 2 - 18} H${w - pad - 30}" class="g-bus-p"/>
+    <path d="M${x1} ${top + 24} H${pad + 6} V${top + (body - top) / 2 + 30}" class="g-bus-n"/>
+    <text x="${pad - 10}" y="${top + (body - top) / 2 + 36}" class="g-pol g-neg">−</text>
+    <text x="${w - pad - 19}" y="${top + (body - top) / 2 - 42}" class="g-pol">+</text>
+    ${tabs}${cells}</svg>`;
+}
+function renderBattCard() {
+  const soc = S["victron.battery.soc"], bp = S["victron.battery.power"];
+  const st = bp == null ? ["", "", ""] : bp > 5 ? ["Charging", "bolt", "chg"] : bp < -5 ? ["Discharging", "battery", "dis"] : ["Standby", "battery", ""];
+  const ble = S["batteries.ble"] || [], ok = ble.filter(b => b.ok);
+  const cells = ok.flatMap(b => b.cells || []);
+  const avg = cells.length ? cells.reduce((a, c) => a + c, 0) / cells.length : null;
+  const lo = cells.length ? Math.min(...cells) : null, hi = cells.length ? Math.max(...cells) : null;
+  const rem = ok.length ? ok.reduce((a, b) => a + (b.remaining_ah || 0), 0) : null;
+  const tmax = (i0, i1) => { const v = ok.flatMap(b => (b.temps || []).slice(i0, i1)); return v.length ? fmtT(Math.max(...v)) : "—"; };
+  const v3 = v => v == null ? "—" : `${v.toFixed(3)} V`;
+  const row = b => b.ok ? `<tr>
+      <td><b>${esc(b.name)}</b></td><td class="soc-c" style="color:${socColor(b.soc)}">${b.soc ?? "—"}%</td>
+      <td>${(+b.voltage).toFixed(2)} V</td><td>${b.current == null ? "—" : (+b.current).toFixed(1) + " A"}</td>
+      <td>${b.current == null ? "—" : Math.round(b.voltage * b.current) + " VA"}</td><td>${b.cycles ?? "—"}</td>
+      <td>${b.remaining_ah == null ? "—" : (+b.remaining_ah).toFixed(1)}<small>/${BATT_AH}</small></td>
+      <td class="mos"><i class="${b.charge_fet ? "on" : "off"}" title="Charge MOS ${b.charge_fet ? "on" : "off"}">C</i><i class="${b.discharge_fet ? "on" : "off"}" title="Discharge MOS ${b.discharge_fet ? "on" : "off"}">D</i></td></tr>`
+    : `<tr class="na"><td><b>${esc(b.name)}</b></td><td colspan="7" class="muted">${esc(b.error ? "no data · reconnecting" : "connecting…")}</td></tr>`;
+  $("#batt-card").innerHTML = `
+    <div class="bc-head">
+      <div class="bc-soc" style="color:${soc == null ? "var(--muted)" : "var(--ink)"}">${soc == null ? "—" : Math.round(soc)}<small>%</small></div>
+      <div class="bc-sum"><span class="bc-state ${st[2]}">${st[1] ? icon(st[1]) : ""}${st[0]}</span>
+        <span>${num(S["victron.battery.voltage"], 2)} V · ${num(S["victron.battery.current"], 1)} A · ${fmtTTG(S["victron.battery.ttg"])} to go</span>
+        <span class="muted">${rem == null ? "" : `${Math.round(rem)} / ${BATT_AH * ble.length} Ah · `}${ok.length} of ${ble.length} batteries via Bluetooth</span></div>
+    </div>
+    ${ble.length ? bankGlyph(ble) : ""}
+    ${ble.length ? `<div class="bc-cells">
+      <div><span>VAVG</span><b>${v3(avg)}</b></div><div><span>VDIFF</span><b class="${hi != null && hi - lo > .05 ? "warn" : ""}">${v3(hi == null ? null : hi - lo)}</b></div>
+      <div><span>VLO</span><b>${v3(lo)}</b></div><div><span>VHI</span><b>${v3(hi)}</b></div>
+      <div><span>Cells T1/T2</span><b>${tmax(0, 2)}</b></div><div><span>Ambient</span><b>${tmax(2, 3)}</b></div>
+      <div><span>MOS</span><b>${tmax(3, 4)}</b></div><div><span>Battery (shunt)</span><b>${fmtT(S["victron.battery.temp"])}</b></div></div>
+    <table class="bc-table"><thead><tr><th>Battery</th><th>SoC</th><th>Volts</th><th>Amps</th><th>Power</th><th>Cycles</th><th>Ah</th><th>MOS</th></tr></thead>
+      <tbody>${ble.map(row).join("")}</tbody></table>` : `<div class="muted">No per-battery data (Bluetooth adapter off).</div>`}`;
+}
+
 function renderEnergy() {
   renderPowerControls();
-  const soc = S["victron.battery.soc"], bp = S["victron.battery.power"];
-  const st = bp == null ? ["", ""] : bp > 5 ? ["CHARGING", "bolt"] : bp < -5 ? ["DISCHARGING", "battery"] : ["IDLE", "battery"];
-  $("#batt-ring").innerHTML = ring(soc, { size: 380, stroke: 24, color: socColor(soc) }) +
-    `<div class="center"><div class="soc">${soc == null ? "—" : Math.round(soc)}<small>%</small></div>
-     <div class="state" style="color:${bp > 5 ? "var(--good)" : "var(--ink-2)"}">${st[1] ? icon(st[1]) : ""}${st[0]}</div></div>`;
-  $("#batt-stats").innerHTML = [
-    [`${num(S["victron.battery.voltage"], 2)} V`, "voltage"],
-    [`${num(S["victron.battery.current"], 1)} A`, "current"],
-    [fmtTTG(S["victron.battery.ttg"]), "time to go"],
-  ].map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join("");
+  renderBattCard();
   const stats = [
     ["panel", "--c-solar", fmtW(S["victron.pv.power"]), "Solar", S["victron.pv.power"]],
     ["engine", "--c-alt", fmtW(S["energy.alternator.power"]), "Alternator", S["energy.alternator.power"]],
