@@ -239,13 +239,24 @@ def test_address_claim_moves_off_a_contested_address():
     assert node.address != 150 and bus.sent[-1].arbitration_id == (0x18EEFF00 | node.address)
 
 
-async def test_tripped_channel_is_refused():
+async def test_tripped_channel_refuses_on_and_off_clears_it_with_one_direct_off():
     s, n2k, node, bus, ctl = ready()
     n2k.banks[(0, 32)]["states"][3] = "error"               # ch4 tripped
-    for on in (True, False):
-        r = await ctl.command("set", {"channel": 4, "on": on})
-        assert not r["ok"] and "tripped" in r["detail"]
-    assert bus.sent == []
+    r = await ctl.command("set", {"channel": 4, "on": True})
+    assert not r["ok"] and "tripped" in r["detail"] and bus.sent == []
+    ctl.VERIFY = 0.3
+    r = await ctl.command("set", {"channel": 4, "on": False})          # still tripped: one OFF sent, reported
+    assert not r["ok"] and "still reports a fault" in r["detail"]
+    from aetherrv.switching import PGN_GROUP_FUNCTION
+    assert len({m.data[0] >> 5 for m in bus.sent}) == 1                # one message (its fast-packet frames)
+    assert all(((m.arbitration_id >> 8) & 0x3FFFF) >> 8 == PGN_GROUP_FUNCTION >> 8 for m in bus.sent)
+    bus.sent.clear()
+    async def clear_soon():
+        await asyncio.sleep(0.05)
+        n2k.banks[(0, 32)]["states"][3] = "off"; n2k.banks[(0, 32)]["seen"] = time.time()
+    asyncio.ensure_future(clear_soon())
+    r = await ctl.command("set", {"channel": 4, "on": False})
+    assert r["ok"] and "cleared" in r["detail"] and bus.sent
 
 
 async def test_ignition_interlock_refuses_on_until_ignition_and_explains_a_refusal():

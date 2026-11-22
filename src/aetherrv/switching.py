@@ -228,7 +228,8 @@ class SwitchController:
     # Owner 2026-11-22: AetherRV never bypasses the CLMD16's logic. It sends no direct breaker commands
     # (126208 for 127501 / 127500 on the breaker bank). A `set` presses the channel's virtual switch
     # (`press = N`, bank `vsw_bank`), which feeds the same controller logic as the keypad button. The
-    # only direct send left is the drawer-lock safety-off in _watch_off.
+    # only direct sends left are the drawer-lock safety-off in _watch_off and clearing a tripped channel
+    # (one OFF to that channel, owner 2026-11-22: OFF is the safe direction and it's what clears a trip).
     VERIFY = 4.0      # s: the CLMD16 broadcasts a changed status immediately
 
     def __init__(self, state: State, n2k, node: N2kNode, gate: TxGate, cfg: dict,
@@ -315,6 +316,10 @@ class SwitchController:
         name = conf.get("name", f"channel {ch}")
         on = bool(value.get("on"))
         want = "on" if on else "off"
+        if not on:                                # a tripped channel: OFF goes straight to the breaker to clear it
+            st, age = self.status()
+            if st is not None and age <= self.FRESH and st[ch - 1] == "error":
+                return await self._clear_trip(ch, name, cmd, value, client)
         if on and conf.get("blocked"):
             self._log(cmd, value, "rejected", f"channel blocked: {conf.get('blocked_reason', '')}", client)
             return {"ok": False, "detail": conf.get("blocked_reason") or f"{name} is blocked"}
@@ -385,6 +390,27 @@ class SwitchController:
     async def _send_vsw(self, g: Trigger, on: bool) -> None:
         self._seq = (self._seq + 1) & 7
         self.node.send_fast(PGN_GROUP_FUNCTION, self.controller, switch_command(g.bank, g.switch, on), self._seq)
+
+    async def _clear_trip(self, ch: int, name: str, cmd: str, value: dict, client: str) -> dict:
+        """Exactly one direct OFF to the tripped breaker channel (the CLMD16 clears the fault on OFF); verified."""
+        self._seq = (self._seq + 1) & 7
+        sent_at = time.time()
+        try:
+            self.node.send_fast(PGN_GROUP_FUNCTION, self.controller, switch_command(self.bank, ch, False), self._seq)
+        except TxBlocked as e:
+            self._log(cmd, value, "blocked", str(e), client)
+            return {"ok": False, "detail": str(e)}
+        except Exception as e:
+            self._log(cmd, value, "failed", f"send trip-clear OFF: {e}", client)
+            return {"ok": False, "detail": "send failed (not retried)"}
+        def cleared() -> bool:
+            b = self.n2k.banks.get((self.controller, self.bank))
+            return bool(b) and b["seen"] >= sent_at and b["states"][ch - 1] == "off"
+        if await self._wait(cleared, self.VERIFY):
+            self._log(cmd, value, "ok", f"trip cleared: direct OFF to ch{ch}", client)
+            return {"ok": True, "detail": f"{name}: fault cleared (off)"}
+        self._log(cmd, value, "unverified", f"trip-clear OFF sent to ch{ch}; still tripped", client)
+        return {"ok": False, "detail": f"Sent OFF to clear {name}, but the load controller still reports a fault. Not retried."}
 
     def _send_press(self, switch: int, on: bool) -> None:
         self._seq = (self._seq + 1) & 7
