@@ -292,11 +292,12 @@ def test_peplink_priority_payload_strict():
 
 
 class _FakeWriter:
-    def __init__(self, prio, apply=True, post_raises=None, raw=None):
+    def __init__(self, prio, apply=True, post_raises=None, raw=None, disabled=()):
         self.prio, self.apply, self.post_raises, self.posts, self.raw = dict(prio), apply, post_raises, [], raw
+        self.en = {k: k not in disabled for k in self.prio}
 
     def _cfg(self):
-        return {"order": list(self.prio), **{str(k): {"name": f"W{k}", "group": 1, "enable": True, "priority": p}
+        return {"order": list(self.prio), **{str(k): {"name": f"W{k}", "group": 1, "enable": self.en[k], "priority": p}
                                               for k, p in self.prio.items()}}
 
     async def get(self, func, **_):
@@ -307,7 +308,11 @@ class _FakeWriter:
     async def post_once(self, func, body):
         self.posts.append(body)
         if self.apply:
-            self.prio.update({e["connId"]: e["priority"] for e in body["list"]})
+            for e in body["list"]:
+                if "priority" in e:
+                    self.prio[e["connId"]] = e["priority"]
+                if "enable" in e:
+                    self.en[e["connId"]] = e["enable"]
         if self.post_raises:
             raise self.post_raises
 
@@ -373,15 +378,24 @@ def test_peplink_wifi_wan_fields():
     assert w3["wifi"]["ssid"] is None and w3["wifi"]["band"] is None          # scanning: still marked as Wi-Fi
 
 
-def test_peplink_order_targets_strict():
+def test_peplink_layout_targets_strict():
     import pytest
-    from aetherrv.adapters.peplink import order_targets
+    from aetherrv.adapters.peplink import layout_targets, layout_changes, layout_payload
     cur = {"order": [1, 2, 4, 5], **{str(c): {"name": f"W{c}", "priority": p, "enable": c != 5}
                                      for c, p in ((1, 3), (2, 2), (4, 1), (5, 1))}}
-    assert order_targets(cur, [4, 1, 2]) == {4: 1, 1: 2, 2: 3}
-    for bad in ([4, 1], [4, 1, 2, 5], [4, 4, 1, 2], [], "4,1,2", [4, 1, 9]):
+    T = layout_targets(cur, [4, 1, 2])                              # disabled omitted: 5 stays disabled
+    assert T == {4: {"enable": True, "priority": 1}, 1: {"enable": True, "priority": 2},
+                 2: {"enable": True, "priority": 3}, 5: {"enable": False, "priority": None}}
+    assert layout_payload(cur, layout_changes(cur, T)) == {"instantActive": True, "list": [
+        {"connId": 1, "priority": 2}, {"connId": 2, "priority": 3}]}
+    # enable 5 at P2, disable 2
+    T = layout_targets(cur, [4, 5, 1], [2])
+    assert layout_payload(cur, layout_changes(cur, T))["list"] == [
+        {"connId": 5, "priority": 2, "enable": True}, {"connId": 2, "enable": False}]       # 1 is already P3: not sent
+    for bad in (([4, 1], None), ([4, 1, 2, 5], None), ([4, 4, 1, 2], None), ([], [1, 2, 4, 5]), ([4, 1, 9], None),
+                ([4, 1], [2]), ([4, 1, 2], [5, 2])):
         with pytest.raises(ValueError):
-            order_targets(cur, bad)
+            layout_targets(cur, *bad)
 
 
 def test_peplink_set_order_one_post_only_changed():
@@ -392,3 +406,15 @@ def test_peplink_set_order_one_post_only_changed():
     assert w.posts[0] == {"instantActive": True, "list": [{"connId": 1, "priority": 2}, {"connId": 2, "priority": 3}]}
     assert asyncio.run(_pep(w).command("set_wan_order", {"order": [4, 1, 2]}))["detail"] == "already in that order"
     assert len(w.posts) == 1
+
+
+def test_peplink_drag_disable_and_enable():
+    import asyncio
+    w = _FakeWriter({1: 3, 2: 2, 4: 1, 5: 1}, disabled=(5,))
+    r = asyncio.run(_pep(w).command("set_wan_order", {"order": [4, 2], "disabled": [1, 5]}, poll=0.01, verify_timeout=1))
+    assert r["ok"] and w.posts[-1]["list"] == [{"connId": 1, "enable": False}] and w.en[1] is False
+    r = asyncio.run(_pep(w).command("set_wan_order", {"order": [4, 1, 2], "disabled": [5]}, poll=0.01, verify_timeout=1))
+    assert r["ok"] and w.posts[-1]["list"] == [{"connId": 1, "priority": 2, "enable": True}, {"connId": 2, "priority": 3}]
+    n = len(w.posts)
+    r = asyncio.run(_pep(w).command("set_wan_order", {"order": [], "disabled": [1, 2, 4, 5]}))
+    assert not r["ok"] and len(w.posts) == n                       # never disable everything

@@ -164,30 +164,70 @@ def current_priority(current: dict, conn_id: int) -> int | None:
     return e.get("priority")
 
 
-def order_targets(current: dict, order: list) -> dict[int, int]:
-    """Drag-to-reorder: the enabled connections in `order` become P1, P2, P3, … (capped at P4). Every enabled
-    connection on the router must appear exactly once; disabled ones are never included. Strict → ValueError."""
+def _entry(current: dict, conn_id: int) -> dict:
+    """One connection's entry from GET config.wan.connection.priority (any enable state). Strict → ValueError."""
+    order = current.get("order") if isinstance(current, dict) else None
     if not isinstance(order, list) or not order or not all(isinstance(c, int) for c in order):
-        raise ValueError("order must be a list of connection ids")
-    if len(set(order)) != len(order):
-        raise ValueError("order repeats a connection")
-    for c in order:
-        current_priority(current, c)                      # shape + present + enabled
-    enabled = {c for c in current["order"] if isinstance(current.get(str(c)), dict) and current[str(c)].get("enable")}
-    if set(order) != enabled:
-        raise ValueError("order must list every enabled connection exactly once")
-    return {c: min(i + 1, 4) for i, c in enumerate(order)}
+        raise ValueError(f"unexpected config.wan.connection.priority shape: {str(current)[:200]}")
+    e = current.get(str(conn_id))
+    if conn_id not in order or not isinstance(e, dict) or "enable" not in e:
+        raise ValueError(f"connection {conn_id} is not in the router's priority list")
+    return e
 
 
-def targets_payload(current: dict, targets: dict[int, int]) -> dict:
-    """POST body setting several connections' priorities in ONE change (only those connections are sent)."""
-    if not targets:
+def layout_targets(current: dict, order: list, disabled: list | None = None) -> dict[int, dict]:
+    """Drag-to-reorder: `order` (enabled, top first) becomes P1, P2, P3, … (capped at P4); `disabled` is switched
+    off. Together they must name every connection on the router exactly once; with `disabled` omitted, the
+    connections that are disabled now stay disabled. At least one stays enabled. Strict → ValueError."""
+    for lst, what in ((order, "order"), (disabled or [], "disabled")):
+        if not isinstance(lst, list) or not all(isinstance(c, int) for c in lst):
+            raise ValueError(f"{what} must be a list of connection ids")
+    if not order:
+        raise ValueError("at least one WAN must stay enabled")
+    every = [*order, *(disabled or [])]
+    if len(set(every)) != len(every):
+        raise ValueError("a connection is listed twice")
+    for c in every:
+        _entry(current, c)
+    allc = set(current["order"])
+    if disabled is None:
+        disabled = [c for c in current["order"] if not _entry(current, c).get("enable")]
+        if set(order) & set(disabled):
+            raise ValueError("order includes a disabled connection")
+    if set(order) | set(disabled) != allc:
+        raise ValueError("order + disabled must list every connection exactly once")
+    out = {c: {"enable": True, "priority": min(i + 1, 4)} for i, c in enumerate(order)}
+    out.update({c: {"enable": False, "priority": None} for c in disabled})
+    return out
+
+
+def layout_changes(current: dict, targets: dict[int, dict]) -> dict[int, dict]:
+    """Only what differs from the router now: enable flips, and priority moves of enabled connections."""
+    out = {}
+    for c, tg in targets.items():
+        e = _entry(current, c)
+        en_now = bool(e.get("enable"))
+        if tg["enable"] != en_now or (tg["enable"] and e.get("priority") != tg["priority"]):
+            out[c] = tg
+    return out
+
+
+def layout_payload(current: dict, changes: dict[int, dict]) -> dict:
+    """ONE POST body (Peplink API: list of {connId, priority?, enable?}) for just the changed connections."""
+    if not changes:
         raise ValueError("nothing to change")
-    for c, p in targets.items():
-        current_priority(current, c)
-        if not 1 <= p <= 4:
-            raise ValueError("priority must be 1–4")
-    return {"instantActive": True, "list": [{"connId": c, "priority": p} for c, p in targets.items()]}
+    lst = []
+    for c, tg in changes.items():
+        e = _entry(current, c)
+        item = {"connId": c}
+        if tg["enable"]:
+            if not 1 <= tg["priority"] <= 4:
+                raise ValueError("priority must be 1–4")
+            item["priority"] = tg["priority"]
+        if tg["enable"] != bool(e.get("enable")):
+            item["enable"] = tg["enable"]
+        lst.append(item)
+    return {"instantActive": True, "list": lst}
 
 
 def priority_payload(current: dict, conn_id: int, priority: int) -> dict:
@@ -324,8 +364,8 @@ class PeplinkAdapter:
 
     async def command(self, cmd: str, value=None, client: str = "kiosk", verify_timeout: float = 20.0,
                       poll: float = 2.0) -> dict:
-        """set_wan_priority {id, priority} | set_wan_order {order: [ids]}: fresh read of the router's priority
-        list → one POST with just the changed connections → verify they all show the new priority."""
+        """set_wan_priority {id, priority} | set_wan_order {order: [ids], disabled?: [ids]}: fresh read of the
+        router's priority list → one POST with just the changed connections (priority and/or enable) → verify."""
         async with self._cmd_lock:
             try:
                 if self.gate is None:
@@ -342,18 +382,24 @@ class PeplinkAdapter:
                 return {"ok": False, "detail": "WAN control isn't set up (no read-write API client)"}
             try:
                 if cmd == "set_wan_priority":
-                    req = {int(value["id"]): int(value["priority"])}
-                else:                                      # set_wan_order {order: [id, …]}
-                    req = [int(c) for c in value["order"]]
-            except (TypeError, KeyError, ValueError):
+                    req = (int(value["id"]), int(value["priority"]))
+                else:                                      # set_wan_order {order: [id, …], disabled?: [id, …]}
+                    dis = value.get("disabled")
+                    req = ([int(c) for c in value["order"]], None if dis is None else [int(c) for c in dis])
+            except (TypeError, KeyError, ValueError, AttributeError):
                 self._log(cmd, value, "rejected", "bad value", client)
                 return {"ok": False, "detail": "bad request"}
             try:
                 cur = await asyncio.wait_for(self.writer.get("config.wan.connection.priority"), timeout=10)   # fresh
-                targets = req if cmd == "set_wan_priority" else order_targets(cur, req)
-                was = {c: current_priority(cur, c) for c in targets}
-                changed = {c: p for c, p in targets.items() if was[c] != p}
-                body = targets_payload(cur, changed) if changed else None
+                if cmd == "set_wan_priority":
+                    current_priority(cur, req[0])          # must exist and be enabled
+                    if not 1 <= req[1] <= 4:
+                        raise ValueError("priority must be 1–4")
+                    targets = {req[0]: {"enable": True, "priority": req[1]}}
+                else:
+                    targets = layout_targets(cur, *req)
+                changed = layout_changes(cur, targets)
+                body = layout_payload(cur, changed) if changed else None
             except ValueError as e:
                 self._log(cmd, value, "rejected", str(e), client)
                 return {"ok": False, "detail": f"not sent: {e}"}
@@ -363,14 +409,20 @@ class PeplinkAdapter:
             name = lambda c: (cur.get(str(c)) or {}).get("name") or f"WAN {c}"
             if not changed:
                 self._log(cmd, value, "noop", "already set", client)
-                return {"ok": True, "detail": "already in that order" if cmd == "set_wan_order" else f"already P{targets[next(iter(targets))]}"}
+                return {"ok": True, "detail": "already in that order" if cmd == "set_wan_order"
+                        else f"already P{targets[next(iter(targets))]['priority']}"}
+            def desc(c, tg):
+                e = cur[str(c)]
+                if not tg["enable"]:
+                    return f"{name(c)} disabled"
+                return f"{name(c)} {'enabled at ' if not e.get('enable') else 'P' + str(e.get('priority')) + '→'}P{tg['priority']}"
             try:
                 await asyncio.wait_for(self.writer.post_once("config.wan.connection.priority", body), timeout=10)  # once
             except Exception as e:
                 send_err = e                     # it may still have applied: verify, never resend
             else:
                 send_err = None
-            what = ", ".join(f"{name(c)} P{was[c]}→P{p}" for c, p in changed.items())
+            what = ", ".join(desc(c, tg) for c, tg in changed.items())
             deadline = time.monotonic() + verify_timeout
             while time.monotonic() < deadline:
                 await asyncio.sleep(poll)
@@ -378,17 +430,18 @@ class PeplinkAdapter:
                     wans = normalize_wans(await self.writer.get("status.wan.connection"))
                 except Exception:
                     continue                     # the router may be busy switching links
-                now = {x["id"]: x.get("priority") for x in wans}
-                if all(now.get(c) == p for c, p in changed.items()):
+                now = {x["id"]: x for x in wans}
+                if all(c in now and now[c]["enabled"] == tg["enable"] and (not tg["enable"] or now[c].get("priority") == tg["priority"])
+                       for c, tg in changed.items()):
                     try:
                         await self._wan()
                     except Exception:
                         pass
                     self._log(cmd, value, "ok", what + (f" (send raised {send_err})" if send_err else ""), client)
                     if cmd == "set_wan_priority":
-                        c, p = next(iter(changed.items()))
-                        return {"ok": True, "detail": f"{name(c)} is now P{p}"}
-                    return {"ok": True, "detail": "new order: " + ", ".join(f"P{p} {name(c)}" for c, p in targets.items())}
+                        c, tg = next(iter(changed.items()))
+                        return {"ok": True, "detail": f"{name(c)} is now P{tg['priority']}"}
+                    return {"ok": True, "detail": what}
             self._log(cmd, value, "unverified", f"{what}; send={'error: ' + str(send_err) if send_err else 'ok'}; not seen", client)
             return {"ok": False, "detail": "the router didn't confirm the change (not retried)"}
 

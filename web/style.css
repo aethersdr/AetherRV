@@ -1051,3 +1051,10 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 #wan-card .wans:not(.can-drag) .grip { cursor: default; opacity: .35; }
 #wan-card .wans.can-drag .grip { touch-action: none; }
 #wan-card .wans.can-drag .wan.dragging .grip { cursor: grabbing; }
+/* WAN priority: disabled section */
+#wan-card .wan-sep { display: flex; align-items: center; gap: 10px; margin: 6px 4px 0; color: var(--muted); font-size: 13px; letter-spacing: .5px;
+  text-transform: uppercase; transition: transform .15s ease; }
+#wan-card .wan-sep::before, #wan-card .wan-sep::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+#wan-card .wan.off { opacity: .6; }
+#wan-card .wan.off.dragging { opacity: 1; }
+#wan-card .wan .grip.none { cursor: default; }
