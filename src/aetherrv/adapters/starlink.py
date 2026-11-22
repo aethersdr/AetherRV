@@ -53,6 +53,25 @@ def pretty_alert(name: str) -> str:
     return name.removeprefix("alert_").replace("_", " ").capitalize()
 
 
+def signal_fields(raw) -> dict:
+    """Signal quality from the raw dish status (newer firmware): signal_quality 0..1 = SNR/10 dB, clamped,
+    so 1.0 means SNR >= 10 dB. Absent on older firmware → None."""
+    # proto3 omits a 0.0 on the wire, so "set" can't tell 0 dB from "not supported": instead check whether this
+    # firmware's message (resolved from the dish by reflection) defines the field at all.
+    q = getattr(raw, "signal_quality", None) if raw is not None else None
+    desc = getattr(raw, "DESCRIPTOR", None)
+    if desc is not None and "signal_quality" not in [f.name for f in desc.fields]:
+        q = None
+    q = float(q) if q is not None else None
+    return {
+        "starlink.signal_quality": None if q is None else round(q, 3),
+        "starlink.snr_db": None if q is None else round(min(max(q, 0.0), 1.0) * 10, 1),
+        "starlink.snr_capped": None if q is None else q >= 1.0,
+        "starlink.snr_above_noise": getattr(raw, "is_snr_above_noise_floor", None) if raw is not None else None,
+        "starlink.snr_persistently_low": getattr(raw, "is_snr_persistently_low", None) if raw is not None else None,
+    }
+
+
 def normalize(status: dict, obstruction: dict, alerts: dict) -> dict:
     """Map starlink_grpc.status_data() dicts to AetherRV state keys (pure, testable)."""
     active = [k for k, v in (alerts or {}).items() if v]
@@ -208,6 +227,10 @@ class StarlinkAdapter:
             self._ctx = starlink_grpc.ChannelContext(target=self.target)
         st, obs, alerts, *_ = starlink_grpc.status_data(context=self._ctx)
         out = normalize(st, obs, alerts)
+        try:                                  # signal quality isn't in status_data(): read the raw status
+            out.update(signal_fields(starlink_grpc.get_status(context=self._ctx)))
+        except Exception as e:
+            log.debug("starlink signal quality unavailable: %s", e)
         if time.monotonic() - self._map_at >= self.MAP_EVERY:
             self._map_at = time.monotonic()
             try:

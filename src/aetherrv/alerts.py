@@ -217,6 +217,9 @@ def r_starlink(s: State, c: dict):
     if not s.get("starlink.online"):
         yield Finding("starlink.offline", "warning", f"Starlink offline: {str(s.get('starlink.state')).replace('_', ' ').lower()}",
                       "The dish is not connected to the constellation.", "starlink")
+    if s.get("starlink.snr_persistently_low"):
+        yield Finding("starlink.snr_low", "warning", "Starlink: signal persistently weak",
+                      f"The dish reports its SNR as persistently low (now {s.get('starlink.snr_db')} dB).", "starlink")
     for a in s.get("starlink.alerts") or []:
         if a.get("severity"):
             yield Finding(f"starlink.{a['id']}", a["severity"], f"Starlink: {a['label']}", "Reported by the dish.", "starlink")

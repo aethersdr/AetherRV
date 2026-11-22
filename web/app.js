@@ -1502,6 +1502,8 @@ function renderNetwork() {
           <div><b>${S["starlink.drop_rate"] == null ? "—" : (S["starlink.drop_rate"] * 100).toFixed(1) + "%"}</b><span>ping drop</span></div>
           <div><b>${dur(S["starlink.uptime"])}</b><span>uptime</span></div>
           <div><b>${S["starlink.gps_sats"] ?? "—"}</b><span>GPS sats</span></div>
+          <div><b class="${S["starlink.snr_persistently_low"] ? "warn-text" : ""}">${S["starlink.signal_quality"] == null ? "—" : Math.round(S["starlink.signal_quality"] * 100) + "%"}</b><span>signal quality</span></div>
+          <div><b class="${S["starlink.snr_persistently_low"] ? "warn-text" : ""}">${S["starlink.snr_db"] == null ? "—" : (S["starlink.snr_capped"] ? "≥ 10" : (+S["starlink.snr_db"]).toFixed(1)) + " dB"}</b><span>SNR</span></div>
         </div>
         ${slAlerts.length || updReady ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}
           ${updReady && canControlDev("starlink") ? `<button class="btn-soft sl-install" data-sl="install" ${ctlPending ? "disabled" : ""}>${icon("download")}Install update</button>` : ""}</div>` : ""}

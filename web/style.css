@@ -766,7 +766,7 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-body { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
 .sl-left { flex: 1 1 340px; min-width: 0; display: grid; gap: 14px; align-content: start; }
 .sl-left .sl-speeds { margin: 6px 0 4px; }
-.sl-kv { grid-template-columns: repeat(2, 1fr); row-gap: 16px; }
+.sl-kv { grid-template-columns: repeat(3, 1fr); row-gap: 16px; }
 .sl-sky { margin: -6px 0 0; flex: none; display: grid; justify-items: center; gap: 6px; }
 .sl-sky figcaption { font-size: 15px; color: var(--muted); text-align: center; display: grid; gap: 4px; }
 .sl-sky figcaption b { font-size: 22px; color: var(--ink); }
@@ -959,3 +959,5 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .pwr-chart .card-h .legend { margin: 0; }
 .pwr-chart .card-h .seg.range { margin-left: auto; }
 .pwr-chart .seg.range button { padding: 6px 16px; min-height: 0; font-size: 16px; }
+
+.kv-row b.warn-text { color: var(--warning); }

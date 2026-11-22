@@ -606,3 +606,7 @@ Sections 1–31 use the old names. Mapping:
 - **2026-11-21, control from the LANs (owner).** Removed "view only" for the owner's networks. New `[web] control_subnets` (set to the van and home LANs on the Pi) and `control_tailnet = "all"` (every tailnet peer, still required to arrive on the console's Tailscale address).
   - Effect: anyone on the van or home Wi-Fi can now use every control, including the heater, inverter, switches, dump valve, drawer-lock trigger and Starlink update.
   - The README safety model was updated to say so.
+- **2026-11-21, Starlink signal quality / SNR.** Newer dish firmware reports `signal_quality` (0–1 = SNR/10 dB, clamped, so 1.0 means ≥ 10 dB) plus `is_snr_above_noise_floor` and `is_snr_persistently_low`.
+  - These are not in `status_data()`, so they are read from the raw `get_status()`. Field support is judged from the reflected message definition, because proto3 drops 0.0.
+  - The Network card shows "signal quality" % and "SNR" dB ("≥ 10 dB" when capped). SNR is recorded in history.
+  - A warning is raised when the dish flags SNR as persistently low. First reading: 1.0 (≥ 10 dB).

@@ -262,3 +262,13 @@ def test_peplink_bandwidth_per_wan():
          "lifetime": {"unit": "MB"}}
     assert normalize_bandwidth(r) == {1: {"down_mbps": 0.008, "up_mbps": 0.013}, 4: {"down_mbps": 0.497, "up_mbps": 0.038}}
     assert normalize_bandwidth({}) == {}
+
+
+def test_starlink_signal_quality_to_snr():
+    from types import SimpleNamespace
+    from aetherrv.adapters.starlink import signal_fields
+    d = signal_fields(SimpleNamespace(signal_quality=0.68, is_snr_above_noise_floor=True, is_snr_persistently_low=False))
+    assert (d["starlink.signal_quality"], d["starlink.snr_db"], d["starlink.snr_capped"]) == (0.68, 6.8, False)
+    d = signal_fields(SimpleNamespace(signal_quality=1.0, is_snr_above_noise_floor=True, is_snr_persistently_low=False))
+    assert d["starlink.snr_db"] == 10.0 and d["starlink.snr_capped"] is True
+    assert signal_fields(None)["starlink.snr_db"] is None
