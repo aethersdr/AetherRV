@@ -13,6 +13,7 @@ from pathlib import Path
 from aiohttp import web
 
 from .adapters.capture_only import CaptureOnlyAdapter
+from .adapters.espar import EsparAdapter
 from .adapters.demo import DemoAdapter
 from .adapters.epoch_ble import EpochBleAdapter
 from .adapters.n2k import N2kAdapter
@@ -147,6 +148,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
             a = RixensAdapter(dev, state, publish_climate=not rixens_http_on)   # CAN = fallback/inventory
         elif kind == "capture":
             a = CaptureOnlyAdapter(dev, state)
+        elif kind == "espar":
+            a = EsparAdapter(dev, state)              # read-only decoder (no send path)
         else:
             log.warning("device %s: unknown kind %r", dev, kind)
             continue

@@ -81,7 +81,7 @@ def test_log_persists(tmp_path):
 
 
 def test_default_rules_cover_all_sources():
-    assert {r.name for r in default_rules()} == {"battery", "cold", "n2k", "buses", "victron", "rixens", "starlink", "peplink", "netmon", "system", "bms", "switch_trip", "cerbo", "trigger", "epoch"}
+    assert {r.name for r in default_rules()} == {"battery", "cold", "n2k", "buses", "victron", "rixens", "starlink", "peplink", "netmon", "system", "bms", "switch_trip", "cerbo", "trigger", "epoch", "espar"}
 
 
 def test_connectivity_rules():

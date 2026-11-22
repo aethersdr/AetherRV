@@ -553,6 +553,8 @@ function renderClimate() {
   const live = R("live");
   const avail = R("available") || {};
   const srcs = R("sources") || [];
+  const E = k => S[`climate.espar.${k}`];
+  const fmtDur = sec => sec < 3600 ? `${Math.floor(sec / 60)} min` : `${Math.floor(sec / 3600)} h ${Math.floor(sec % 3600 / 60)} min`;
   const heaters = [
     { id: "rixens", name: "Rixens MCS7", sub: live ? `Hydronic · ${esc(R("heater_state") || "")}` : "Hydronic heat", state: rState,
       buttons: live ? ["furnace", "electric", "engine"].filter(k => k === "furnace" || avail[k]).map(k => ({ k, on: srcs.includes(k), st: R(k) })) : [],
@@ -574,8 +576,17 @@ function renderClimate() {
         ["Flame", R("flame_c") == null ? "—" : fmtT(R("flame_c")), "Flame sensor"],
       ] : [],
       fault: R("fault_active") },
-    { id: "espar", name: "Espar Airtronic S2", sub: "D2L forced-air · EasyStart Pro", state: S["climate.espar.state"], buttons: [], chips: [],
-      kv: S["climate.espar.state"] == null ? [] : [["Status", S["climate.espar.state"] === "heating" ? "On" : "Off"], ["CAN IDs seen", ids("espar")]] },
+    { id: "espar", name: "Espar Airtronic S2", sub: `D2L forced-air · EasyStart Pro${E("asleep") ? " · bus asleep" : ""}`,
+      state: E("state"), buttons: [], chips: [],
+      // read-only decode of the heater's own CAN bus (adapters/espar.py); control stays with the EasyStart Pro
+      kv: E("state") == null ? [] : [
+        ["Mode", E("asleep") ? "off" : { heat: "Heat", fan: "Fan only", off: "Off" }[E("mode")] || "—"],
+        ["Set", E("setpoint_c") == null ? "—" : fmtT(E("setpoint_c"))],
+        ["Room (panel)", E("room_c") == null ? "—" : fmtT(E("room_c"))],
+        E("cooldown_left_s") != null ? ["Cool-down", `${Math.floor(E("cooldown_left_s") / 60)}:${String(E("cooldown_left_s") % 60).padStart(2, "0")} left`]
+          : E("run_s") != null ? ["Running", fmtDur(E("run_s"))] : ["Heater", E("heater_c") == null ? "—" : fmtT(E("heater_c"))],
+      ],
+      fault: E("fault") ? `${E("fault")} · ${E("fault_text")}` : null },
   ];
   $("#cold").innerHTML = `<div class="card-h"><h2>Refrigeration</h2><span class="muted">Ruuvi tags</span></div><div class="cold-row">` +
     [["fridge", "Fridge", "fridge"], ["freezer", "Freezer", "snow"]].map(([r, name, ic]) => {
@@ -586,7 +597,8 @@ function renderClimate() {
   $("#heaters").innerHTML = heaters.map(h => {
     const on = h.state === "heating";
     const status = h.state == null ? `Not connected · ${ids(h.id)} CAN IDs seen`
-      : { heating: "Heating", off: "Off", standby: "Standby", idle: "Idle", error: "ERROR", "no data": "No data" }[h.state] || h.state;
+      : { heating: "Heating", off: "Off", standby: "Standby", idle: "Idle", error: "ERROR", "no data": "No data",
+          cooldown: "Cooling down", starting: "Starting", fan: "Fan only" }[h.state] || h.state;
     return `<div class="card heater ${on ? "on" : ""} ${h.kv.length || h.buttons.length ? "" : "compact"}">
       <div class="badge-col"><div class="badge" ${h.id === "rixens" ? 'title="Cabin air heat"' : ""}>${icon(h.state == null ? "can" : h.id === "rixens" ? "air_heat" : "flame")}</div>
         ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}</div>
@@ -2544,6 +2556,10 @@ function renderHeatQuick() {
       const installed = b.k !== "preheat" || avail.preheat !== false;
       usable = live && installed && canControl() && !ctlPending;
       note = !live ? "offline" : !installed ? "n/a" : on ? "on" : "off";
+    } else if (b.kind === "espar") {             // read-only: shows the heater's state, no control yet
+      const es = S["climate.espar.state"];
+      on = es === "heating" || es === "starting" || es === "fan"; st = es === "heating" ? "active" : "";
+      note = es == null ? "not connected" : es;
     } else { note = "not connected"; }
     return `<button class="hq-btn${on ? " on" : ""}${st === "active" ? " active" : ""}" data-hq="${b.k}" ${usable ? "" : "disabled"}>
       ${icon(b.ic)}<span class="hq-l">${b.label}</span></button>`;

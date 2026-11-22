@@ -202,6 +202,16 @@ def r_buses(s: State, c: dict):
                           "Check the CAN wiring to the Pi.", "can")
 
 
+def r_espar(s: State, c: dict):
+    """Espar heater fault code from its own status frame (read-only decoder, adapters/espar.py)."""
+    code = s.get("climate.espar.fault")
+    if code:
+        sev = "serious" if s.get("climate.espar.state") == "error" else "warning"
+        yield Finding(f"espar.fault.{code}", sev, f"Espar heater fault {code}",
+                      f"{s.get('climate.espar.fault_text') or 'unknown fault code'}. Check the EasyStart Pro for the full code.",
+                      "espar")
+
+
 def r_victron(s: State, c: dict):
     if s.get("victron.connected") is False and not s.get("demo.active"):
         yield Finding("victron.link", "serious", "Cerbo GX not connected", "No MQTT connection to the Cerbo GX.", "victron")
@@ -300,6 +310,7 @@ def default_rules_base() -> list[Rule]:
         Rule("cerbo", r_cerbo_notifications, for_s=0, clear_s=5),
         Rule("trigger", r_trigger_failsafe, for_s=0, clear_s=0),
         Rule("epoch", r_epoch, for_s=60, clear_s=60),
+        Rule("espar", r_espar, for_s=5, clear_s=30),
     ]
 
 
