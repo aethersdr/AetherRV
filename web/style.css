@@ -998,7 +998,7 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
   font-size: 16px; font-weight: 400; color: var(--muted); }   /* hangs below the time: the time stays on the line */
 /* 3D sky: obstruction % (top-left) and legend (bottom-right) overlaid on the scene; the scene fills the card */
 .sl-sky.has3d { position: relative; display: flex; flex: 1; min-height: 0; margin: 0; }
-.sl-sky.has3d .sky3d { flex: 1; min-height: 300px; }
+.sl-sky.has3d .sky3d { flex: 1; min-height: 520px; }   /* keeps the height the compact header freed */
 .sky-ov { position: absolute; z-index: 2; pointer-events: none; padding: 6px 12px; border-radius: 12px;
   background: rgb(6 11 19 / .55); border: 1px solid rgb(120 190 230 / .18); color: #8fa6c2; }
 .sky-ov.tl { top: 12px; left: 12px; display: flex; align-items: baseline; gap: 8px; font-size: 15px; }
@@ -1007,3 +1007,15 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sky-ov.br { right: 12px; bottom: 10px; font-size: 13px; border-radius: 999px; padding: 3px 10px; }
 .sl-sky.has3d .sky-key i.clear { background: #47d7ff; box-shadow: 0 0 6px #47d7ff; }
 .sl-sky.has3d .sky-key i.blocked { background: #ff6a4a; box-shadow: 0 0 6px #ff6a4a; }
+/* Starlink card: compact top (version in the header, stats in one row) so the 3D sky gets the height */
+.sl-card .card-h { margin-bottom: 4px; }
+.sl-card .sl-sw { flex: 1; text-align: right; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl-card .sl-left { gap: 0 32px; }
+.sl-card .sl-left .sl-speeds { gap: 24px; margin: 0; }
+.sl-card .sl-speeds b { font-size: 46px; letter-spacing: -1px; }
+.sl-card .sl-speeds small { font-size: 14px; margin-top: 2px; }
+.sl-card .sl-speeds .arrow { font-size: 22px; margin-right: 4px; }
+.sl-card .sl-kv { grid-template-columns: repeat(6, auto); column-gap: 16px; row-gap: 0; justify-content: space-between; }
+.sl-card .sl-kv b { font-size: 20px; white-space: nowrap; }
+.sl-card .sl-kv span { font-size: 12px; white-space: nowrap; }
+.sky-sw { position: absolute; z-index: 2; top: 12px; right: 14px; pointer-events: none; font-size: 13px; color: #8fa6c2; }

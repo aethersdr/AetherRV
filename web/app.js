@@ -1571,9 +1571,9 @@ function renderNetwork() {
         </div>
         ${slAlerts.length || updReady ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}
           ${updReady && canControlDev("starlink") ? `<button class="btn-soft sl-install" data-sl="install" ${ctlPending ? "disabled" : ""}>${icon("download")}Install update</button>` : ""}</div>` : ""}
-        <div class="muted small">${esc(S["starlink.software"] || "")}</div>
       </div>
       ${map?.data ? ((slot3d = sky3dSlot(map)) ? `<figure class="sl-sky has3d">${slot3d}
+          <div class="sky-sw">${esc(S["starlink.software"] || "")}</div>
           <div class="sky-ov tl"><b class="${(obs ?? 0) > 5 ? "warn-text" : ""}">${num(obs, 1)}%</b><span>obstructed</span></div>
           <div class="sky-ov br sky-key"><i class="clear"></i>Clear <i class="blocked"></i>Obstructed</div></figure>`
         : `<figure class="sl-sky">${skyMap(map, S["starlink.azimuth"], 360)}
