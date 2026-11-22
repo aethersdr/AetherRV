@@ -623,7 +623,6 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-radar-ctl .ctl-pill { padding: 8px 18px; font-size: 16px; }
 .wx-hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 500; pointer-events: none;
   background: rgba(14,17,22,.82); border: 1px solid var(--line); border-radius: 999px; padding: 6px 16px; font-size: 15px; color: var(--ink-2); }
-.wx-fc-for { font-size: 16px; color: #fab219; margin-left: 6px; }
 .wx-base { filter: saturate(.8) brightness(.95); }
 
 /* Dark map toggle */
@@ -982,10 +981,10 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .wans .wan-pick .seg button { min-width: 52px; min-height: 40px; }
 
 /* Weather: compact sun + position line inside the card header (no extra height) */
-.wx-card .card-h .wx-loc { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; margin: 0 14px;
+.wx-card .card-h .wx-loc { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; margin: 0 24px;
   font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .wx-card .card-h .wx-loc:empty { display: none; }
 .wx-card .card-h .wx-loc > b { color: var(--ink); font-weight: 600; font-size: 14px; }
-.wx-card .card-h .wx-loc .daybar { flex: 1 1 120px; min-width: 60px; max-width: 360px; height: 6px; margin: 0; }
+.wx-card .card-h .wx-loc .daybar { flex: 1 1 auto; min-width: 60px; height: 6px; margin: 0; }
 .wx-card .card-h .wx-loc .daybar b { top: -3px; height: 12px; width: 3px; }
-.wx-card .card-h .wx-loc > span { overflow: hidden; text-overflow: ellipsis; }
+.wx-card .card-h .wx-loc > span { flex: none; }

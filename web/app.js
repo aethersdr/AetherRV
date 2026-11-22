@@ -1134,7 +1134,6 @@ function renderWeather() {
     }
   }
   const tgt = fcPick || (lat != null ? [lat, lon] : null);
-  $("#wx-fc-for").textContent = !tgt ? "" : fcPick ? `Forecast · pinned ${fmtLL(...fcPick)}` : "Forecast · van";
   $("#wx-hint").hidden = !!fcPick;
   if (tgt) loadForecast(tgt[0], tgt[1]);
   renderForecast();
