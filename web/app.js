@@ -1588,7 +1588,7 @@ function renderNetwork() {
   const c = cw?.cellular;
   const allow = (S["peplink.allowance"] || []).find(a => cw && a.conn === cw.id && (a.sim == null || a.sim === c?.sim));
   $("#cell-card").innerHTML = !c ? `<div class="card-h"><h2>Cellular</h2></div><div class="muted">${S["peplink.reachable"] == null ? "Not enabled." : "No cellular WAN."}</div>` : `
-    <div class="card-h"><h2>Cellular</h2><span class="pill ${cw.connected ? "ok-pill" : "bad-pill"}">${icon(cw.connected ? "check" : "alert")}${esc(cw.message || "")}</span></div>
+    <div class="card-h"><h2 class="sl-title" title="${esc(cw.message || "")}"><span class="led led-${esc(cw.led)}"></span>Cellular</h2></div>
     <div class="cell-main">
       <div class="cell-sig">${bars(c.signal_level ?? 0)}<div><b>${esc(c.network || "")}</b><span>${esc(c.carrier || "")}${c.roaming && c.roaming !== "home" ? " · " + esc(c.roaming) : ""}</span></div></div>
       ${allow ? `<div class="sl-obs">${ring(allow.percent, { size: 150, stroke: 14, color: allow.percent >= 95 ? "var(--critical)" : allow.percent >= 80 ? "var(--warning)" : "var(--c-batt)" })}
@@ -1605,9 +1605,8 @@ function renderNetwork() {
   const wifis = wans.filter(w => w.wifi && w.enabled);
   const ww = wifis.find(w => w.connected) || wifis[0];
   const wf = ww?.wifi;
-  const wState = !ww ? "" : ww.connected ? "Connected" : String(ww.message || "").replace(/\.+$/, "");
   $("#wwan-card").innerHTML = !ww ? `<div class="card-h"><h2>WWAN</h2></div><div class="muted">${S["peplink.reachable"] == null ? "Not enabled." : "No Wi-Fi WAN enabled."}</div>` : `
-    <div class="card-h"><h2>WWAN</h2><span class="pill ${ww.connected ? "ok-pill" : "bad-pill"}">${icon(ww.connected ? "check" : "alert")}${esc(wState)}</span></div>
+    <div class="card-h"><h2 class="sl-title" title="${esc(ww.message || "")}"><span class="led led-${esc(ww.led)}"></span>WWAN</h2></div>
     <div class="cell-main">
       <div class="cell-sig">${bars(ww.connected ? (wf.level ?? 0) : 0)}<div><b>${esc(wf.ssid || "—")}</b><span>${esc(ww.name)}</span></div></div>
     </div>
