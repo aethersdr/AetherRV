@@ -96,6 +96,17 @@ tx_enabled = false
 # follow = [4]           # outputs that follow this input
 # debounce_s = 0.3
 
+# EPOCH (RoyPow-BMS) batteries over Bluetooth LE, read-only (needs BlueZ). One battery at a time,
+# about once a minute: connect, 3 read queries, disconnect. Addresses from a BLE scan
+# (they advertise as " B12460A  <serial> ").
+# [device.epoch_ble]
+# kind = "epoch_ble"
+# enabled = true
+# interval = 60
+# [[device.epoch_ble.battery]]
+# name = "1"
+# address = "00:00:00:00:00:00"
+
 [device.espar]
 kind = "capture"       # Airtronic S2 D2L: capture-only until the frame map is verified
 bus = "hat0"           # placeholder

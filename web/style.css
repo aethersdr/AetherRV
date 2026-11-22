@@ -852,3 +852,13 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sw-in.on .ic { color: var(--good); }
 .quick-btn.na { opacity: .5; }
 .demo-tag.live-tag { color: var(--good); border-color: color-mix(in srgb, var(--good) 50%, var(--line)); }
+/* Individual EPOCH batteries (Bluetooth) */
+.battm-wide { grid-column: 1 / -1; }
+.battm-cellgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.battm-cell { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; display: grid; gap: 8px; }
+.battm-cell.na { opacity: .6; } .battm-cell.bad { border-color: var(--critical); }
+.battm-cell-h { display: flex; justify-content: space-between; align-items: baseline; }
+.battm-cell-h b { font-size: 18px; } .battm-cell-h span { font-size: 26px; font-weight: 700; }
+.battm-cell-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.battm-cell-kv .warn { color: var(--warning); }
+.battm-cells { display: flex; gap: 6px; } .battm-cells i { font-style: normal; font-size: 13px; color: var(--muted); background: var(--surface-2); border-radius: 6px; padding: 2px 6px; font-variant-numeric: tabular-nums; }

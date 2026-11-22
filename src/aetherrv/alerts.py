@@ -88,9 +88,16 @@ def r_bms(s: State, c: dict):
         exp = c.get("bms_expected_modules")
         online = b.get("System/NrOfModulesOnline")
         if exp and isinstance(online, (int, float)) and online < exp:
-            yield Finding(f"bms.modules.{b['instance']}", "serious", f"Only {int(online)} of {int(exp)} batteries reporting",
-                          f"{name}: the BMS reports {int(online)} module(s) online, expected {int(exp)}. "
-                          "Check the battery comms daisy-chain / DIP switches (and that every battery's breaker is closed).", "victron")
+            ble_ok = s.get("batteries.ble.reporting")
+            if ble_ok is not None and ble_ok >= exp:
+                # Bluetooth reads every battery directly and they're healthy: only the CAN comms link is missing.
+                yield Finding(f"bms.modules.{b['instance']}", "warning", f"Only {int(online)} of {int(exp)} batteries on the CAN bus",
+                              f"Bluetooth reads all {int(exp)} batteries directly and they are healthy, but {name} sees only "
+                              f"{int(online)} on its CAN comms. Check the battery comms daisy-chain / DIP switches.", "victron")
+            else:
+                yield Finding(f"bms.modules.{b['instance']}", "serious", f"Only {int(online)} of {int(exp)} batteries reporting",
+                              f"{name}: the BMS reports {int(online)} module(s) online, expected {int(exp)}. "
+                              "Check the battery comms daisy-chain / DIP switches (and that every battery's breaker is closed).", "victron")
         for k, v in (b.get("active_alarms") or {}).items():
             sev = "serious" if v == 2 else "warning"
             yield Finding(f"bms.alarm.{b['instance']}.{k}", sev, f"{name}: {BMS_ALARM_NAMES.get(k, k)}",
@@ -128,6 +135,28 @@ def r_trigger_failsafe(s: State, c: dict):
         if r and r.get("ok") is False:
             yield Finding(f"trigger.failsafe.{g['id']}", "serious", f"{g['name']}: controller timer failed",
                           r.get("detail", "") + " Check the load controller's timer configuration.", "n2k")
+
+
+def r_epoch(s: State, c: dict):
+    """Individual EPOCH batteries read over Bluetooth."""
+    for b in s.get("batteries.ble") or []:
+        nm, key = f"Battery {b.get('name')}", f"epoch.{b.get('name')}"
+        if not b.get("ok"):
+            if b.get("age") is not None or b.get("error"):
+                yield Finding(f"{key}.silent", "warning", f"{nm} not answering over Bluetooth",
+                              f"No good read for 10 min ({b.get('error') or 'no data'}).", "epoch")
+            continue
+        if b.get("problem_code"):
+            yield Finding(f"{key}.fault", "serious", f"{nm}: BMS fault", f"Problem code {b['problem_code']}.", "epoch")
+        for fet, what in (("charge_fet", "charging"), ("discharge_fet", "discharging")):
+            if b.get(fet) is False:
+                yield Finding(f"{key}.{fet}", "serious", f"{nm}: {what} switched off by its BMS",
+                              f"The battery's BMS has opened its {what} MOSFET.", "epoch")
+        if (b.get("cell_delta_mv") or 0) > 50:
+            yield Finding(f"{key}.cells", "warning", f"{nm}: cells out of balance ({b['cell_delta_mv']} mV)",
+                          "Cell voltage spread above 50 mV.", "epoch")
+        if b.get("temps") and max(b["temps"]) >= 50:
+            yield Finding(f"{key}.hot", "serious", f"{nm}: hot ({max(b['temps']):.0f} °C)", "A cell/BMS temperature is 50 °C or more.", "epoch")
 
 
 CERBO_SEVERITY = {0: "warning", 1: "serious"}       # Venus notification Type: 0 warning, 1 alarm, 2 info
@@ -255,6 +284,7 @@ def default_rules_base() -> list[Rule]:
         Rule("switch_trip", r_switch_trip, for_s=3, clear_s=5),
         Rule("cerbo", r_cerbo_notifications, for_s=0, clear_s=5),
         Rule("trigger", r_trigger_failsafe, for_s=0, clear_s=0),
+        Rule("epoch", r_epoch, for_s=60, clear_s=60),
     ]
 
 

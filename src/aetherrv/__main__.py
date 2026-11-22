@@ -14,6 +14,7 @@ from aiohttp import web
 
 from .adapters.capture_only import CaptureOnlyAdapter
 from .adapters.demo import DemoAdapter
+from .adapters.epoch_ble import EpochBleAdapter
 from .adapters.n2k import N2kAdapter
 from .switching import N2kNode, SwitchController
 from .climate import ColdRearm, run_cabin_average
@@ -79,6 +80,10 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
             if d.get("enabled", False):
                 log.warning("DEMO data source enabled: synthetic values, UI shows a DEMO badge")
                 adapters.append(DemoAdapter(state, history, exclude=demo_excludes))
+            continue
+        if kind == "epoch_ble":
+            if d.get("enabled", False) and not demo:
+                adapters.append(EpochBleAdapter(state, d.get("battery", []), float(d.get("interval", 60))))
             continue
         if kind in ("starlink", "peplink"):
             if not d.get("enabled", False):

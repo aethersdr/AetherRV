@@ -585,8 +585,20 @@ function renderBattModal() {
         ["Low-voltage cutoff", bms["Info/BatteryLowVoltage"] == null ? "—" : `${(+bms["Info/BatteryLowVoltage"]).toFixed(1)} V`],
         ["Blocking", `${bms["System/NrOfModulesBlockingCharge"] ? "charge " : ""}${bms["System/NrOfModulesBlockingDischarge"] ? "discharge" : ""}` || "none"],
       ]) + `<div class="battm-alarms">${alarms.length ? alarms.map(k => `<span class="src warn-src">${esc(k)}</span>`).join("") : `<span class="muted">${icon("check")} No BMS alarms</span>`}</div>
-      ${short ? `<p class="battm-note">The BMS reports ${on} module(s) but ${exp} batteries are installed. Check the battery comms daisy-chain and DIP switches (and that each battery's breaker is closed).</p>` : ""}
+      ${short ? `<p class="battm-note">The BMS reports ${on} module(s) but ${exp} batteries are installed.${(S["batteries.ble.reporting"] || 0) >= exp ? " Bluetooth reads all of them directly (below), so it's only their CAN comms link:" : ""} Check the battery comms daisy-chain and DIP switches (and that each battery's breaker is closed).</p>` : ""}
       </section>`;
+  }
+  const ble = S["batteries.ble"] || [];
+  if (ble.length) {
+    const tile = b => `<div class="battm-cell ${b.ok ? "" : "na"} ${b.problem_code || b.charge_fet === false || b.discharge_fet === false ? "bad" : ""}">
+        <div class="battm-cell-h"><b>${esc(b.name)}</b><span>${b.ok ? (b.soc == null ? "—" : b.soc + "%") : "no data"}</span></div>
+        ${b.ok ? `<div class="battm-cell-kv"><span>${(+b.voltage).toFixed(2)} V</span><span>${b.current == null ? "—" : (+b.current).toFixed(1) + " A"}</span>
+          <span>${b.remaining_ah == null ? "—" : Math.round(b.remaining_ah) + " Ah"}</span><span>${b.cycles ?? "—"} cycles</span>
+          <span class="${(b.cell_delta_mv || 0) > 50 ? "warn" : ""}">Δ ${b.cell_delta_mv ?? "—"} mV</span><span>${b.temps && b.temps.length ? fmtT(Math.max(...b.temps)) + " max" : "—"}</span></div>
+          <div class="battm-cells">${(b.cells || []).map(c => `<i title="${c.toFixed(3)} V">${c.toFixed(3)}</i>`).join("")}</div>`
+        : `<div class="muted small">${esc(b.error || "waiting for first read")}</div>`}</div>`;
+    html += `<section class="battm-card battm-wide"><h4>${icon("battery")}Individual batteries<small>${S["batteries.ble.reporting"] ?? 0} of ${ble.length} via Bluetooth · total ${S["batteries.ble.current"] == null ? "—" : (+S["batteries.ble.current"]).toFixed(1) + " A"}</small></h4>
+      <div class="battm-cellgrid">${ble.map(tile).join("")}</div></section>`;
   }
   $("#battm-body").innerHTML = html || `<div class="muted">No battery data from the Cerbo.</div>`;
   $("#battm-sub").textContent = S["victron.connected"] ? "Live from the Cerbo GX" : "Cerbo GX not connected";

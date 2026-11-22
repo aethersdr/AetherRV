@@ -81,7 +81,7 @@ def test_log_persists(tmp_path):
 
 
 def test_default_rules_cover_all_sources():
-    assert {r.name for r in default_rules()} == {"battery", "cold", "n2k", "buses", "victron", "rixens", "starlink", "peplink", "netmon", "system", "bms", "switch_trip", "cerbo", "trigger"}
+    assert {r.name for r in default_rules()} == {"battery", "cold", "n2k", "buses", "victron", "rixens", "starlink", "peplink", "netmon", "system", "bms", "switch_trip", "cerbo", "trigger", "epoch"}
 
 
 def test_connectivity_rules():
@@ -126,3 +126,18 @@ def test_switch_trip_and_cerbo_notification_alerts():
         {"index": 1, "active": True, "type": 2, "description": "info only", "device": "", "acknowledged": False}])
     f = list(r_cerbo_notifications(s, {}))
     assert [(x.id, x.severity, x.title) for x in f] == [("cerbo.notif.0", "serious", "Cerbo: Breaker Tripped (CLMD16)")]
+
+
+def test_epoch_alerts_and_bms_count_downgrade():
+    from aetherrv.alerts import r_bms, r_epoch
+    s = State()
+    s.set("batteries.ble", [
+        {"name": "296", "ok": True, "problem_code": 0, "charge_fet": True, "discharge_fet": True, "cell_delta_mv": 4, "temps": [12]},
+        {"name": "337", "ok": True, "problem_code": 0, "charge_fet": False, "discharge_fet": True, "cell_delta_mv": 80, "temps": [12]},
+        {"name": "354", "ok": False, "age": 900, "error": "TimeoutError"}])
+    ids = {f.id: f.severity for f in r_epoch(s, {})}
+    assert ids == {"epoch.337.charge_fet": "serious", "epoch.337.cells": "warning", "epoch.354.silent": "warning"}
+    s.set("victron.batteries", [{"kind": "bms", "instance": 512, "System/NrOfModulesOnline": 1}])
+    s.set("batteries.ble.reporting", 4)
+    f = list(r_bms(s, {"bms_expected_modules": 4}))
+    assert f[0].severity == "warning" and "CAN" in f[0].title

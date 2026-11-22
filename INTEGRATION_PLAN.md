@@ -569,3 +569,21 @@ Sections 1–31 use the old names. Mapping:
   - **CLMD16 internals** (from N2KAnalyzer 3.4.2.5's own strings): signals are Discrete I/O 1–36 (keypads and wires), Network Input 1–28 (the 126208 commands to bank 32), Virtual Switch Input/Status 1–12, Timer Output 1–12 and more. A timer is Input (signal) + Period (s) + Mode (0 none / 1 ON delay / 2 OFF delay). Each output is driven by one signal.
   - **The owner's setup:** virtual switches enabled at **127501 instance 33**. The CLMD16 broadcasts bank 33 (12 switches) every 1.5 s. Plan: Timer 1 input = Virtual Switch Input 1, 10 s; ch11 output = Timer Output 1.
   - **AetherRV `[[device.n2k.trigger]] drawer_locks`:** fresh status → vsw 33.1 ON once → verify → OFF once after 1 s → watch ch11. If ch11 is still on after 13 s, a direct OFF is sent and the alert "controller timer failed" is raised. Keypad #2 button 11 and the Drawer locks tile use the trigger.
+
+## 40. EPOCH batteries over Bluetooth (RoyPow BMS), 2026-11-21
+
+- **Discovery.** A raw-HCI BLE scan (no BlueZ needed) found all four batteries advertising " B12460A  2402000xxx " with services ffe0 + fee7. Their manufacturer data holds only an ID and the BLE address, no telemetry.
+  - The same scan also heard the four Ruuvis, the SmartSolar, "Sprinter" and a Garmin Overland.
+- **Protocol.** aiobmsble (Apache-2.0, the library behind HA's BMS_BLE) matches the name pattern " [BS]12*" to its **RoyPow** plugin, and the batteries answer RoyPow queries on ffe1 (one characteristic, write + notify).
+  - Query frame: `EA D1 01 04 FF <cmd> <xor> F5`.
+  - 0x04: SoC, voltage, remaining Ah, cycles, runtime.
+  - 0x03: current, problem code, temperatures, MOSFETs.
+  - 0x02: cell voltages.
+  - Decoded with aiobmsble's field map.
+  - aiobmsble's own connect fails (GATT "Unlikely Error"); these modules also often fail the first ffe1 subscription and then drop the link. So `adapters/epoch_ble.py` reconnects from scratch on a failure (3 tries) and reads one battery at a time, one connect → 3 queries → disconnect per read. Each battery refreshes every ~2.5–3 min. Read-only.
+- **First reads.** All four at 99–100 %, 13.29 V, −5.9 to −6.6 A each (bank about −24.8 A), cell spread 2–4 mV, 11–20 °C, 38–40 cycles, no faults.
+- **Alerts.** Per battery: silent > 10 min, BMS problem code, MOSFET off, cell spread > 50 mV, ≥ 50 °C.
+  - The Cerbo's "Only 1 of 4 batteries reporting" drops to a warning ("… on the CAN bus") when Bluetooth reads all four, because then it is only the CAN comms daisy-chain.
+- **UI.** The battery popup gains "Individual batteries": per-battery SoC, V, A, Ah, cycles, cell spread, max temperature and cell voltages.
+- **Pi changes (owner-approved).** `pacman -S bluez bluez-utils` and bluetooth.service enabled; bleak + aiobmsble added as dependencies.
+  - Side effect: the pacman mkinitcpio hook rebuilt /boot/initramfs-linux.img. That file is unused by the custom 7.3.5 boot (os_prefix 7.3.5/, which has no initramfs).
