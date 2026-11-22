@@ -36,6 +36,6 @@ mask = Image.open(SRC).convert("RGBA").resize((W, W), Image.LANCZOS).split()[3]
 out.putalpha(mask)
 big = out.resize((256, 256), Image.LANCZOS)
 big.save("web/img/logo-rv-256.png")
-big.resize((128, 128), Image.LANCZOS).save("web/img/logo.png", optimize=True)
+big.resize((192, 192), Image.LANCZOS).save("web/img/logo.png", optimize=True)
 big.resize((64, 64), Image.LANCZOS).save("web/img/favicon.png", optimize=True)
 print("ok")
