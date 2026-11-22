@@ -1221,9 +1221,8 @@ function renderWeather() {
   if (tgt) loadForecast(tgt[0], tgt[1]);
   renderForecast();
 }
-// Dark map (AetherMap-style luminance ramp, basemap only). Automatic: dark from sunset to sunrise at the van's
-// GPS position (owner, 2026-11-22); without a fix it follows the day/night display mode. Tapping "Dark map"
-// overrides it until the next sunrise or sunset, then it's automatic again.
+// Dark map (AetherMap-style luminance ramp, basemap only). Auto: dark from sunset to sunrise at the van's
+// GPS position; without a fix it follows the day/night display mode.
 const isNight = () => document.documentElement.classList.contains("night");
 function wxSun(now = Date.now()) {
   const lat = S["location.lat"], lon = S["location.lon"];
@@ -1233,23 +1232,24 @@ function wxSun(now = Date.now()) {
   const next = now < st.rise ? st.rise : now < st.set ? st.set : (sunTimes(+lat, +lon, new Date(now + 86400000))?.rise ?? st.rise + 86400000);
   return { dark, next };
 }
+// Map mode: one button cycling Auto → Dark → Light (owner, 2026-11-22); remembered per screen.
+const WX_MODES = ["auto", "dark", "light"];
+const wxMode = () => { const m = store.get("vp.wxmap.mode", "auto"); return WX_MODES.includes(m) ? m : "auto"; };
 function wxDarkState() {
-  const sun = wxSun(), auto = sun ? sun.dark : isNight();
-  let ovr = null;
-  try { ovr = JSON.parse(store.get("vp.wxdark.ovr", "null")); } catch { ovr = null; }
-  if (ovr && (!(ovr.until > Date.now()) || ovr.dark === auto)) { store.set("vp.wxdark.ovr", "null"); ovr = null; }
-  return { on: ovr ? ovr.dark : auto, auto: !ovr, next: sun?.next };
+  const m = wxMode(), sun = wxSun();
+  return { mode: m, on: m === "dark" ? true : m === "light" ? false : sun ? sun.dark : isNight() };
 }
 function applyWxDark() {
   const s = wxDarkState();
-  $(".wx-wrap").classList.toggle("dark-map", s.on); $("#wx-dark").classList.toggle("on", s.on);
-  $("#wx-dark").textContent = s.auto ? "Dark map · auto" : "Dark map";
-  $("#wx-dark").title = s.auto ? "Follows sunset/sunrise" : "Manual until the next sunrise/sunset";
+  $(".wx-wrap").classList.toggle("dark-map", s.on);
+  const b = $("#wx-dark");
+  b.classList.toggle("on", s.mode !== "auto");
+  b.textContent = `Map: ${s.mode[0].toUpperCase()}${s.mode.slice(1)}`;
+  b.title = s.mode === "auto" ? `Auto: ${s.on ? "dark (sunset to sunrise)" : "light (sunrise to sunset)"} — tap for Dark` :
+    s.mode === "dark" ? "Always dark — tap for Light" : "Always light — tap for Auto";
 }
 $("#wx-dark").addEventListener("click", () => {
-  const s = wxDarkState();
-  // flip now; back to automatic at the next sunrise/sunset (or in 12 h without a GPS fix)
-  store.set("vp.wxdark.ovr", s.auto ? JSON.stringify({ dark: !s.on, until: s.next ?? Date.now() + 12 * 3600e3 }) : "null");
+  store.set("vp.wxmap.mode", WX_MODES[(WX_MODES.indexOf(wxMode()) + 1) % WX_MODES.length]);
   applyWxDark();
 });
 setInterval(() => { if (view === "weather") applyWxDark(); }, 60e3);   // crossing sunrise/sunset while on screen
