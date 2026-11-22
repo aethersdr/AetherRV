@@ -354,7 +354,7 @@ function renderBattCard() {
         <span>${num(S["victron.battery.voltage"], 2)} V · ${num(S["victron.battery.current"], 1)} A · ${fmtTTG(S["victron.battery.ttg"])} to go</span>
         <span class="muted">${rem == null ? "" : `${Math.round(rem)} / ${BATT_AH * ble.length} Ah · `}${ok.length} of ${ble.length} batteries via Bluetooth</span></div>
     </div>
-    ${ble.length ? bankGlyph(ble) : ""}
+    ${ble.length ? bankGlyph(ble, 800, 250) : ""}
     ${ble.length ? `<div class="bc-cells">
       <div><span>VAVG</span><b>${v3(avg)}</b></div><div><span>VDIFF</span><b class="${hi != null && hi - lo > .05 ? "warn" : ""}">${v3(hi == null ? null : hi - lo)}</b></div>
       <div><span>VLO</span><b>${v3(lo)}</b></div><div><span>VHI</span><b>${v3(hi)}</b></div>

@@ -259,6 +259,7 @@ class EpochBleAdapter:
                 pass
 
     async def run(self) -> None:
+        self.publish()                                   # list the batteries ("connecting…") straight away
         await self._clear_stale_links([b["address"] for b in self.batteries])
         tasks = [asyncio.create_task(self._battery(b), name=f"epoch-{b['name']}") for b in self.batteries]
         try:
