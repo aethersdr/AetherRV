@@ -166,9 +166,10 @@ def priority_payload(current: dict, conn_id: int, priority: int) -> dict:
 class PeplinkClient:
     def __init__(self, host: str, client_id: str = "", client_secret: str = "", verify_tls: bool = False,
                  session: aiohttp.ClientSession | None = None, scheme: str = "https",
-                 username: str = "", password: str = "", scope: str = "api.read-only") -> None:
+                 username: str = "", password: str = "", scope: str = "api.read-only", allow_write: bool = False) -> None:
         self.base = f"{scheme}://{host}/api"
         self.scope = scope                       # "api" (read-write) only for the separate WAN-priority writer
+        self.allow_write = allow_write           # True only for that writer (API client or read-write web user)
         self.client_id, self.client_secret = client_id, client_secret
         self.username, self.password = username, password
         self.mode = "user" if username else "client"
@@ -206,8 +207,8 @@ class PeplinkClient:
         if body.get("stat") != "ok":
             raise PeplinkError(f"token grant failed (login): {body.get('code')} {body.get('message')}")
         perm = (body.get("response") or {}).get("permission") or {}
-        if perm.get("POST"):
-            # Refuse to run with write rights: AetherRV must use the router's read-only user.
+        if perm.get("POST") and not self.allow_write:
+            # Refuse to run with write rights: AetherRV's monitoring must use the router's read-only user.
             raise PeplinkError("login has POST (write) permission; configure the Peplink READ-ONLY user instead")
         self._token = "session"
         self._expires = time.time() + 3000      # re-login well before typical web-admin idle timeouts
@@ -232,12 +233,13 @@ class PeplinkClient:
 
     async def post_once(self, func: str, body: dict) -> dict:
         """One POST, never repeated (a token grant beforehand isn't a send). Client (API-key) mode only."""
-        if self.mode != "client" or self.scope != "api":
-            raise PeplinkError("writes need the read-write API client")
+        if not self.allow_write or (self.mode == "client" and self.scope != "api"):
+            raise PeplinkError("writes need the read-write API client or user")
         if not self._token or time.time() > self._expires:
             await self._grant()
         s = await self._sess()
-        async with s.post(f"{self.base}/{func}", params={"accessToken": self._token}, json=body, ssl=self.ssl) as r:
+        params = {"accessToken": self._token} if self.mode == "client" else {}
+        async with s.post(f"{self.base}/{func}", params=params, json=body, ssl=self.ssl) as r:
             resp = await r.json(content_type=None)
         if resp.get("stat") != "ok":
             raise PeplinkError(f"{func}: {resp.get('code')} {resp.get('message')}")

@@ -345,3 +345,14 @@ def test_peplink_set_priority_unconfirmed_is_not_retried():
     w = _FakeWriter({"list": [{"connId": 1, "priority": 3}]}, apply=False, post_raises=RuntimeError("timeout"))
     r = asyncio.run(_pep(w).command("set_wan_priority", {"id": 1, "priority": 1}, poll=0.01, verify_timeout=.05))
     assert not r["ok"] and len(w.posts) == 1
+
+
+def test_peplink_write_needs_explicit_writer():
+    import asyncio, pytest
+    from aetherrv.adapters.peplink import PeplinkClient, PeplinkError
+    ro = PeplinkClient("192.0.2.1", username="ro", password="x")
+    with pytest.raises(PeplinkError):
+        asyncio.run(ro.post_once("config.wan.connection.priority", {}))      # monitoring client can never write
+    api_ro = PeplinkClient("192.0.2.1", "id", "sec", allow_write=True)        # read-only scope
+    with pytest.raises(PeplinkError):
+        asyncio.run(api_ro.post_once("config.wan.connection.priority", {}))

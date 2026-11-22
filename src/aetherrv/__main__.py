@@ -102,9 +102,13 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
                     log.warning("peplink enabled but host / credentials missing; skipping")
                     continue
                 # WAN priority control uses a SEPARATE read-write API client (scope "api"); monitoring stays read-only.
+                # Either a read-write API client, or (firmware that won't create clients) a read-write web user.
                 rw_id, rw_sec = sec.get("peplink_rw_client_id", ""), sec.get("peplink_rw_client_secret", "")
-                writer = PeplinkClient(d["host"], rw_id, rw_sec, bool(d.get("verify_tls", False)), scope="api") \
-                    if rw_id and rw_sec else None
+                rw_user, rw_pw = sec.get("peplink_rw_user", ""), sec.get("peplink_rw_password", "")
+                vt = bool(d.get("verify_tls", False))
+                writer = (PeplinkClient(d["host"], rw_id, rw_sec, vt, scope="api", allow_write=True) if rw_id and rw_sec else
+                          PeplinkClient(d["host"], verify_tls=vt, username=rw_user, password=rw_pw, allow_write=True)
+                          if rw_user and rw_pw else None)
                 adapters.append(PeplinkAdapter(state, PeplinkClient(
                     d["host"], cid, csec, bool(d.get("verify_tls", False)), username=user, password=pw),
                     writer=writer, gate=gate, db=history.db if history else None))
