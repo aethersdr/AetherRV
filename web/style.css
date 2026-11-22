@@ -1020,3 +1020,9 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-card .sl-kv span { font-size: 12px; white-space: nowrap; }
 .sky-sw { position: absolute; z-index: 2; top: 12px; right: 14px; pointer-events: none; font-size: 13px; color: #8fa6c2; }
 .sl-title { display: flex; align-items: center; gap: 10px; }   /* status dot: green online, amber reachable-but-not-online, red unreachable */
+/* Starlink: title, speeds and stats share the top row */
+.sl-card .sl-left { grid-template-columns: auto auto 1fr; gap: 0 32px; }
+.sl-card .sl-left > .chips-row { grid-column: 1 / -1; }
+.sl-card .sl-title { margin: 0; font-size: 19px; font-weight: 600; color: var(--ink-2); letter-spacing: .4px; white-space: nowrap; }
+.sl-card .sl-kv b { font-size: 27px; }
+.sl-card .sl-kv span { font-size: 14px; }
