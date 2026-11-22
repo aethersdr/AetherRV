@@ -597,4 +597,4 @@ Sections 1–31 use the old names. Mapping:
   - **Main glyph:** four batteries in parallel inside one big battery. A red + bus runs to the + terminal and the − bus to −; each battery fills to its own Bluetooth SoC.
   - **Card data, modeled on the EPOCH app:** bank SoC/state/V/A/time to go, Ah remaining of 4 × 460, and VAVG/VDIFF/VLO/VHI across all 16 cells.
   - **Temperatures:** the four BMS sensors are assumed to be T1, T2, Ambient, MOS in that order.
-  - **Per-battery table:** SoC, V, A, VA, cycles, Ah/460, and charge/discharge MOS.
+  - **Per-battery table:** SoC, V, A, W, cycles, Ah/460, and charge/discharge MOS.

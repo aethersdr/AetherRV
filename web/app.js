@@ -343,7 +343,7 @@ function renderBattCard() {
   const row = b => b.ok ? `<tr>
       <td><b>${esc(b.name)}</b></td><td class="soc-c" style="color:${socColor(b.soc)}">${b.soc ?? "—"}%</td>
       <td>${(+b.voltage).toFixed(2)} V</td><td>${b.current == null ? "—" : (+b.current).toFixed(1) + " A"}</td>
-      <td>${b.current == null ? "—" : Math.round(b.voltage * b.current) + " VA"}</td><td>${b.cycles ?? "—"}</td>
+      <td>${b.current == null ? "—" : fmtW(b.voltage * b.current)}</td><td>${b.cycles ?? "—"}</td>
       <td>${b.remaining_ah == null ? "—" : (+b.remaining_ah).toFixed(1)}<small>/${BATT_AH}</small></td>
       <td class="mos"><i class="${b.charge_fet ? "on" : "off"}" title="Charge MOS ${b.charge_fet ? "on" : "off"}">C</i><i class="${b.discharge_fet ? "on" : "off"}" title="Discharge MOS ${b.discharge_fet ? "on" : "off"}">D</i></td></tr>`
     : `<tr class="na"><td><b>${esc(b.name)}</b></td><td colspan="7" class="muted">${esc(b.error ? "no data · reconnecting" : "connecting…")}</td></tr>`;
