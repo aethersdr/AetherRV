@@ -387,7 +387,10 @@ function updateBankScene(batts, bankAmps) {
     while (h.length && h[0][0] < now - 120) h.shift();
   });
   batts.forEach((b, i) => {
-    const cx = (i + .5) * BS.w / batts.length, soc = b.ok && b.soc != null ? Math.max(0, Math.min(100, b.soc)) : null;
+    // Charge = available Ah ÷ capacity (finer than the BMS's own SoC, which sits at 100 % for a long time);
+    // falls back to the BMS SoC if the battery doesn't report remaining Ah.
+    const pct = !b.ok ? null : b.remaining_ah != null ? b.remaining_ah / BATT_AH * 100 : b.soc;
+    const cx = (i + .5) * BS.w / batts.length, soc = pct == null ? null : Math.max(0, Math.min(100, pct));
     const hue = soc == null ? "blue" : soc < 15 ? "red" : soc < 30 ? "amber" : "blue";
     $(`#bg-s${i}`)?.classList.toggle("off", soc == null);
     $(`#bg-pool${i}`)?.setAttribute("fill", `url(#bg-pool-${hue})`);
@@ -406,7 +409,7 @@ function updateBankScene(batts, bankAmps) {
       sf.setAttribute("cy", (yb - f * BS.dh).toFixed(1)); sf.setAttribute("fill", `url(#bg-top-${hue})`);
       sf.setAttribute("opacity", f > 0 && f < 1 ? .9 : 0);        // same 90 % alpha as the charged body
     }
-    $(`#bg-pct${i}`).textContent = soc == null ? "—" : `${Math.round(soc)}%`;
+    $(`#bg-pct${i}`).textContent = soc == null ? "—" : `${soc.toFixed(1)}%`;
     $(`#bg-amp${i}`).textContent = b.ok && b.current != null ? `${(+b.current).toFixed(1)} A` : "";
     // Sparkline of this battery's current over 2 min, scaled to its own range (≥ 0.4 A) so small swings show.
     const h = bankHist[b.name] || [], x0 = cx - 78, x1 = cx + 34, yTop = BS.h - 32, yBot = BS.h - 6;
