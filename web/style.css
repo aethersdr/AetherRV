@@ -790,8 +790,7 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .net-grid { grid-template-rows: auto auto auto 1fr; }
 .net-grid > .sl-card { grid-column: 1; grid-row: 1 / 4; display: flex; flex-direction: column; }
 .net-grid > .cell-card { grid-column: 2; grid-row: 1; }
-.net-grid > #loc-card { grid-column: 2; grid-row: 2; }
-.net-grid > #wan-card { grid-column: 2; grid-row: 3; }
+.net-grid > #wan-card { grid-column: 2; grid-row: 2 / 4; }
 .net-grid > .wide { grid-column: 1 / -1; grid-row: 4; }
 /* Starlink, full height: stats across the top, a large sky map below */
 .sl-card .sl-body { flex: 1; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 10px; }
@@ -981,3 +980,13 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .wans .prio-btn.on { color: var(--ink); border-color: var(--accent, #5de3ff); }
 .wans .wan-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 12px 10px 44px; font-size: 14px; color: var(--muted); }
 .wans .wan-pick .seg button { min-width: 52px; min-height: 40px; }
+
+/* Weather: sun + position strip (moved from the Network Location card) */
+.wx-loc { display: grid; grid-template-columns: auto minmax(160px, 1fr) auto auto auto; gap: 22px; align-items: center;
+  padding: 4px 2px 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.wx-loc:empty { display: none; }
+.wx-loc .daybar { margin: 0; }
+.wx-sun b { display: block; font-size: 22px; font-weight: 600; line-height: 1.1; } .wx-sun span { font-size: 13px; color: var(--muted); }
+.wx-loc-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 15px; justify-self: end; white-space: nowrap; }
+.wx-loc-meta .ic { width: 20px; height: 20px; color: var(--c-cabin); }
+@media (max-width: 900px) { .wx-loc { grid-template-columns: auto 1fr auto; } .wx-loc .wx-sun:nth-of-type(3), .wx-loc-meta { grid-column: 1 / -1; justify-self: start; } }

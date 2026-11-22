@@ -1098,7 +1098,29 @@ $("#wx-play").addEventListener("click", () => {
   $("#wx-play").textContent = "Pause";
   rvTimer = setInterval(() => showFrame((rvIdx + 1) % rvLayers.length), 700);
 });
+// Sun + position strip at the top of the Weather card (moved from the Network page's Location card).
+function renderWxLoc() {
+  const lat = S["location.lat"], lon = S["location.lon"];
+  const meta = [S["location.alt_m"] != null ? Math.round(S["location.alt_m"] * 3.281).toLocaleString() + " ft" : null,
+    lat == null ? null : S["location.speed"] ? "moving" : "parked",
+    S["location.hdop"] != null ? "HDOP " + S["location.hdop"] : null,
+    S["location.source"] ? esc(S["location.source"]) + " GPS" : null].filter(Boolean).join(" · ");
+  const st = lat != null ? sunTimes(+lat, +lon) : null;
+  if (!st) { $("#wx-loc").innerHTML = meta ? `<div class="wx-loc-meta">${icon("pin")}${meta}</div>` : ""; return; }
+  const hm = t => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const pct = t => Math.max(0, Math.min(100, (t - d0) / 864000));
+  const len = Math.round((st.set - st.rise) / 60000);
+  $("#wx-loc").innerHTML = `
+    <div class="wx-sun"><b>${hm(st.rise)}</b><span>sunrise</span></div>
+    <div class="daybar"><i style="left:${pct(st.rise)}%;width:${pct(st.set) - pct(st.rise)}%"></i><b style="left:${pct(Date.now())}%"></b></div>
+    <div class="wx-sun"><b>${hm(st.set)}</b><span>sunset</span></div>
+    <div class="wx-sun"><b>${Math.floor(len / 60)} h ${len % 60} m</b><span>daylight</span></div>
+    <div class="wx-loc-meta">${icon("pin")}${meta}</div>`;
+}
+
 function renderWeather() {
+  renderWxLoc();
   const lat = S["location.lat"], lon = S["location.lon"], fix = S["location.fix"];
   $("#wx-sub").textContent = lat == null ? "No GPS position yet" : `Van ${fmtLL(lat, lon)}${fix ? "" : " · last known"}`;
   $("#wx-empty").hidden = lat != null;
@@ -1591,21 +1613,6 @@ function renderNetwork() {
          <div class="seg">${[1, 2, 3, 4].map(p => `<button data-wan="${w.id}" data-prio="${p}" class="${w.priority === p ? "on" : ""}">P${p}</button>`).join("")}</div></div>` : ""}`).join("")}</div>`
       : `<div class="muted">${S["peplink.reachable"] == null ? "Peplink not enabled." : "No WAN data."}</div>`);
 
-  const fix = S["location.fix"];
-  $("#loc-card").innerHTML = `<div class="card-h"><h2>Location</h2><span class="muted">${esc(S["location.source"] || "")} GPS</span></div>` + (fix ? `
-    <div class="loc">${icon("pin")}<div><b>${(+S["location.lat"]).toFixed(5)}, ${(+S["location.lon"]).toFixed(5)}</b>
-      <span>${S["location.alt_m"] != null ? Math.round(S["location.alt_m"] * 3.281).toLocaleString() + " ft" : ""}${S["location.speed"] ? " · moving" : " · parked"}${S["location.hdop"] != null ? " · HDOP " + S["location.hdop"] : ""}</span></div></div>`
-    : `<div class="muted">${S["location.fix"] === false ? "No GPS fix." : "No location source yet (Peplink GPS)."}</div>`) + (fix ? (() => {
-      const st = sunTimes(+S["location.lat"], +S["location.lon"]);
-      if (!st) return "";
-      const hm = t => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-      const d0 = new Date(); d0.setHours(0, 0, 0, 0);
-      const pct = t => Math.max(0, Math.min(100, (t - d0) / 864000));
-      const len = st.set - st.rise;
-      return `<div class="daybar"><i style="left:${pct(st.rise)}%;width:${pct(st.set) - pct(st.rise)}%"></i><b style="left:${pct(Date.now())}%"></b></div>
-        <div class="sun-row"><div><b>${hm(st.rise)}</b><span>sunrise</span></div><div><b>${hm(st.set)}</b><span>sunset</span></div>
-        <div><b>${(m => `${Math.floor(m / 60)} h ${m % 60} m`)(Math.round(len / 60000))}</b><span>daylight</span></div></div>`;
-    })() : "");
 }
 
 // ── History charts ───────────────────────────────────────────────────────────

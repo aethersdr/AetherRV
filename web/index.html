@@ -141,6 +141,7 @@
         <div class="card-h"><h2>Weather radar</h2><span class="wx-fc-for" id="wx-fc-for"></span><span class="muted" id="wx-sub"></span>
           <button class="ctl-pill wx-btn" id="wx-dark">Dark map</button>
           <button class="ctl-pill wx-btn" id="wx-recenter">Re-centre</button></div>
+        <div class="wx-loc" id="wx-loc"></div>
         <!-- AetherMap's dark basemap (AetherSDR BasemapStyle::darkImage): reversed luminance ramped from
              color.map.darkDetail (#c8d8e8) to color.map.darkBackground (#18212b); radar is not filtered. -->
         <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="wx-dark-filter" color-interpolation-filters="sRGB">
@@ -162,7 +163,6 @@
         <div class="card sl-card" id="sl-card"></div>
         <div class="card cell-card" id="cell-card"></div>
         <div class="card" id="wan-card"></div>
-        <div class="card" id="loc-card"></div>
         <div class="card wide pwr-chart">
           <div class="card-h"><h2 id="net-chart-title">Starlink throughput</h2><div class="legend" id="legend-net"></div>
             <div class="seg range" id="range-net"><button data-s="21600">6 h</button><button data-s="86400" class="on">24 h</button><button data-s="604800">7 d</button></div></div>
