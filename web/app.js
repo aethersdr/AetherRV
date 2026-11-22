@@ -1474,7 +1474,8 @@ function renderSettings(force = false) {
     const updTxt = { REBOOT_REQUIRED: "Update downloaded — ready to install", IDLE: "Up to date" }[upd] ?? (upd ? String(upd).replace(/_/g, " ").toLowerCase() : "—");
     const chk = S["starlink.update_checked"];
     body.innerHTML = `
-      <div class="set-h"><h2>Starlink dish</h2><span class="muted">${reach === false ? "dish unreachable" : !S["starlink.controls_ok"] ? "control off" : !CAN_CTL ? "view only" : ""}</span></div>
+      <div class="set-h"><h2>Starlink dish</h2><span class="muted">${reach === false ? "dish unreachable" : !S["starlink.controls_ok"] ? "control off" : !CAN_CTL ? "view only" : ""}</span>
+        <button class="ctl-pill warn sl-reboot" data-sl="reboot" ${dis}>Reboot dish</button></div>
       <div class="set-rows">
         <div class="set-row"><div><b>Heating</b><small>Snow melt. Auto heats only when it detects snow or ice; On pre-heats all the time (more power)</small></div>
           <div class="seg">${[["auto", "Auto"], ["on", "On"], ["off", "Off"]].map(([v, l]) => `<button class="${heat === v ? "on" : ""}" data-slheat="${v}" ${heat == null ? "disabled" : dis}>${l}</button>`).join("")}</div></div>
@@ -1488,9 +1489,6 @@ function renderSettings(force = false) {
           <div class="set-v"><span>${esc(updTxt)}</span>
             <button class="ctl-pill" data-sl="check" ${dis}>Check for updates</button>
             ${upd === "REBOOT_REQUIRED" ? `<button class="ctl-pill" data-sl="install" ${dis}>Install update</button>` : ""}</div></div>
-      </div>
-      <div class="set-actions">
-        <button class="ctl-pill warn" data-sl="reboot" ${dis}>Reboot dish</button>
       </div>
       <div class="set-h sub"><h2>Power usage</h2>
         <span class="muted">${S["starlink.power_w"] != null ? `now ${Math.round(S["starlink.power_w"])} W` : "—"}${slPowAvg() != null ? ` · average ${Math.round(slPowAvg())} W` : ""}</span>

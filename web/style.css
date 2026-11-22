@@ -1108,3 +1108,4 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sl-ev.out i { background: var(--critical); } .sl-ev.warning i { background: var(--warning); }
 .sl-ev .t { color: var(--muted); font-variant-numeric: tabular-nums; } .sl-ev .d { color: var(--muted); font-variant-numeric: tabular-nums; }
 .sl-ev b { font-weight: 600; }
+#set-body .set-h .sl-reboot { margin-left: auto; }
