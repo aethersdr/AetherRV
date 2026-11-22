@@ -636,3 +636,8 @@ Sections 1–31 use the old names. Mapping:
   - The Cerbo GX (src 228) sends an ISO request for PGN 60928 to AetherRV (150) every 10 s, and the IPG100 (40) broadcasts the same request. AetherRV answers each one, as NMEA 2000 requires.
   - Bus cost: 0.2 frames/s of ~55 (0.36 %). Log cost: ~57 % of all journal lines.
   - These poll replies are now logged at DEBUG (TxGate `quiet`). First claims, moves/contests and blocked transmits stay visible.
+- **2026-11-22, Settings → Starlink tab.**
+  - **Controls:** heating (snow_melt_mode auto/on/off) and sleep schedule (power_save_* in dish_set_config; UTC minutes, the UI edits local start/end), both verified by re-reading `dish_get_config`.
+  - **Updates:** "Check for updates" sends the `update` request WITHOUT schedule_reboot and watches software_update_state for 30 s. "Install update" (REBOOT_REQUIRED only) and "Reboot dish" are verified by an uptime reset or the dish going offline. All via TxGate, one send, never retried.
+  - **Power graph:** `starlink.power_w`, the last-minute average of the dish history `power_in` (1 Hz, 900 s ring), recorded each minute.
+  - **Events & outages:** the newest 50 from history `event_log` (~10 h kept by the dish; device ids not copied).

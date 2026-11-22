@@ -1324,7 +1324,13 @@ let setTab = "device", setInfo = null, setAt = 0, setBusy = false;
 let tsLoginUrl = null, setPollT = null;
 // One poll timer for the Settings view (renderSettings runs on every state delta; never stack timers).
 const setPoll = ms => { clearTimeout(setPollT); setPollT = setTimeout(() => { if (view === "settings") loadSettings(true); }, ms); };
-const SET_TABS = [["network", "Network", "wifi"], ["tailscale", "Tailscale", "ts"], ["updates", "Updates", "download"], ["device", "Device", "info"]];
+const SET_TABS = [["network", "Network", "wifi"], ["tailscale", "Tailscale", "ts"], ["starlink", "Starlink", "dish"], ["updates", "Updates", "download"], ["device", "Device", "info"]];
+// Starlink tab: sleep-schedule edits held here so live re-renders don't reset the pickers mid-edit.
+let slSleepEdit = null;
+const hhmm = m => { const d = new Date(); d.setHours(0, m, 0, 0); return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); };
+const tzOff = () => new Date().getTimezoneOffset();            // minutes, UTC − local
+const utcToLocal = m => ((m - tzOff()) % 1440 + 1440) % 1440;
+const localToUtc = m => ((m + tzOff()) % 1440 + 1440) % 1440;
 async function loadSettings(force) {
   if (setBusy || (!force && Date.now() - setAt < 10e3)) return;
   setBusy = true;
@@ -1349,7 +1355,10 @@ let setSig = "";
 function renderSettings(force = false) {
   loadSettings(false);
   // renderSettings is also called on every live-state delta; only rebuild when something shown changed.
-  const sig = JSON.stringify([setTab, setInfo, S["settings.timezone"], S["settings.screen_off_min"], UNIT, isNight(), tsLoginUrl]);
+  const sig = JSON.stringify([setTab, setInfo, S["settings.timezone"], S["settings.screen_off_min"], UNIT, isNight(), tsLoginUrl,
+    setTab === "starlink" ? [S["starlink.heating"], S["starlink.sleep"], S["starlink.update_state"], S["starlink.update_checked"],
+      S["starlink.software"], S["starlink.online"], S["starlink.reachable"], S["starlink.controls_ok"], ctlPending?.cmd, slSleepEdit,
+      S["starlink.power_w"], (S["starlink.events"] || [])[0]?.t, (S["starlink.events"] || []).length, span.slpow] : 0]);
   if (!force && sig === setSig) return;
   setSig = sig;
   $("#set-tabs").innerHTML = SET_TABS.map(([id, label, ic]) =>
@@ -1453,6 +1462,42 @@ function renderSettings(force = false) {
     }
     if (t.installed && t.state !== "Running") setPoll(3000);
     if (t.state === "Running") tsLoginUrl = null;
+  } else if (setTab === "starlink") {
+    const ok = canControlDev("starlink") && !ctlPending, dis = ok ? "" : "disabled";
+    const heat = S["starlink.heating"], sl = S["starlink.sleep"], upd = S["starlink.update_state"];
+    const reach = S["starlink.reachable"];
+    const ed = slSleepEdit || (sl ? { enabled: sl.enabled, start: sl.enabled ? utcToLocal(sl.start_utc_min) : 23 * 60,
+      end: sl.enabled ? (utcToLocal(sl.start_utc_min) + sl.duration_min) % 1440 : 7 * 60 } : { enabled: false, start: 1380, end: 420 });
+    const times = Array.from({ length: 48 }, (_, i) => i * 30);
+    const pick = (k, v) => `<select class="set-sel" data-slp="${k}" ${dis}>${times.map(m => `<option value="${m}" ${m === v ? "selected" : ""}>${hhmm(m)}</option>`).join("")}</select>`;
+    const dur = (ed.end - ed.start + 1440) % 1440 || 1440;
+    const updTxt = { REBOOT_REQUIRED: "Update downloaded — ready to install", IDLE: "Up to date" }[upd] ?? (upd ? String(upd).replace(/_/g, " ").toLowerCase() : "—");
+    const chk = S["starlink.update_checked"];
+    body.innerHTML = `
+      <div class="set-h"><h2>Starlink dish</h2><span class="muted">${reach === false ? "dish unreachable" : !S["starlink.controls_ok"] ? "control off" : !CAN_CTL ? "view only" : ""}</span></div>
+      <div class="set-rows">
+        <div class="set-row"><div><b>Heating</b><small>Snow melt. Auto heats only when it detects snow or ice; On pre-heats all the time (more power)</small></div>
+          <div class="seg">${[["auto", "Auto"], ["on", "On"], ["off", "Off"]].map(([v, l]) => `<button class="${heat === v ? "on" : ""}" data-slheat="${v}" ${heat == null ? "disabled" : dis}>${l}</button>`).join("")}</div></div>
+        <div class="set-row"><div><b>Sleep schedule</b><small>The dish powers down its radio daily in this window (local time) to save power${sl?.enabled ? ` · now ${hhmm(utcToLocal(sl.start_utc_min))} – ${hhmm((utcToLocal(sl.start_utc_min) + sl.duration_min) % 1440)}` : ""}</small></div>
+          <div class="seg"><button class="${ed.enabled ? "" : "on"}" data-slpen="0" ${sl == null ? "disabled" : dis}>Off</button><button class="${ed.enabled ? "on" : ""}" data-slpen="1" ${sl == null ? "disabled" : dis}>On</button></div></div>
+        ${ed.enabled ? `<div class="set-row"><div><b>Sleep from</b><small>${Math.floor(dur / 60)} h ${dur % 60 ? (dur % 60) + " m" : ""} of sleep</small></div>
+          <div class="set-v">${pick("start", ed.start)}<span>to</span>${pick("end", ed.end)}</div></div>` : ""}
+        ${slSleepEdit ? `<div class="set-row"><div><b>Unsaved schedule</b><small>Applies to the dish when you save</small></div>
+          <div class="set-v"><button class="ctl-pill" data-slsleep="cancel">Cancel</button><button class="ctl-pill" data-slsleep="save" ${dis}>Save</button></div></div>` : ""}
+        <div class="set-row"><div><b>Software</b><small>${esc(S["starlink.software"] || "—")}${chk ? ` · checked ${new Date(chk * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</small></div>
+          <div class="set-v"><span>${esc(updTxt)}</span>
+            <button class="ctl-pill" data-sl="check" ${dis}>Check for updates</button>
+            ${upd === "REBOOT_REQUIRED" ? `<button class="ctl-pill" data-sl="install" ${dis}>Install update</button>` : ""}</div></div>
+      </div>
+      <div class="set-actions">
+        <button class="ctl-pill warn" data-sl="reboot" ${dis}>Reboot dish</button>
+      </div>
+      <div class="set-h sub"><h2>Power usage</h2>
+        <span class="muted">${S["starlink.power_w"] != null ? `now ${Math.round(S["starlink.power_w"])} W` : "—"}${slPowAvg() != null ? ` · average ${Math.round(slPowAvg())} W` : ""}</span>
+        <div class="seg range" id="range-slpow">${[[21600, "6 h"], [86400, "24 h"], [604800, "7 d"]].map(([s, l]) => `<button data-slspan="${s}" class="${span.slpow === s ? "on" : ""}">${l}</button>`).join("")}</div></div>
+      <div class="chart sl-pow" id="chart-slpow"></div>
+      ${slEventsHtml()}`;
+    drawSlPower();
   } else if (setTab === "updates") {
     const u = setInfo.update || {}, st = u.state || {}, chk = u.check, dis = CAN_CTL ? "" : "disabled";
     const running = st.status === "running";
@@ -1482,9 +1527,58 @@ function renderSettings(force = false) {
     body.innerHTML = `<div class="set-h"><h2>${SET_TABS.find(t => t[0] === setTab)[1]}</h2></div><div class="muted set-soon">${what} — next.</div>`;
   }
 }
-$("#set-tabs").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) { setTab = b.dataset.t; renderSettings(true); } });
+$("#set-tabs").addEventListener("click", e => { const b = e.target.closest("[data-t]"); if (b) { setTab = b.dataset.t; renderSettings(true); if (setTab === "starlink") loadHistory(); } });
+function slPowAvg() {
+  const pts = (hist.slpow || {})["starlink.power_w"] || [];
+  return pts.length ? pts.reduce((a, p) => a + p[1], 0) / pts.length : null;
+}
+function slEventsHtml() {
+  const evs = S["starlink.events"];
+  if (!evs) return `<div class="set-h sub"><h2>Events &amp; outages</h2></div><div class="muted">Waiting for the dish's history…</div>`;
+  const outs = evs.filter(e => e.outage), down = outs.reduce((a, e) => a + e.dur_s, 0);
+  const span = S["starlink.events_span_s"], h = span ? Math.round(span / 3600) : null;
+  const today = new Date().toDateString();
+  const when = t => { const d = new Date(t * 1000);
+    return (d.toDateString() === today ? "" : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " ") + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }); };
+  const dur = s => s < 1 ? `${s.toFixed(1)} s` : s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.floor(s / 60)} m ${Math.round(s % 60)} s` : `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} m`;
+  return `<div class="set-h sub"><h2>Events &amp; outages</h2><span class="muted">${outs.length} outage${outs.length === 1 ? "" : "s"} · ${dur(down)} down${h ? ` · last ${h} h kept by the dish` : ""}</span></div>
+    <div class="sl-events">${evs.length ? evs.map(e => `<div class="sl-ev ${e.outage ? "out" : e.sev}"><i></i><span class="t">${when(e.t)}</span>
+      <b>${esc(e.what)}</b><span class="d">${e.dur_s > 0 ? dur(e.dur_s) : ""}</span></div>`).join("") : `<div class="muted">No events.</div>`}</div>`;
+}
+$("#set-body").addEventListener("change", e => {
+  const s = e.target.closest("[data-slp]"); if (!s) return;
+  const sl = S["starlink.sleep"] || {};
+  slSleepEdit = { ...(slSleepEdit || { enabled: true, start: sl.enabled ? utcToLocal(sl.start_utc_min) : 1380,
+    end: sl.enabled ? (utcToLocal(sl.start_utc_min) + sl.duration_min) % 1440 : 420 }), [s.dataset.slp]: +s.value };
+  renderSettings(true);
+});
 $("#set-body").addEventListener("click", async e => {
   const b = e.target.closest("button"); if (!b || b.disabled) return;
+  if (b.dataset.slspan) { span.slpow = +b.dataset.slspan; await loadHistory(); renderSettings(true); return; }
+  if (b.dataset.slheat) { control("set_heating", b.dataset.slheat, `Dish heating ${b.dataset.slheat}`, "starlink"); return; }
+  if (b.dataset.slpen != null) {
+    const sl = S["starlink.sleep"] || {}, on = b.dataset.slpen === "1";
+    if (!on) { slSleepEdit = null; if (sl.enabled) control("set_sleep", { enabled: false }, "Sleep schedule off", "starlink"); renderSettings(true); return; }
+    slSleepEdit = { enabled: true, start: sl.enabled ? utcToLocal(sl.start_utc_min) : 1380, end: sl.enabled ? (utcToLocal(sl.start_utc_min) + sl.duration_min) % 1440 : 420 };
+    renderSettings(true); return;
+  }
+  if (b.dataset.slsleep === "cancel") { slSleepEdit = null; renderSettings(true); return; }
+  if (b.dataset.slsleep === "save" && slSleepEdit) {
+    const ed = slSleepEdit, dur = (ed.end - ed.start + 1440) % 1440;
+    if (!dur) { toast("Sleep start and end can't be the same time", "bad"); return; }
+    const v = { enabled: true, start_utc_min: localToUtc(ed.start), duration_min: dur };
+    slSleepEdit = null;
+    control("set_sleep", v, `Sleep ${hhmm(ed.start)}–${hhmm(ed.end)}`, "starlink"); return;
+  }
+  if (b.dataset.sl === "check") { control("check_update", true, "Starlink update check", "starlink"); return; }
+  if (b.dataset.sl === "install") {
+    askConfirm("Install the Starlink update?", "The dish restarts to install the downloaded update. Starlink internet drops for a few minutes; if Starlink is the active connection, remote (Tailscale) access to this console drops too. A firmware install can't be undone.",
+      () => control("install_update", true, "Starlink update", "starlink")); return;
+  }
+  if (b.dataset.sl === "reboot") {
+    askConfirm("Reboot the Starlink dish?", "The dish restarts and Starlink internet is down for a few minutes. If Starlink is the active connection, remote (Tailscale) access to this console drops too.",
+      () => control("reboot", true, "Starlink reboot", "starlink")); return;
+  }
   if (b.dataset.off != null) { await settingsAction("pref", { key: "screen_off_min", value: +b.dataset.off }, "Screen auto-off"); return; }
   if (b.dataset.unit) { store.set("vp.temp", b.dataset.unit); location.reload(); return; }
   if (b.dataset.night != null) { night(b.dataset.night === "1"); renderSettings(); return; }
@@ -1786,7 +1880,7 @@ function renderNetwork() {
 // ── History charts ───────────────────────────────────────────────────────────
 // Each chart fetches only its own keys for its own span; the backend averages into buckets.
 const qs = new URLSearchParams(location.search);
-const span = { power: +(qs.get("power") || 86400), temp: +(qs.get("temp") || 86400), net: 86400 };   // ?power=604800 sets the initial range
+const span = { power: +(qs.get("power") || 86400), temp: +(qs.get("temp") || 86400), net: 86400, slpow: 86400 };   // ?power=604800 sets the initial range
 for (const [id, k] of [["#range-power", "power"], ["#range-temp", "temp"]])
   $(id).querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.s === span[k]));
 const hist = {};
@@ -1801,6 +1895,7 @@ async function loadHistory() {
   if (view === "energy") await fetchHist("power", ["victron.pv.power", "energy.dc.load", "victron.ac.load"], span.power);
   if (view === "climate") await fetchHist("temp", ["climate.cabin.temp", "climate.outside.temp"], span.temp);
   if (view === "network") { netSig = netHistKeys().join(","); await fetchHist("net", netHistKeys(), span.net); }
+  if (view === "settings" && setTab === "starlink") await fetchHist("slpow", ["starlink.power_w"], span.slpow);
   renderCharts();
 }
 // The network chart's keys depend on live state (Peplink active WAN, Starlink present). The first history
@@ -1818,7 +1913,15 @@ function sumSeries(a = [], b = []) {
     return [t, v + (b[j] ? b[j][1] : 0)];
   });
 }
+// Settings → Starlink: dish power draw (recorded each minute from the dish's 1 Hz power_in history).
+function drawSlPower() {
+  const el = $("#chart-slpow"); if (!el) return;
+  const pts = (hist.slpow || {})["starlink.power_w"];
+  timeChart(el, { series: [{ name: "Dish power", color: css("--c-solar"), points: pts }], area: true, zero: true,
+    fmt: v => `${Math.round(v)} W` });
+}
 function renderCharts() {
+  if (view === "settings" && setTab === "starlink") drawSlPower();
   if (view === "home") timeChart($("#chart-soc"), {
     series: [{ name: "State of charge", color: css("--c-batt"), points: hist.home?.["victron.battery.soc"] }],
     yMin: 0, yMax: 100, yTicks: [0, 25, 50, 75, 100], area: true, fmt: v => `${Math.round(v)}%`,

@@ -196,6 +196,30 @@ class FakeDish:
         if self.reboot_exc:
             raise self.reboot_exc
 
+    # dish config (heating / sleep) and update checks
+    cfg = None
+    sets = None
+    checks = 0
+
+    def get_config(self):
+        if self.cfg is None:
+            self.cfg = {"heating": "auto", "sleep": {"enabled": False, "start_utc_min": 0, "duration_min": 0}}
+            self.sets = []
+        import copy
+        return copy.deepcopy(self.cfg)
+
+    def set_config(self, **f):
+        self.get_config(); self.sets.append(f)
+        if "snow_melt_mode" in f:
+            self.cfg["heating"] = {0: "auto", 1: "on", 2: "off"}[f["snow_melt_mode"]]
+        if "power_save_mode" in f:
+            self.cfg["sleep"]["enabled"] = f["power_save_mode"]
+            self.cfg["sleep"]["start_utc_min"] = f.get("power_save_start_minutes", self.cfg["sleep"]["start_utc_min"])
+            self.cfg["sleep"]["duration_min"] = f.get("power_save_duration_minutes", self.cfg["sleep"]["duration_min"])
+
+    def check_update(self):
+        self.checks += 1
+
 
 def _sl(ops, enabled=True):
     from aetherrv.adapters.starlink import StarlinkAdapter
@@ -217,7 +241,7 @@ async def test_starlink_install_blocked_without_tx_enabled():
 async def test_starlink_install_rejects_other_commands_and_no_pending_update():
     ops = FakeDish([{"software_update_state": "IDLE", "uptime": 5000}])
     a = _sl(ops)
-    assert not (await a.command("reboot", client="test", poll=0))["ok"]
+    assert not (await a.command("dish_stow", client="test", poll=0))["ok"]           # still not allowed
     r = await a.command("install_update", client="test", poll=0)
     assert not r["ok"] and "no update" in r["detail"] and ops.reboots == 0
 
@@ -421,3 +445,52 @@ def test_peplink_drag_disable_and_enable():
     n = len(w.posts)
     r = asyncio.run(_pep(w).command("set_wan_order", {"order": [], "disabled": [1, 2, 4, 5]}))
     assert not r["ok"] and len(w.posts) == n                       # never disable everything
+
+
+async def test_starlink_plain_reboot_sends_once_and_verifies():
+    ops = FakeDish([{"software_update_state": "IDLE", "uptime": 5000}, {"software_update_state": "IDLE", "uptime": 9}])
+    r = await _sl(ops).command("reboot", client="test", poll=0)
+    assert r["ok"] and ops.reboots == 1
+
+
+async def test_starlink_heating_and_sleep_set_once_and_verify():
+    ops = FakeDish([{"software_update_state": "IDLE", "uptime": 5000}])
+    a = _sl(ops)
+    r = await a.command("set_heating", "on", client="test", poll=0)
+    assert r["ok"] and ops.sets == [{"snow_melt_mode": 1}] and a.state.get("starlink.heating") == "on"
+    assert (await a.command("set_heating", "on", client="test", poll=0))["detail"] == "already set" and len(ops.sets) == 1
+    r = await a.command("set_sleep", {"enabled": True, "start_utc_min": 420, "duration_min": 480}, client="test", poll=0)
+    assert r["ok"] and ops.sets[-1] == {"power_save_mode": True, "power_save_start_minutes": 420, "power_save_duration_minutes": 480}
+    r = await a.command("set_sleep", {"enabled": False}, client="test", poll=0)
+    assert r["ok"] and ops.sets[-1] == {"power_save_mode": False}
+    assert not (await a.command("set_heating", "sauna", client="test", poll=0))["ok"]
+    assert not (await a.command("set_sleep", {"enabled": True, "start_utc_min": 2000, "duration_min": 5}, client="test", poll=0))["ok"]
+    assert not (await _sl(ops, enabled=False).command("set_heating", "off", client="test", poll=0))["ok"]
+
+
+async def test_starlink_check_update_never_reboots():
+    ops = FakeDish([{"software_update_state": "IDLE", "uptime": 5000}])
+    a = _sl(ops)
+    r = await a._check_update(None, "test", "IDLE", poll=0, watch=0.05)
+    assert r["ok"] and "no update" in r["detail"] and ops.reboots == 0
+
+
+def test_starlink_history_fields_power_and_events():
+    from types import SimpleNamespace as NS
+    from aetherrv.adapters.starlink import history_fields
+
+    class Enum:
+        def __init__(self, names): self.values_by_number = {i: NS(name=n) for i, n in names.items()}
+
+    class Ev(NS):
+        DESCRIPTOR = NS(fields_by_name={"reason": NS(enum_type=Enum({8: "EVENT_REASON_OUTAGE_NO_DOWNLINK", 22: "EVENT_REASON_UT_ALERT_RAIN_SNR_PERSISTENTLY_LOW"})),
+                                        "severity": NS(enum_type=Enum({1: "EVENT_SEVERITY_WARNING"}))})
+    evs = [Ev(reason=8, severity=1, start_timestamp_ns=1_000_000_000_000, duration_ns=600_000_000, device_id="SECRET"),
+           Ev(reason=22, severity=1, start_timestamp_ns=2_000_000_000_000, duration_ns=0, device_id="SECRET")]
+    h = NS(power_in=[10.0] * 840 + [20.0] * 60, current=900,
+           event_log=NS(events=evs, start_timestamp_ns=0, current_timestamp_ns=3_600_000_000_000))
+    d = history_fields(h)
+    assert d["starlink.power_w"] == 20.0
+    assert [e["what"] for e in d["starlink.events"]] == ["Rain SNR persistently low", "No downlink"]
+    assert d["starlink.events"][1]["outage"] and d["starlink.events"][1]["dur_s"] == 0.6
+    assert "SECRET" not in str(d) and d["starlink.events_span_s"] == 3600

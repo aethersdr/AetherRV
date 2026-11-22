@@ -45,6 +45,7 @@ TRACKED = [
     "starlink.up_mbps",
     "starlink.latency_ms",
     "starlink.snr_db",
+    "starlink.power_w",
     "wan.down_mbps",          # the Peplink's active WAN (Network chart)
     "wan.up_mbps",
 ]
