@@ -953,3 +953,9 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 /* MultiPlus / MPPT mode buttons: share the card's width equally (the generic .seg rule above is inline-flex) */
 .seg.mode-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; width: 100%; }
 .seg.mode-seg button { text-align: center; }
+/* Energy → Power chart: title, legend and range on one row; shorter range buttons; the chart takes the rest */
+.pwr-chart { padding-top: 14px; padding-bottom: 12px; }
+.pwr-chart .card-h { margin-bottom: 4px; justify-content: flex-start; gap: 28px; }
+.pwr-chart .card-h .legend { margin: 0; }
+.pwr-chart .card-h .seg.range { margin-left: auto; }
+.pwr-chart .seg.range button { padding: 6px 16px; min-height: 0; font-size: 16px; }
