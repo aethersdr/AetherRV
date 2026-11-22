@@ -224,7 +224,8 @@ async def amain(cfg: dict) -> None:
     adapters.append(AutoTimezone(state, admin, prefs))
     adapters.append(ColdRearm(state, prefs))
     runner = web.AppRunner(make_app(state, static, history, alerts, controls, admin=admin, prefs=prefs,
-                                    auth=RemoteAuth(admin)))
+                                    auth=RemoteAuth(admin, control_subnets=web_cfg.get("control_subnets", []),
+                                                    tailnet=web_cfg.get("control_tailnet", "owner"))))
     await runner.setup()
     await web.TCPSite(runner, web_cfg.get("host", "0.0.0.0"), web_cfg.get("port", 8080)).start()
     log.info("web UI on http://%s:%s", web_cfg.get("host", "0.0.0.0"), web_cfg.get("port", 8080))

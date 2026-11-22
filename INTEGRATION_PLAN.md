@@ -603,3 +603,6 @@ Sections 1–31 use the old names. Mapping:
   - Per-battery current sparklines (2 min, client-side, auto-ranged).
   - The scene is built once per battery set and updated in place, so animations don't restart.
   - Cost: headless CPU on the Energy view was 156 % with blur filters, 123 % after replacing them with stroke glows and making the halos static, vs 83 % on Home. The owner accepted that: the page is rarely shown, and a later move to React may help.
+- **2026-11-21, control from the LANs (owner).** Removed "view only" for the owner's networks. New `[web] control_subnets` (set to the van and home LANs on the Pi) and `control_tailnet = "all"` (every tailnet peer, still required to arrive on the console's Tailscale address).
+  - Effect: anyone on the van or home Wi-Fi can now use every control, including the heater, inverter, switches, dump valve, drawer-lock trigger and Starlink update.
+  - The README safety model was updated to say so.

@@ -27,8 +27,10 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
 - **Deny by default.** A `TxGate` refuses every write until a device's `tx_enabled` is set in the Pi's own config.
 - **Careful command path.** Every command reads fresh state, sends only if the value differs, sends once,
   verifies the result and never retries. Each command is logged.
-- **Who can control.** Controls and settings changes work only from the van's touchscreen (loopback) or from
-  devices owned by the same Tailscale user as the console. Everything else is view-only.
+- **Who can control.** By default, controls and settings changes work only from the van's touchscreen
+  (loopback) or from devices owned by the same Tailscale user as the console. `[web] control_subnets` can
+  also trust whole LANs, and `control_tailnet = "all"` can trust every tailnet device. Everything else is
+  view-only.
 - **The devices stay in charge, with one deliberate exception.** Heat, power, Starlink and every other control
   only act when a person asks. The exception is optional NMEA 2000 **switching logic**: keypad bindings, groups
   and "output follows input" rules can run in AetherRV, with the load controller as a plain output box. When

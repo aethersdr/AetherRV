@@ -177,16 +177,22 @@ TS_V4, TS_V6 = "100.64.0.0/10", "fd7a:115c:a1e0::/48"
 
 
 class RemoteAuth:
-    """Who may control the van: the touchscreen (loopback), and — owner's choice, 2026-11-20 — the owner's own
-    Tailscale devices (same Tailscale user as this console, untagged), with full access. Everyone else
-    (LAN browsers, shared-in tailnet users, tagged nodes) is view-only.
+    """Who may control the van: the touchscreen (loopback); the owner's own Tailscale devices (owner's choice,
+    2026-11-20) or, with tailnet = "all", every tailnet peer; and browsers in the configured control_subnets
+    (owner, 2026-11-21: the van and home LANs). Everyone else is view-only.
 
     A Tailscale peer is identified by asking tailscaled (via the root helper) who owns the source address,
     and the connection must have arrived on this console's own Tailscale address. Results cached 60 s."""
 
-    def __init__(self, admin: AdminClient, ttl: float = 60) -> None:
+    def __init__(self, admin: AdminClient, ttl: float = 60, control_subnets: list[str] | None = None,
+                 tailnet: str = "owner") -> None:
+        """control_subnets: LAN ranges whose browsers get full control (owner, 2026-11-21: the van and home
+        LANs). tailnet: "owner" (only the console owner's own untagged devices) or "all" (any tailnet peer)."""
+        import ipaddress
         self.admin, self.ttl = admin, ttl
         self._cache: dict[str, tuple[float, str | None]] = {}
+        self.subnets = [ipaddress.ip_network(s, strict=False) for s in (control_subnets or [])]
+        self.tailnet_all = str(tailnet).lower() == "all"
 
     @staticmethod
     def _is_ts(ip: str) -> bool:
@@ -201,6 +207,14 @@ class RemoteAuth:
         """'kiosk', 'tailscale:<login>@<node>', or None (view-only)."""
         if remote in ("127.0.0.1", "::1"):
             return "kiosk"
+        if remote and self.subnets:
+            import ipaddress
+            try:
+                a = ipaddress.ip_address(remote.split("%")[0])
+            except ValueError:
+                a = None
+            if a is not None and any(a in n for n in self.subnets):
+                return f"lan:{a}"
         if not remote or not self._is_ts(remote):
             return None
         hit = self._cache.get(remote)
@@ -211,7 +225,8 @@ class RemoteAuth:
                 r = await self.admin.call("tailscale_whois", {"ip": remote.split("%")[0]}, timeout=15)
             except AdminError:
                 return None
-            who = (f"tailscale:{r.get('login')}@{r.get('node')}" if r.get("ok") and r.get("owner") else None)
+            peer = r.get("ok") and r.get("known") is not False and (r.get("owner") or self.tailnet_all)
+            who = f"tailscale:{r.get('login')}@{r.get('node')}" if peer else None
             self_ips = r.get("self_ips") or []
             self._cache[remote] = (time.monotonic(), (who, self_ips))
         # Must have come in on this console's own Tailscale address (not a LAN path with a 100.x source).
