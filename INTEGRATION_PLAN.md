@@ -563,3 +563,4 @@ Sections 1–31 use the old names. Mapping:
 - Status: deployed read-only (`tx_enabled = false`). Next: the owner sets the bank back to 32 → approve n2k transmit → first live send on spare ch8 → keypads.
 - **2026-11-21, ignition interlock (owner):** the spot lights (ch1) and flood lights (ch3) draw a lot, so they carry `requires_input = 2` (ignition). AetherRV refuses ON unless the debounced ignition input is on, for touchscreen taps and keypad presses alike; OFF is always allowed. The tiles show "needs Ignition".
 - **Ignition-off auto-off (owner):** when the debounced ignition input goes from on to off, AetherRV switches off every channel with `requires_input = 2` that is on (spot + flood lights). This fires on the change only, never on the first value after start.
+- **Drawer locks moved to ch11 (owner rewired, 2026-11-21).** ch11 is blocked (refuses ON); keypad #2 button 11 → ch11; ch9 is spare. The 10 s cut-off in the CLMD16 now belongs on ch11.
