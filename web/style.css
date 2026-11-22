@@ -961,3 +961,6 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .pwr-chart .seg.range button { padding: 6px 16px; min-height: 0; font-size: 16px; }
 
 .kv-row b.warn-text { color: var(--warning); }
+/* Network: SNR lane under the throughput plot (same time axis) */
+.net-grid > .wide .chart.snr-lane { flex: 0 0 64px; height: 64px; margin-top: 2px; border-top: 1px dashed var(--line); }
+.net-grid > .wide .chart:not(.snr-lane) { min-height: 110px; }

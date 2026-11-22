@@ -163,11 +163,11 @@
         <div class="card cell-card" id="cell-card"></div>
         <div class="card" id="wan-card"></div>
         <div class="card" id="loc-card"></div>
-        <div class="card wide">
-          <div class="card-h"><h2 id="net-chart-title">Starlink throughput</h2>
+        <div class="card wide pwr-chart">
+          <div class="card-h"><h2 id="net-chart-title">Starlink throughput</h2><div class="legend" id="legend-net"></div>
             <div class="seg range" id="range-net"><button data-s="21600">6 h</button><button data-s="86400" class="on">24 h</button><button data-s="604800">7 d</button></div></div>
-          <div class="legend" id="legend-net"></div>
           <div class="chart" id="chart-net"></div>
+          <div class="chart snr-lane" id="chart-net-snr" hidden></div>
         </div>
       </div>
     </section>

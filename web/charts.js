@@ -31,7 +31,8 @@ export function timeChart(el, opt) {
   if (!series.length) { el.innerHTML = `<div class="chart-empty">Collecting data…</div>`; return; }
 
   const all = series.flatMap(s => s.points);
-  const t0 = Math.min(...all.map(p => p[0])), t1 = Math.max(...all.map(p => p[0]));
+  // opt.t0 / opt.t1 let stacked charts share one time window (e.g. throughput + SNR lanes)
+  const t0 = opt.t0 ?? Math.min(...all.map(p => p[0])), t1 = opt.t1 ?? Math.max(...all.map(p => p[0]));
   let vmin = opt.yMin ?? (opt.zero === false ? Math.min(...all.map(p => p[1])) : Math.min(0, ...all.map(p => p[1])));
   let vmax = opt.yMax ?? Math.max(...all.map(p => p[1]));
   const ticks = niceTicks(vmin, vmax, 4);

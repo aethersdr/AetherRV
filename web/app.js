@@ -1485,6 +1485,7 @@ const netTitle = () => S["peplink.reachable"] == null ? "Starlink throughput"
 
 function renderNetwork() {
   $("#net-chart-title").textContent = netTitle();       // follows WAN failover live
+  if (netHistKeys().join(",") !== netSig) loadHistory();   // state arrived after the first fetch (or WAN changed)
   const on = S["starlink.online"], reach = S["starlink.reachable"];
   const slAlerts = (S["starlink.alerts"] || []);
   const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
@@ -1576,9 +1577,13 @@ async function loadHistory() {
   if (view === "home") await fetchHist("home", ["victron.battery.soc"], 86400);
   if (view === "energy") await fetchHist("power", ["victron.pv.power", "energy.dc.load", "victron.ac.load"], span.power);
   if (view === "climate") await fetchHist("temp", ["climate.cabin.temp", "climate.outside.temp"], span.temp);
-  if (view === "network") await fetchHist("net", netKeys(), span.net);
+  if (view === "network") { netSig = netHistKeys().join(","); await fetchHist("net", netHistKeys(), span.net); }
   renderCharts();
 }
+// The network chart's keys depend on live state (Peplink active WAN, Starlink present). The first history
+// fetch can run before that state arrives, so refetch whenever the key set changes.
+const netHistKeys = () => [...netKeys(), ...(S["starlink.reachable"] != null ? ["starlink.snr_db"] : [])];
+let netSig = "";
 setInterval(loadHistory, 60000);
 
 // Sum two bucketed series point-by-point, matching on nearest timestamp.
@@ -1610,10 +1615,19 @@ function renderCharts() {
       { name: "Download", color: css("--c-out"), points: h[kd] },
       { name: "Upload", color: css("--c-cabin"), points: h[ku] },
     ];
+    // Starlink SNR as its own lane under the throughput plot: shared time window, its own 0–10 dB scale
+    // (one chart with two y-axes would misread).
+    const snr = { name: "Starlink SNR", color: css("--c-alt"), points: h["starlink.snr_db"] };
+    const showSnr = S["starlink.reachable"] != null;
+    const pts = [...series, ...(showSnr ? [snr] : [])].flatMap(s => s.points || []);
+    const win = pts.length ? { t0: Math.min(...pts.map(p => p[0])), t1: Math.max(...pts.map(p => p[0])) } : {};
     $("#net-chart-title").textContent = netTitle();
-    $("#legend-net").innerHTML = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
-    timeChart($("#chart-net"), { series, area: true,
+    $("#legend-net").innerHTML = [...series, ...(showSnr ? [snr] : [])].map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+    timeChart($("#chart-net"), { series, area: true, ...win,
       fmt: v => `${+v.toFixed(Math.abs(v) >= 10 ? 0 : Math.abs(v) >= 1 ? 1 : 2)} Mbps` });   // small scales keep decimals (not "0, 0, 0")
+    $("#chart-net-snr").hidden = !showSnr;
+    if (showSnr) timeChart($("#chart-net-snr"), { series: [snr], yMin: 0, yMax: 10, yTicks: [0, 10], ...win,
+      fmt: v => `${+v.toFixed(1)} dB` });
   }
   if (view === "climate") {
     const h = hist.temp || {};
