@@ -348,7 +348,7 @@ const fmtPct = p => p == null ? "—" : p >= 99.95 ? `${Math.round(p)}` : p.toFi
 // 3D battery-bank scene: each battery is a stack of four glowing discs (one per 25 %) on a shared platform,
 // wired in parallel by animated + / − buses. Built once per battery count, then updated in place every
 // second (rebuilding would restart the animations).
-const BS = { w: 800, h: 300, rx: 56, ry: 16, dh: 28, step: 30, yb0: 202 };   // 2 px seams: one cell in four quarters, not a stack of drums
+const BS = { w: 800, h: 300, rx: 56, ry: 13, dh: 28, step: 30, yb0: 202 };   // 2 px seams: one cell in four quarters, not a stack of drums
 const bankHist = {};                         // battery name → [[t, amps]] for the sparklines (2 min, client-side)
 const discSide = (cx, yt, yb) => `M${cx - BS.rx} ${yt} V${yb} A${BS.rx} ${BS.ry} 0 0 0 ${cx + BS.rx} ${yb} V${yt} Z`;
 function bankScene(names) {
