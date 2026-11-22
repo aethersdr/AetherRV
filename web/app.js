@@ -1209,7 +1209,7 @@ function renderWxMenu() {
   document.querySelectorAll("#wx-menu-pop .wx-seg[data-group=wx] button").forEach(b => b.classList.toggle("on", b.dataset.v === wxLayer()));
   $("#wx-lands").classList.toggle("on", landsOn());
   const off = wxLayer() === "off";                               // no weather layer: no timeline / speed / opacity
-  ["#wx-tl", "#wx-speed", "#wx-opac"].forEach(q => { $(q).hidden = off; });
+  ["#wx-tl", "#wx-speed", "#wx-span", "#wx-opac"].forEach(q => { $(q).hidden = off; });
 }
 $("#wx-menu").addEventListener("click", e => {
   e.stopPropagation();
@@ -1256,6 +1256,9 @@ async function loadRadar(force = false) {
       ...past.map(f => ({ time: f.time, kind: "past", minz: 0, maxz: 10, url: src(f) })),
       ...cast.map(f => ({ time: f.time, kind: "cast", minz: 0, maxz: 10, url: src(f, `?g=${j.generated}`) }))];
     if (wxLayer() !== (ir ? "ir" : "radar")) return;              // switched again while this was loading
+    // loop length: history back from "now" (the newest observed frame); the forecast always follows
+    const nowT = Math.max(...frames.filter(f => f.kind !== "cast").map(f => f.time));
+    frames.splice(0, frames.length, ...frames.filter(f => f.kind === "cast" || f.time >= nowT - rvSpan() * 3600));
     if (!frames.length) throw new Error("no frames");
     const prevT = rvFrames.length ? rvFrames[Math.round(rvPos)]?.time : null, wasNow = prevT == null || Math.round(rvPos) === rvNow;
     rvLayers.forEach(l => l && wxMap.removeLayer(l));
@@ -1574,6 +1577,18 @@ rvSetAlpha(rvAlpha, false);
   const end = e => { if (drag !== e.pointerId) return; drag = null; el.classList.remove("drag"); };
   el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
 }
+// Loop length: one button cycling 1 h → 2 h → 6 h of history (default 2 h), remembered per screen.
+const RV_SPANS = [1, 2, 6];
+const rvSpan = () => { const v = +store.get("vp.radar.span", 2); return RV_SPANS.includes(v) ? v : 2; };
+const rvSpanLabel = () => { $("#wx-span").textContent = `${rvSpan()}h`; $("#wx-span").title = `Loop: last ${rvSpan()} h — tap to change`; };
+rvSpanLabel();
+$("#wx-span").addEventListener("click", () => {
+  store.set("vp.radar.span", RV_SPANS[(RV_SPANS.indexOf(rvSpan()) + 1) % RV_SPANS.length]);
+  rvSpanLabel();
+  const playing = !!(rvTimer || rvRaf);
+  rvStop(); rvAt = 0;
+  loadRadar(true).then(() => { if (playing && rvFrames.length) rvPlay(); });
+});
 // Loop speed: one button cycling 1× → 2× → 4× (1× = 700 ms a frame), remembered per screen.
 const RV_SPEEDS = [1, 2, 4];
 const rvSpeed = () => { const v = +store.get("vp.radar.speed", 1); return RV_SPEEDS.includes(v) ? v : 1; };

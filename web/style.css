@@ -663,7 +663,8 @@ html.kiosk, html.kiosk * { cursor: none !important; }
   background: rgba(14,17,22,.62); border: 1px solid var(--line); backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35);
   color: var(--ink); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }   /* glass, like the locate button */
 .wx-speed:active { background: rgba(14,17,22,.85); color: var(--c-batt); }
-.wx-tl { position: absolute; left: 90px; right: 90px; bottom: 34px; z-index: 500; height: 64px; display: flex; align-items: center;
+#wx-speed { left: 90px; }                                     /* loop length (#wx-span) sits in the corner, speed after it */
+.wx-tl { position: absolute; left: 166px; right: 90px; bottom: 34px; z-index: 500; height: 64px; display: flex; align-items: center;
   gap: 14px; padding: 0 18px 0 8px; border-radius: 14px; background: rgba(14,17,22,.62); border: 1px solid var(--line);
   backdrop-filter: blur(3px); box-shadow: 0 2px 8px rgba(0,0,0,.35); }   /* same glass as the locate button, same row */
 .wx-tl-play { width: 48px; height: 48px; flex: none; border-radius: 50%; display: grid; place-items: center; color: var(--ink);
