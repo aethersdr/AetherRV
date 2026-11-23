@@ -71,7 +71,6 @@ class EsparControl:
         self.mode, self.setpoint_c, self.until = "off", 21.0, None
         self.target: str | None = None               # mode to apply once the woken heater reports idle
         self.run_min = None
-        self.fan_word: int | None = None             # EXPERIMENT (owner-approved bench test): raw word in FAN's setpoint field
         self._burst_i = 0
         self._send_fail = 0
         self.flags = 0x00                            # 00 until the first run since start-up, then 09 on / 08 off
@@ -117,8 +116,7 @@ class EsparControl:
 
     def _cmd_frame(self, room_c: float | None) -> bytes:
         on = self.mode in ("heat", "fan")
-        sp = (int(round(self.setpoint_c * 10)).to_bytes(2, "little") if self.mode == "heat"
-              else self.fan_word.to_bytes(2, "little") if self.mode == "fan" and self.fan_word is not None else b"\xfe\xff")
+        sp = int(round(self.setpoint_c * 10)).to_bytes(2, "little") if self.mode == "heat" else b"\xfe\xff"
         return bytes([self.flags | (0x01 if on else 0x00), MODES[self.mode]]) + sp + room_word(room_c) + b"\x00\x00"
 
     def _stop(self, why: str | None) -> None:
@@ -248,9 +246,6 @@ class EsparControl:
             return {"ok": False, "detail": "bad setpoint"}
         if mode == "heat" and not self.SETPOINT_RANGE[0] <= sp <= self.SETPOINT_RANGE[1]:
             return {"ok": False, "detail": f"setpoint must be {self.SETPOINT_RANGE[0]:.0f}-{self.SETPOINT_RANGE[1]:.0f} °C"}
-        fw = v.get("fan_word")                           # undocumented: only for the supervised fan-speed bench test
-        if fw is not None and (mode != "fan" or not isinstance(fw, int) or isinstance(fw, bool) or not 0 <= fw <= 0xFFFF):
-            return {"ok": False, "detail": "fan_word must be an integer 0-65535, FAN mode only"}
         run = v.get("run_min")
         if mode != "off" and not run_minutes_ok(run):
             return {"ok": False, "detail": "run time must be 1-240 min, 270-720 in 30-min steps, or unlimited"}
@@ -271,7 +266,6 @@ class EsparControl:
         self.run_min = None if mode == "off" else run
         if mode == "heat":
             self.setpoint_c = sp
-        self.fan_word = fw if mode == "fan" else None
         self.problem = None
         if not self.active:                              # take over the bus: wake the heater in OFF first
             self.active, self.started_at, self._tick, self._burst_i, self.idle_since = True, now, 0, 0, None

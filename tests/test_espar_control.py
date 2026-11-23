@@ -142,16 +142,3 @@ async def test_full_queue_while_waking_is_not_fatal():
     r = await c.command("set", {"mode": "off", "attach": True})
     await t
     assert r["ok"] and c.active and resets == []
-
-
-def test_fan_word_experiment_only_in_fan_mode():
-    st, a, c, bus, _ = rig()
-    c.mode, c.flags = "fan", 0x08
-    assert c._cmd_frame(18.0)[2:4] == b"\xfe\xff"               # default: exactly what the EasyStart Pro sends
-    c.fan_word = 0x0096
-    assert c._cmd_frame(18.0)[2:4] == bytes([0x96, 0x00])
-    c.mode = "heat"                                              # never leaks into HEAT
-    assert c._cmd_frame(18.0)[2:4] == int(round(c.setpoint_c * 10)).to_bytes(2, "little")
-    bad = asyncio.run(c.command("set", {"mode": "heat", "setpoint_c": 20, "fan_word": 5}))
-    assert not bad["ok"] and "FAN mode only" in bad["detail"]
-    assert not asyncio.run(c.command("set", {"mode": "fan", "fan_word": 70000}))["ok"]
