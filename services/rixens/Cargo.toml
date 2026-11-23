@@ -19,8 +19,11 @@ anyhow.workspace = true
 proto-mcs7.workspace = true
 aetherrv-power.workspace = true
 reqwest.workspace = true
+rusqlite.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
+axum.workspace = true
 aetherrv-core = { workspace = true, features = ["testutil"] }
 tempfile.workspace = true
 
