@@ -75,8 +75,10 @@ DIDS = {
     0xFD11: ("fuel", lambda d: {"rate_ul_s": d[1], "total_l": round(int.from_bytes(d[2:6], "big")
                                                                    + int.from_bytes(d[6:10], "big") / 1e9, 3)}
              if len(d) >= 10 else None),
-    0xFD01: ("temps", lambda d: {"flame_c": _temp100(_u16(d, 0)), "intake_c": _temp100(_u16(d, 2))}
-             if len(d) >= 4 else None),
+    # 4 words on the S2 D2L: flame, intake, outlet (found by the 2026-11-22 scan: tracks the warm-air outlet,
+    # 8.8 °C cold → 52 °C at full heat while intake stayed 9-18 °C), and a 4th that reads exactly 0 °C (not fitted)
+    0xFD01: ("temps", lambda d: {"flame_c": _temp100(_u16(d, 0)), "intake_c": _temp100(_u16(d, 2)),
+                                 "outlet_c": _temp100(_u16(d, 4))} if len(d) >= 4 else None),
     0xFD45: ("regulation", lambda d: {"setpoint_c": _temp10(_u16(d, 0)), "regulated_c": _temp10(_u16(d, 2))}
              if len(d) >= 4 else None),
     0xFD2A: ("burn_s", lambda d: None if _u16(d, 0) is None else round(_u16(d, 0) / 100, 1)),
@@ -91,9 +93,11 @@ DIDS = {
     0xF193: ("hardware", lambda d: d.decode("ascii", "replace").strip("\x00 ")),
     0xFD58: ("variant", lambda d: d.decode("ascii", "replace").strip("\x00 ")),
 }
-# the combustion phase (FD10) every other read so the start-up sequence is caught; the rest round-robin
-_LIVE = [0xFD04, 0xFD08, 0xFD0A, 0xFD0D, 0xFD0E, 0xFD0F, 0xFD01, 0xFD45, 0xFD11, 0xFD2A, 0xFD2B, 0xFD36, 0xFD35]
-LIVE_DIDS = [x for d in _LIVE for x in (0xFD10, d)]
+# What the Climate card shows is read every cycle (phase, temperatures, blower, glow, pump, power, flame, fuel);
+# the slower values one per cycle, in turn. At diag_interval_s = 1 a card tile refreshes every ~9 s.
+FAST_DIDS = [0xFD10, 0xFD01, 0xFD08, 0xFD0A, 0xFD0D, 0xFD0E, 0xFD0F, 0xFD11]
+SLOW_DIDS = [0xFD04, 0xFD45, 0xFD2A, 0xFD2B, 0xFD36, 0xFD35]
+LIVE_DIDS = [x for s in SLOW_DIDS for x in (*FAST_DIDS, s)]
 ONCE_DIDS = [0xF195, 0xF193, 0xFD17, 0xFD06, 0xFD6A]    # (FD58 variant: 'out of range' on the S2 D2L)
 
 # Severity class per P-code (Airtronic S3 service manual via the S3 project): 1 service, 2 under-voltage,

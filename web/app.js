@@ -604,7 +604,8 @@ function renderClimate() {
         ["Fuel", D("fuel")?.rate_ul_s == null ? "—" : `${(D("fuel").rate_ul_s * 3600 / 1e6 / 3.785).toFixed(3)} gal/h`,
           D("pump_hz") == null ? "Fuel pump" : `pump ${num(D("pump_hz"), 1)} Hz`, "Fuel pump"],
         ["Power", D("power_pct") == null ? "—" : `${Math.round(D("power_pct"))} %`, "Demand"],
-        ["Intake", D("temps")?.intake_c == null ? "—" : fmtT(D("temps").intake_c), "Air in"],
+        ["Inlet", D("temps")?.intake_c == null ? "—" : fmtT(D("temps").intake_c), "Air in"],
+        ["Outlet", D("temps")?.outlet_c == null ? "—" : fmtT(D("temps").outlet_c), "Air out"],
         ["Flame", D("temps")?.flame_c == null ? "—" : fmtT(D("temps").flame_c), D("flame")?.flame ? "Flame on" : "Flame sensor", "Flame sensor"],
       ]),
       note: null,                                 // fault memory, hours, software: Settings → Espar (owner: less text here)
@@ -628,14 +629,13 @@ function renderClimate() {
         ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}`}</div>
       <div><h3>${h.name}</h3>${h.noSub ? "" : `<div class="sub">${h.sub} · ${status}</div>`}
         ${h.kv.length ? `<div class="kv">${h.kv.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("")}</div>` : ""}
-        ${h.burner && h.burner.length ? `<div class="burner">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
+        ${h.burner && h.burner.length ? `<div class="burner${h.burner.length > 6 ? " n7" : ""}">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
         ${h.buttons.length ? `<div class="src-btns">${h.buttons.map(b => `<button class="src-btn ${b.on ? "sel" : ""} st-${b.st || "off"}" data-src="${b.k}" ${canControl() && !ctlPending ? "" : "disabled"}>
             ${icon(b.k === "furnace" ? "flame" : b.k === "electric" ? "plug" : "engine")}<span>${b.k[0].toUpperCase() + b.k.slice(1)}</span><small>${b.on ? (b.st === "active" ? "active" : "on · " + (b.st || "")) : "off"}</small></button>`).join("")}</div>` : ""}
         ${h.chips.length ? `<div class="chips-row">${h.chips.map(([k, on]) => `<span class="src ${on ? "on" : ""}">${k}${on ? " on" : ""}</span>`).join("")}</div>` : ""}
         ${h.fault ? `<div class="warn-t fault-line">${icon("alert")}Fault code ${esc(h.fault)}</div>` : ""}
         ${h.extra || ""}
-        ${h.note ? `<div class="muted note-line">${esc(h.note)}</div>` : ""}</div>
-      <span class="ro pill">${icon((h.buttons.length && canControl()) || (h.control && CAN_CTL) ? "check" : "lock")}${(h.buttons.length && canControl()) || (h.control && CAN_CTL) ? "control" : "read-only"}</span></div>`;
+        ${h.note ? `<div class="muted note-line">${esc(h.note)}</div>` : ""}</div></div>`;                                       // owner: no control / read-only pill on the heater cards
   }).join("");
 }
 

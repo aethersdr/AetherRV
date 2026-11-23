@@ -310,7 +310,7 @@ class EsparAdapter(CaptureOnlyAdapter):
         out = {p + "enabled": self.diag_enabled, p + "sent": self.diag_sent, p + "error": self.diag_err,
                p + "dtcs": self.dtcs}
         for k, (v, t) in self.diag.items():
-            out[p + k] = v if now - t < max(30, self.diag_interval * (len(uds.LIVE_DIDS) + 2)) or k in (
+            out[p + k] = v if now - t < max(30, self.diag_interval * (len(uds.LIVE_DIDS) + 5)) or k in (
                 "software", "hardware", "hours", "event_count", "pump_strokes", "air_hpa") else None
         # the heater's own fuel per pump stroke: lifetime fuel ÷ lifetime strokes (µl)
         fuel, strokes = self.diag.get("fuel", (None, 0))[0], self.diag.get("pump_strokes", (None, 0))[0]
@@ -329,7 +329,8 @@ class EsparAdapter(CaptureOnlyAdapter):
             now = time.time()
             self.state.set(f"{self.device}.ids", self.summary())
             self.state.update(self.snapshot(now) | self.diag_snapshot(now))
-            if self.diag_enabled and self.awake(now) and (self.scan_todo or (self.scan_until and now < self.scan_until)) \
+            if self.diag_enabled and self.awake(now) and (self.scan_todo or (self.scan_res and self.scan_until is None)
+                                                          or (self.scan_until and now < self.scan_until)) \
                     and now >= scan_at and not once:
                 # scanning: pass 1 back to back; pass 2 alternates with the normal live reads (flame/intake to compare)
                 tick += 1
