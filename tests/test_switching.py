@@ -341,3 +341,61 @@ def test_claim_poll_reply_is_sent_but_logged_quietly(caplog):
         node.on_frame(req)                                      # the Cerbo's 10-s poll
         assert len(bus.sent) == 2                               # still answered
         assert not [r for r in caplog.records if r.levelno >= logging.INFO]   # but not at INFO
+
+
+# ── hold-to-dim: the virtual switch stays ON while the tile is held (owner 2026-11-22) ──
+async def test_hold_puts_the_virtual_switch_on_until_release():
+    s, n2k, node, bus, ctl = ready(on=[12])
+    r = await ctl.command("hold", {"channel": 12, "on": True}, client="test")
+    assert r["ok"], r
+    assert [p[:10] for p in sent_payloads(bus)] == [press(12, True)]
+    status(n2k, 0, 33, on=[12])
+    r2 = await ctl.command("hold", {"channel": 12, "on": True}, client="test")
+    assert not r2["ok"] and len(bus.sent) == 2                            # a second hold sends nothing
+    r = await ctl.command("hold", {"channel": 12, "on": False}, client="test")
+    assert r["ok"], r
+    assert [p[:10] for p in sent_payloads(bus)] == [press(12, True), press(12, False)]
+    assert not ctl._held
+
+
+async def test_hold_is_released_after_max_hold():
+    s, n2k, node, bus, ctl = ready()
+    ctl.max_hold_s = 0.1
+    assert (await ctl.command("hold", {"channel": 12, "on": True}))["ok"]
+    await asyncio.sleep(0.25)
+    assert [p[:10] for p in sent_payloads(bus)] == [press(12, True), press(12, False)]
+    assert not ctl._held
+
+
+async def test_hold_only_on_dimmers_and_never_to_the_breaker_bank():
+    s, n2k, node, bus, ctl = ready()
+    r = await ctl.command("hold", {"channel": 1, "on": True})
+    assert not r["ok"] and bus.sent == []
+    await ctl.command("hold", {"channel": 12, "on": True}); await ctl.command("hold", {"channel": 12, "on": False})
+    assert all(p[:10] != switch_command(32, 12, on) for p in sent_payloads(bus) for on in (True, False))
+
+
+async def test_hold_needs_fresh_status_and_a_released_switch():
+    s, n2k, node, bus, ctl = ready(vsw_on=[12])
+    r = await ctl.command("hold", {"channel": 12, "on": True})
+    assert not r["ok"] and bus.sent == []
+    s, n2k, node, bus, ctl = setup(); claimed(node); bus.sent.clear()
+    r = await ctl.command("hold", {"channel": 12, "on": True})
+    assert not r["ok"] and bus.sent == []
+
+
+async def test_hold_blocked_when_tx_disabled():
+    s, n2k, node, bus, ctl = setup(tx=False)
+    status(n2k, 0, 32); status(n2k, 0, 33)
+    r = await ctl.command("hold", {"channel": 12, "on": True})
+    assert not r["ok"] and bus.sent == []
+
+
+async def test_a_quick_hold_still_makes_a_full_length_press():
+    s, n2k, node, bus, ctl = ready()
+    ctl.press_s = 0.2
+    await ctl.command("hold", {"channel": 12, "on": True})
+    t0 = time.monotonic()
+    await ctl.command("hold", {"channel": 12, "on": False})
+    assert time.monotonic() - t0 >= 0.15
+    assert [p[:10] for p in sent_payloads(bus)] == [press(12, True), press(12, False)]

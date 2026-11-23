@@ -1005,7 +1005,7 @@ function renderSwitches() {
   const tile = s => `<div class="sw-cell"><button class="sw ${s.on ? "on" : ""} ${s.state === "error" ? "fault" : ""} ${s.state === "n/a" || s.state === "stale" ? "na" : ""} ${s.blocked ? "blocked" : ""}" data-sw="${esc(s.id)}">
       ${s.state === "error" ? icon("alert") : icon(s.icon || "toggle")}
       <div><div class="name">${esc(s.name)}</div><div class="st"><i></i>${label(s)}${s.amps ? `<span class="sw-amps">${(+s.amps).toFixed(1)} A${s.rating_a ? ` / ${s.rating_a}` : ""}</span>` : ""}<span class="sw-id">ch ${s.channel}</span></div></div></button>
-      ${s.kind === "dimmer" && live ? `<input class="sw-dim" type="range" min="1" max="100" value="${s.level ?? 100}" data-dim="${s.channel}" aria-label="${esc(s.name)} brightness">` : ""}</div>`;
+      </div>`;
   const inputs = S["switching.inputs"] || [];
   const board = $("#switches");
   if (!list.length) { H(board).html = `<div class="empty-state">${icon("toggle")}<div>No switch banks decoded yet.</div></div>`; return; }
@@ -1052,12 +1052,42 @@ function toggleSwitch(id) {
   }
   control("set", { channel: s.channel, on: !s.on }, `${s.name} ${s.on ? "off" : "on"}`, "n2k");
 }
-$("#switches").addEventListener("click", e => { const b = e.target.closest(".sw"); if (b) toggleSwitch(b.dataset.sw); });
-let dimTimer = null;
-$("#switches").addEventListener("input", e => {
-  const r = e.target.closest(".sw-dim"); if (!r) return;
-  clearTimeout(dimTimer);
-  dimTimer = setTimeout(() => control("dim", { channel: +r.dataset.dim, level: +r.value }, `Brightness ${r.value}%`, "n2k"), 400);
+// Dimmer tiles work like the keypad button: the load controller's own counter sees the press for as long as the
+// tile is held (tap = on/off, hold = ramp the level). AetherRV holds the channel's virtual switch ON from pointerdown
+// to pointerup; the backend makes a quick tap a full-length press and releases a hold that never ends after 8 s.
+const holdable = s => s && s.kind === "dimmer" && s.channel && s.state !== "error" && s.state !== "stale" && s.state !== "n/a"
+  && !(S["switching.triggers"] || []).some(g => g.channel === s.channel);
+let swHold = null;                                // { pointerId, channel, name }
+function holdSend(ch, on, name) {
+  const id = ++ctlSeq;
+  ctlWaiters[id] = r => { if (!r.ok) toast(`${name}: ${r.detail}`, "bad"); };
+  if (!sendWS({ type: "control", device: "n2k", cmd: "hold", value: { channel: ch, on }, id })) {
+    delete ctlWaiters[id]; toast(`${name}: not sent — no connection`, "bad");
+  }
+}
+function holdEnd(e) {
+  if (!swHold || (e && e.pointerId != null && e.pointerId !== swHold.pointerId)) return;
+  const h = swHold; swHold = null;
+  holdSend(h.channel, false, h.name);
+}
+function holdStart(e, sel) {                      // the Switches board and the Home quick switches
+  const b = e.target.closest(sel); if (!b || !b.dataset.sw || swHold) return;
+  const s = (S["switches.list"] || []).find(x => x.id === b.dataset.sw);
+  if (!holdable(s)) return;                       // everything else is a click (toggleSwitch)
+  if (!canControlDev("n2k")) { toast("Switch control is off (view only)"); return; }
+  swHold = { pointerId: e.pointerId, channel: s.channel, name: s.name };
+  holdSend(s.channel, true, s.name);
+}
+const heldTile = b => !!b && !!b.dataset.sw && holdable((S["switches.list"] || []).find(x => x.id === b.dataset.sw));
+$("#switches").addEventListener("pointerdown", e => holdStart(e, ".sw"));
+// on the document, not the tile: the board re-renders while the finger is down
+for (const ev of ["pointerup", "pointercancel"]) document.addEventListener(ev, holdEnd);
+addEventListener("blur", () => holdEnd());
+document.addEventListener("visibilitychange", () => { if (document.hidden) holdEnd(); });
+$("#switches").addEventListener("click", e => {
+  const b = e.target.closest(".sw"); if (!b) return;
+  if (heldTile(b)) return;                        // handled as a hold
+  toggleSwitch(b.dataset.sw);
 });
 
 // ── Systems ──────────────────────────────────────────────────────────────────
@@ -2621,8 +2651,10 @@ function renderQuick() {
   H($("#quick-sw")).html = QUICK_DEMO.map(([n, ic], i) =>
     `<button class="quick-btn${quickOn.has(i) ? " on" : ""}" data-i="${i}">${icon(ic)}<span>${esc(n)}</span></button>`).join("");
 }
+$("#quick-sw").addEventListener("pointerdown", e => holdStart(e, ".quick-btn"));   // dimmers: hold to dim
 $("#quick-sw").addEventListener("click", ev => {
   const b = ev.target.closest(".quick-btn"); if (!b) return;
+  if (heldTile(b)) return;                        // handled as a hold
   if (b.dataset.sw) { toggleSwitch(b.dataset.sw); return; }
   const i = +b.dataset.i; quickOn.has(i) ? quickOn.delete(i) : quickOn.add(i);
   renderQuick();

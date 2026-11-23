@@ -240,6 +240,9 @@ class SwitchController:
         self.bank = int(sw.get("bank", 32))
         self.vsw_bank = int(sw.get("vsw_bank", 33))           # the controller's virtual-switch bank instance
         self.press_s = float(sw.get("press_s", 0.4))          # a press: ON, this long, OFF (a tap, not a hold)
+        self.max_hold_s = float(sw.get("max_hold_s", 8.0))    # a hold the UI never releases is released after this (0 = never)
+        self._held: dict[int, asyncio.Task | None] = {}        # virtual switch -> its max-hold release task
+        self._held_at: dict[int, float] = {}                   # virtual switch -> when its hold began
         self.channels = {int(c["channel"]): c for c in cfg.get("switch", []) if int(c.get("bank", self.bank)) == self.bank}
         self.triggers = {str(g["id"]): Trigger(str(g["id"]), g.get("name", g["id"]), int(g["bank"]), int(g["switch"]),
                                                int(g["channel"]), float(g.get("pulse_s", 1.0)),
@@ -307,9 +310,11 @@ class SwitchController:
             self._log(cmd, value, "rejected", "channel not configured", client)
             return {"ok": False, "detail": f"channel {ch} is not configured"}
         if cmd == "dim":
-            self._log(cmd, value, "rejected", "dimming runs in the load controller (hold-to-dim); not built yet", client)
-            return {"ok": False, "detail": "Dimming goes through the load controller's own hold-to-dim, which AetherRV "
-                                           "can't drive yet. Nothing was sent."}
+            self._log(cmd, value, "rejected", "dimming runs in the load controller (hold-to-dim)", client)
+            return {"ok": False, "detail": "Dimming goes through the load controller's own hold-to-dim: hold the tile. "
+                                           "Nothing was sent."}
+        if cmd == "hold":
+            return await self._hold(conf, value, ch, client)
         if cmd != "set":
             self._log(cmd, value, "rejected", "not an allowed command", client)
             return {"ok": False, "detail": f"command {cmd!r} is not allowed"}
@@ -380,6 +385,78 @@ class SwitchController:
             why = f"{self.inputs.get(int(need), {}).get('name', f'input {need}')} is off"
         self._log(cmd, value, "unverified", f"virtual switch {self.vsw_bank}.{press} pressed; ch{ch} stayed {cur} ({why})", client)
         return {"ok": False, "detail": f"Pressed, but the load controller didn't switch {name} {want} ({why}). Not retried."}
+
+    async def _hold(self, conf: dict, value: dict, ch: int, client: str) -> dict:
+        """Hold-to-dim, like a finger on the keypad button: `hold` on=True puts the channel's virtual switch ON,
+        on=False releases it. The CLMD16's One Button Smooth Scroll counter does the rest (a short hold toggles,
+        a long one ramps the level). Dimmer channels only."""
+        name = conf.get("name", f"channel {ch}")
+        press = conf.get("press")
+        if conf.get("kind") != "dimmer" or press is None:
+            self._log("hold", value, "rejected", "not a dimmer with a virtual switch", client)
+            return {"ok": False, "detail": f"{name} can't be held (not a dimmer). Nothing was sent."}
+        press = int(press)
+        if not bool(value.get("on")):                         # release: always allowed, always sent
+            task = self._held.pop(press, None)
+            if task is not None:
+                task.cancel()
+            short = self.press_s - (time.monotonic() - self._held_at.pop(press, 0.0))
+            if 0 < short <= self.press_s:                     # a quick tap still makes a full-length press
+                await asyncio.sleep(short)
+            try:
+                self._send_press(press, False)
+            except Exception as e:
+                self._log("hold", value, "failed", f"release {self.vsw_bank}.{press}: {e}", client)
+                return {"ok": False, "detail": "release failed to send"}
+            self._log("hold", value, "ok", f"virtual switch {self.vsw_bank}.{press} released", client)
+            return {"ok": True, "detail": f"{name} released"}
+        if press in self._held:
+            self._log("hold", value, "rejected", "already held", client)
+            return {"ok": False, "detail": f"{name} is already being held. Nothing sent."}
+        if conf.get("blocked"):
+            self._log("hold", value, "rejected", f"channel blocked: {conf.get('blocked_reason', '')}", client)
+            return {"ok": False, "detail": conf.get("blocked_reason") or f"{name} is blocked"}
+        st, age = self.status()
+        if st is None or age > self.FRESH:
+            self._log("hold", value, "failed", "no fresh 127501 from the load controller", client)
+            return {"ok": False, "detail": "no fresh status from the load controller; nothing sent"}
+        if st[ch - 1] == "error":
+            self._log("hold", value, "rejected", "channel is tripped", client)
+            return {"ok": False, "detail": f"{name} is tripped (fault). Nothing sent."}
+        vs = self._bank_state(self.vsw_bank, press)
+        if vs != "off":
+            self._log("hold", value, "rejected", f"virtual switch {self.vsw_bank}.{press} is {vs or 'not reported'}", client)
+            return {"ok": False, "detail": f"{name}: its virtual switch is already pressed or not reported. Nothing sent."}
+        try:
+            self._send_press(press, True)
+        except TxBlocked as e:
+            self._log("hold", value, "blocked", str(e), client)
+            return {"ok": False, "detail": str(e)}
+        except Exception as e:
+            self._log("hold", value, "failed", f"send ON: {e}", client)
+            return {"ok": False, "detail": "send failed (not retried)"}
+        self._held[press] = None
+        self._held_at[press] = time.monotonic()
+        if self.max_hold_s > 0:
+            t = asyncio.get_running_loop().create_task(self._max_hold(press, ch, client))
+            self._held[press] = t
+            self._tasks.add(t)
+            t.add_done_callback(self._tasks.discard)
+        self._log("hold", value, "ok", f"virtual switch {self.vsw_bank}.{press} held", client)
+        return {"ok": True, "detail": f"{name} held"}
+
+    async def _max_hold(self, press: int, ch: int, client: str) -> None:
+        await asyncio.sleep(self.max_hold_s)
+        if self._held.get(press) is not asyncio.current_task():
+            return
+        self._held.pop(press, None)
+        self._held_at.pop(press, None)
+        try:
+            self._send_press(press, False)
+            self._log("hold", {"channel": ch, "on": False}, "ok",
+                      f"virtual switch {self.vsw_bank}.{press} released after {self.max_hold_s:g} s (no release came)", client)
+        except Exception as e:
+            self._log("hold", {"channel": ch, "on": False}, "failed", f"max-hold release: {e}", client)
 
     def _bank_state(self, bank: int, idx: int) -> str | None:
         b = self.n2k.banks.get((self.controller, bank))
