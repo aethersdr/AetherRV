@@ -26,7 +26,10 @@ NAME = "AetherRV WAN priority"
 
 
 def main() -> int:
-    host = sys.argv[1] if len(sys.argv) > 1 else "192.168.110.1"
+    if len(sys.argv) < 2:
+        print("usage: sudo peplink-rw-client.py <router-lan-ip>")
+        return 2
+    host = sys.argv[1]
     if os.geteuid() != 0:
         print("Run with sudo (it writes /etc/aetherrv/secrets.toml).")
         return 1

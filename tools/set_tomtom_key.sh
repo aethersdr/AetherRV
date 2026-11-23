@@ -3,7 +3,10 @@
 # Run from the laptop: ./tools/set_tomtom_key.sh   — the key is typed on the Pi with no echo and never
 # lands in shell history or on a command line. Replaces any earlier tomtom_api_key line.
 set -euo pipefail
-HOST="${1:-aetherpiii}"
+# Pi: the argument, or AETHERRV_HOST from deploy/local.env (gitignored; see deploy/local.env.example).
+[ -f "$(dirname "$0")/../deploy/local.env" ] && . "$(dirname "$0")/../deploy/local.env"
+HOST="${1:-${AETHERRV_HOST:-}}"
+[ -n "$HOST" ] || { echo "usage: tools/set_tomtom_key.sh <pi-ssh-host>   (or set AETHERRV_HOST in deploy/local.env)" >&2; exit 2; }
 ssh -t "$HOST" 'set -e
 read -rsp "TomTom API key: " K; echo
 [ -n "$K" ] || { echo "no key entered"; exit 1; }

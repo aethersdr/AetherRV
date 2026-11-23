@@ -240,9 +240,9 @@ async def test_remote_auth_trusted_lans_and_whole_tailnet():
         "100.101.1.2": {"known": True, "owner": False, "login": "friend@y", "node": "phone", "tagged": False},
         "100.101.1.9": {"ok": True, "known": False},
     })
-    a = RemoteAuth(adm, control_subnets=["192.168.110.0/24", "192.168.50.0/24"], tailnet="all")
-    assert await a.who("192.168.110.170") == "lan:192.168.110.170"
-    assert await a.who("192.168.50.20") == "lan:192.168.50.20"
+    a = RemoteAuth(adm, control_subnets=["10.10.110.0/24", "10.20.50.0/24"], tailnet="all")
+    assert await a.who("10.10.110.170") == "lan:10.10.110.170"
+    assert await a.who("10.20.50.20") == "lan:10.20.50.20"
     assert await a.who("192.168.1.5") is None                                     # other LANs stay view-only
     assert await a.who("100.101.1.2", "100.64.0.10") == "tailscale:friend@y@phone"  # any tailnet peer
     assert await a.who("100.101.1.9", "100.64.0.10") is None                      # unknown to tailscaled

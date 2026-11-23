@@ -1,7 +1,7 @@
 # Builds web/img/logo*.png: the AetherSDR logo (../AetherSDR/docs/assets/logo-circle-256.png) with an RV silhouette
 # over its lower part. Run from the repo root: python3 tools/make_logo_rv.py
 from PIL import Image, ImageDraw, ImageFilter
-SRC = "/home/jeremy/AetherSDR/docs/assets/logo-circle-256.png"
+SRC = "../AetherSDR/docs/assets/logo-circle-256.png"     # an AetherSDR checkout next to this repo
 K = 4                                  # supersample
 base = Image.open(SRC).convert("RGBA").resize((256 * K, 256 * K), Image.LANCZOS)
 W = 256 * K

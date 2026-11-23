@@ -52,6 +52,10 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
 
 ## Install (on the Pi)
 
+**Building one from scratch?** [`docs/BUILD-GUIDE.md`](docs/BUILD-GUIDE.md) walks through the hardware, installing
+and configuring Arch Linux ARM, wiring the CAN buses, and has prompts for adapting AetherRV with an AI assistant
+when your equipment differs.
+
 ```sh
 cp deploy/local.env.example deploy/local.env     # set AETHERRV_HOST to your Pi's ssh host
 ./deploy/push.sh                                 # rsync to /opt/aetherrv and run deploy/install.sh
