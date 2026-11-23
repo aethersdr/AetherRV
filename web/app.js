@@ -594,9 +594,7 @@ function renderClimate() {
         espPhase(), E("run_s") != null ? fmtDur(E("run_s")) : null,
         E("cooldown_left_s") != null ? `${Math.floor(E("cooldown_left_s") / 60)}:${String(E("cooldown_left_s") % 60).padStart(2, "0")} left` : null,
       ].filter(Boolean).join(" · ") || "EasyStart Pro"}`,
-      kv: E("state") == null ? [] : [
-        ["Heater", E("heater_c") != null ? fmtT(E("heater_c")) : D("temps")?.intake_c != null ? fmtT(D("temps").intake_c) : "—"],
-      ],                                         // battery, runtime, fuel total: Settings → Espar
+      kv: [],    // owner: no big numbers (the intake temp is the Intake tile; battery, runtime, fuel: Settings → Espar)
       burner: D("enabled") && !E("asleep") ? [
         ["Fan", D("blower") == null ? "—" : `${Math.round(D("blower") / 45.59)} %`, "Blower drive"],
         ["Glow", D("glow_w") == null ? "—" : `${Math.round(D("glow_w"))} W`, "Glow plug"],
@@ -622,7 +620,7 @@ function renderClimate() {
     const status = h.state == null ? `Not connected · ${ids(h.id)} CAN IDs seen`
       : { heating: "Heating", off: "Off", standby: "Standby", idle: "Idle", error: "ERROR", "no data": "No data",
           cooldown: "Cooling down", starting: "Starting", fan: "Fan only" }[h.state] || h.state;
-    return `<div class="card heater ${on ? "on" : ""} ${h.kv.length || h.buttons.length ? "" : "compact"}">
+    return `<div class="card heater ${on ? "on" : ""} ${h.kv.length || h.buttons.length || h.badges ? "" : "compact"}">
       <div class="badge-col">${h.badges || `<div class="badge" ${h.id === "rixens" ? 'title="Cabin air heat"' : ""}>${icon(h.state == null ? "can" : h.id === "rixens" ? "air_heat" : "flame")}</div>
         ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}`}</div>
       <div><h3>${h.name}</h3>${h.noSub ? "" : `<div class="sub">${h.sub} · ${status}</div>`}
