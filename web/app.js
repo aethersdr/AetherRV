@@ -562,7 +562,8 @@ function renderClimate() {
   const espPhase = () => { const ph = D("phase")?.phase; return E("asleep") || ph == null ? null : ph in ESP_PHASE ? ESP_PHASE[ph] : `phase ${ph}`; };
   const fmtDur = sec => sec < 3600 ? `${Math.floor(sec / 60)} min` : `${Math.floor(sec / 3600)} h ${Math.floor(sec % 3600 / 60)} min`;
   const heaters = [
-    { id: "rixens", name: "Rixens MCS7", sub: live ? `Hydronic · ${esc(R("heater_state") || "")}` : "Hydronic heat", state: rState,
+    { id: "rixens", name: "Rixens MCS7", noSub: true,   // owner: no status line under the name
+      sub: live ? `Hydronic · ${esc(R("heater_state") || "")}` : "Hydronic heat", state: rState,
       buttons: live ? ["furnace", "electric", "engine"].filter(k => k === "furnace" || avail[k]).map(k => ({ k, on: srcs.includes(k), st: R(k) })) : [],
       // Hot water / pre-heat show as unlabelled icon badges under the cabin-air-heat badge; status only here.
       modes: live ? [["Hot water", "hot_water", R("hot_water")], ["Preheat", "preheat", R("preheat")]] : [],
