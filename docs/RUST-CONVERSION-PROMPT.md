@@ -45,6 +45,7 @@ The Python system on `main` is **frozen** and is the behaviour reference. Before
 |---|---|
 | Language | **All Rust, no Python at runtime.** This includes the Bluetooth battery protocol (RoyPow BMS), Starlink gRPC, NMEA 2000, the Espar protocol and UDS, and the radar motion fields (today OpenCV DIS optical flow). |
 | Process model | **One service per device**, plus core services. Each is its own binary and systemd unit and restarts alone. |
+| Delivery | **No containers at all** (owner, 2026-11-23): native binaries under systemd on the Pi, a native build, and simulators as plain processes. No Docker or Podman for running, building or testing. |
 | Inter-process bus | **A local MQTT broker** with retained state, so a restarted module or UI gets current state at once. |
 | UI | **React** (TypeScript). **Keep the current layout** on every page; improve motion, feedback and graphics. |
 | UI runtime | **Benchmark three options on a Pi 5 and choose by the numbers:** WPE WebKit kiosk (`cog`), a Tauri v2 app (WebKitGTK), and Chromium. See §7. |
