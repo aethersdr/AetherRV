@@ -576,6 +576,7 @@ function renderClimate() {
       buttons: live ? ["furnace", "electric", "engine"].filter(k => k === "furnace" || avail[k]).map(k => ({ k, on: srcs.includes(k), st: R(k) })) : [],
       // Hot water / pre-heat show as unlabelled icon badges under the cabin-air-heat badge; status only here.
       modes: live ? [["Hot water", "hot_water", R("hot_water")], ["Preheat", "preheat", R("preheat")]] : [],
+      badges: live ? mcsBadges(R) : null,         // Heat / Hot water / Pre-heat destinations, tappable
       chips: live && avail.floor ? [["Floor", R("floor") !== "off"]] : [],
       hero: live ? `${fluidPill(R)}<small>coolant</small>` : null,   // beside the name (battery etc.: Settings → MCS7)
       kv: rState == null || live ? [] : [["Coolant", R("coolant") == null ? "—" : fmtT(R("coolant"))], ["Fan speed", R("fan") ?? "—"]],
@@ -880,16 +881,37 @@ function sendSetpoint(c, next) {
   else { spPending = null; render(); }
 }
 const espRunLabel = m => m == null ? "∞" : m < 60 ? `${m} min` : `${(m / 60).toFixed(m % 60 ? 1 : 0)} h`;
+// MCS7 destination stack: Heat (cabin, the MCS7 thermostat) / Hot water / Engine pre-heat. Tap toggles, after a
+// confirm; each is one verified MCS7 command (rixens_http: act 9 / 6 / 7). Lit = on.
+const MCS_DEST = { thermostat: ["Cabin heat", "air_heat", "The MCS7 heats the cabin to the setpoint (thermostat).",
+                                "The MCS7 stops heating the cabin. Hot water and pre-heat are not affected."],
+                   hot_water: ["Hot water", "hot_water", "The MCS7 keeps the system fluid hot for hot water.",
+                               "The MCS7 stops keeping the fluid hot for hot water."],
+                   preheat: ["Engine pre-heat", "preheat", "The MCS7 sends heat to the engine.", "The MCS7 stops heating the engine."] };
+function mcsBadges(R) {
+  const ok = canControl() && !ctlPending;
+  return Object.entries(MCS_DEST).map(([k, [label, ic]], i) => {
+    const on = !!R(k), na = k === "preheat" && R("available")?.preheat === false;
+    return `<button class="badge ${i ? "mode " : ""}tap-b ${on ? "on" : ""}" data-mcs="${k}" ${ok && !na ? "" : "disabled"}
+      title="${label}${na ? " (not enabled on this MCS7)" : on ? " · on · tap to turn off" : " · off · tap to turn on"}">${icon(ic)}</button>`;
+  }).join("");
+}
+$("#heaters").addEventListener("click", e => {
+  const b = e.target.closest("[data-mcs]"); if (!b || b.disabled) return;
+  const k = b.dataset.mcs, on = !b.classList.contains("on"), [label, , onTxt, offTxt] = MCS_DEST[k];
+  askConfirm(`Turn ${label.toLowerCase()} ${on ? "on" : "off"}?`, on ? onTxt : offTxt,
+    () => control(k, on, `${label} ${on ? "on" : "off"}`));
+});
 // Espar badge stack (like the MCS7's): flame = HEAT, fan = FAN (one at a time; tap the lit one again for OFF),
 // clock = run time (cycles like the EasyStart Pro).
 function espBadges() {
   const ok = canControlDev("espar") && !ctlPending, mode = S["climate.espar.ctl.active"] ? S["climate.espar.ctl.mode"] : "off";
   const dis = ok ? "" : "disabled";
-  return `<button class="badge esp-b ${mode === "heat" ? "on" : ""}" data-esp="${mode === "heat" ? "off" : "heat"}" ${dis}
+  return `<button class="badge tap-b ${mode === "heat" ? "on" : ""}" data-esp="${mode === "heat" ? "off" : "heat"}" ${dis}
       title="${mode === "heat" ? "Heating · tap to turn off" : "Heat"}">${icon("flame")}</button>
-    <button class="badge mode esp-b ${mode === "fan" ? "on" : ""}" data-esp="${mode === "fan" ? "off" : "fan"}" ${dis}
+    <button class="badge mode tap-b ${mode === "fan" ? "on" : ""}" data-esp="${mode === "fan" ? "off" : "fan"}" ${dis}
       title="${mode === "fan" ? "Fan on · tap to turn off" : "Fan only"}">${icon("fan")}</button>
-    <button class="badge mode esp-b esp-timer" data-esp="run" ${dis} title="Run time (like the EasyStart Pro)">${icon("clock")}<small>${espRunLabel(espRun)}</small></button>`;
+    <button class="badge mode tap-b esp-timer" data-esp="run" ${dis} title="Run time (like the EasyStart Pro)">${icon("clock")}<small>${espRunLabel(espRun)}</small></button>`;
 }
 function espSend(mode, label, sp = espSet()) {
   control("set", { mode, setpoint_c: sp, run_min: mode === "off" ? null : espRun }, label, "espar");

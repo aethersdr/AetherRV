@@ -54,7 +54,7 @@ def test_plan_allowlist_and_ranges():
     assert RixensHttpAdapter.plan("furnace", True, cur) is None                  # already selected
     assert RixensHttpAdapter.plan("furnace", False, cur)[:2] == (5, 0)
     for bad in [("setpoint", 40.0), ("setpoint", 0.0), ("fan", 150), ("floor", True), ("prime", 1),
-                ("thermostat", False), ("wifi", "x")]:
+                ("aux", True), ("wifi", "x")]:
         with pytest.raises(CommandError):
             RixensHttpAdapter.plan(*bad, cur)
 
@@ -205,3 +205,10 @@ def test_hot_water_and_preheat_plan():
         RixensHttpAdapter.plan("preheat", True, {"preheat": False, "available": {"preheat": False}})
     with pytest.raises(Exception):
         RixensHttpAdapter.plan("floor", True, cur)                           # still not allowed
+
+
+def test_thermostat_plan():
+    cur = {"thermostat": True}
+    assert RixensHttpAdapter.plan("thermostat", True, cur) is None            # already on → nothing sent
+    act, val, verify = RixensHttpAdapter.plan("thermostat", False, cur)
+    assert (act, val) == (9, 0) and verify({"thermostat": False}) and not verify({"thermostat": True})

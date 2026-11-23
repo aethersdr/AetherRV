@@ -10,9 +10,10 @@ Encodings, confirmed from the MCS7's own web UI JavaScript and the live unit (fw
 CONTROL (owner-approved 2026-11-20): setpoint, fan speed, the three heat sources, and (approved later
 the same day) hot water (constant heat, act 6) and engine pre-heat (act 7). The MCS7 web UI sends those
 two exactly like the sources: act=N&val=<new state 0/1> (constantHeatDisable / preheatFunctionToggle).
+Cabin heat on/off (thermostat, act 9, explicit 0/1) added 2026-11-22 at the owner's request.
 Safety rules, all enforced in `command()`:
   * hard allowlist of act numbers + integer range checks; nothing else is reachable from code
-    (no buttons.cgi / infra.cgi / floor / aux / thermostat / override / Wi-Fi acts)
+    (no buttons.cgi / infra.cgi / floor / aux / override / Wi-Fi acts)
   * TxGate must allow device "rixens_http" (tx_enabled only in the Pi's /etc config)
   * fresh status read immediately before acting; send only if the state differs; send ONCE;
     then poll to verify; NEVER auto-retry (the doc calls the source acts "toggles", so a retry
@@ -49,7 +50,9 @@ SRC_STATE = {0: "off", 1: "ready", 2: "active"}
 GLYCOL = {0: "cold", 1: "warming", 2: "ready", 3: "hot"}
 SOURCE_BITS = {"engine": 1, "electric": 2, "furnace": 4}
 SOURCE_ACT = {"engine": 3, "electric": 4, "furnace": 5}
-MODE_ACT = {"hot_water": 6, "preheat": 7}
+# act 9 = thermostat (cabin "Heat" destination), explicit 0/1, verified on settings/thermenabled:
+# owner-approved 2026-11-22 (make the Heat / Hot water / Pre-heat icons on the Climate card tappable)
+MODE_ACT = {"hot_water": 6, "preheat": 7, "thermostat": 9}
 SETPOINT_MIN_C, SETPOINT_MAX_C = 1.0, 33.0           # the MCS7 UI's own limits (°C mode)
 
 
