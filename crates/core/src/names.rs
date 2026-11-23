@@ -33,6 +33,7 @@ pub const SERVICES: [&str; 16] = [
 /// `<device>.ids` of an aux bus, `tx.*.<device>`) are resolved by [`owner_of`].
 pub const PREFIXES: &[(&str, &str)] = &[
     ("climate.espar.", ESPAR),
+    ("n2k.names_from_cerbo", VICTRON), // the Cerbo's VE.Can device list, published by the Victron service
     ("espar.", ESPAR),
     ("n2k.", N2K),
     ("switches.", N2K),
@@ -121,5 +122,7 @@ mod tests {
         assert_eq!(owner_of("tx.enabled.espar_diag", "x", &bus).as_deref(), Some(ESPAR));
         assert_eq!(owner_of("wan.down_mbps", "x", &bus).as_deref(), Some(PEPLINK));
         assert_eq!(owner_of("nonsense", "x", &bus), None);
+        assert_eq!(owner_of("n2k.names_from_cerbo", "x", &bus).as_deref(), Some(VICTRON));
+        assert_eq!(owner_of("n2k.devices", "x", &bus).as_deref(), Some(N2K));
     }
 }

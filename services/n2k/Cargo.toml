@@ -18,6 +18,7 @@ tracing.workspace = true
 anyhow.workspace = true
 aetherrv-can.workspace = true
 proto-n2k.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 aetherrv-core = { workspace = true, features = ["testutil"] }

@@ -420,6 +420,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | D7 | New state keys: `climate.espar.lockout`, `climate.espar.lockout_off`, `climate.rixens.lockout*`, `svc.*`, `tx.enabled.<device>`, `tx.blocked.<device>` (the gateway also rebuilds the old `tx.enabled`/`tx.blocked` dicts) | §4.5, §8 |
 | D8 | The Espar resumes a run after its own restart (owner, §3 / Q-E1, Q-E2); Python always came back OFF | Owner |
 | D9 | The command reply carries `result` (ok / refused / unverified) and `detail`; the Python outcome string stays in `command_log`, not in the reply | §4.6 |
+| D11 | On/off command values must be JSON booleans and numbers JSON numbers (CLMD16 `set`/`hold`, MCS7 sources and modes, Victron); anything else is refused with "bad request". Python's `bool("false")` is True, so a string "false" would have switched a device ON | Safe direction; the UI always sends real booleans |
 | D10 | The gateway waits up to 15 s for an Espar reply (one verify window is 6 s, and a queued command waits for the one before it) | Avoids reporting "unverified" for a command that is still being verified |
 
 ## 14. Open questions for the owner
@@ -436,6 +437,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-D1 | Demo mode: port or drop? | answered 2026-11-23: drop it |
 | Q-T1 | Should a late heater OFF (older than the 3 s TTL) still run, as the safe direction? (D4) | answered 2026-11-23: yes |
 | Q-D2 | Accept the differences D1–D10 in §13a | answered 2026-11-23: all accepted |
+| Q-D3 | Accept D11 (non-boolean on/off values refused) | open: next batch |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
