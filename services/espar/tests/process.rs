@@ -222,3 +222,67 @@ async fn foreign_controller_and_silent_heater_stop_transmitting() {
     assert!(eventually(S10, || g.remote().is_false("climate.espar.ctl.active")).await);
     assert!(g.remote().string("climate.espar.ctl.problem").unwrap().contains("lost the heater"));
 }
+
+/// An OFF sent while the restarted service is still deciding whether to resume waits for the decision and then
+/// turns the resumed run off (it is never answered "already off" while the run resumes).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_off_during_the_resume_window_turns_the_resumed_run_off() {
+    let iface = "vcan4";
+    if !have(iface) {
+        return eprintln!("{iface} or mosquitto missing: skipped");
+    }
+    let (_dir, _b, h, mut e, g, _vic) = setup(iface, 600.0, 15.0).await;
+    heat(&g).await;
+    e.signal(libc::SIGKILL);
+    assert!(eventually(S10, || !g.remote().owner_ok("espar")).await, "the last will marks it down");
+    e.start();
+    assert!(eventually(S10, || g.remote().owner_ok("espar")).await);
+    let off = g.request("espar", "set", json!({"mode": "off"}), "kiosk", 3000, Duration::from_secs(15)).await;
+    assert_eq!(off.result, ResultKind::Ok, "{off:?}");
+    assert_ne!(off.detail, "already off", "the OFF must apply to the resumed run");
+    assert!(eventually(S10, || h.report().state == "after-run").await, "{}", h.report().state);
+    assert_eq!(h.report().controller_loss_faults, 0);
+}
+
+/// A crash while the broker is down: no Ruuvi on restart, so the run continues on the room value saved before the
+/// restart (then the heater's intake sensor), never FE FF.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_crash_with_the_broker_down_resumes_on_the_saved_room_value() {
+    let iface = "vcan0";
+    if !have(iface) {
+        return eprintln!("{iface} or mosquitto missing: skipped");
+    }
+    let (dir, mut b, h, mut e, g, _vic) = setup(iface, 600.0, 15.0).await;
+    heat(&g).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    b.kill();
+    h.reset_stats();
+    e.signal(libc::SIGKILL);
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    e.start();
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    let r = h.report();
+    assert_eq!(r.state, "heating");
+    assert_eq!(r.full_power_frames, 0, "never FE FF with HEAT");
+    assert_eq!(r.controller_loss_faults, 0);
+    assert!(r.max_054_gap_running < 3.0, "{}", r.max_054_gap_running);
+    assert!(log_rows(dir.path()).iter().any(|r| r.0 == "resume" && r.1 == "ok"));
+    b.restart();
+}
+
+/// A late HEAT is refused (nothing sent); a late OFF still runs (the safe direction, owner Q-T1).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_late_heat_is_refused_but_a_late_off_runs() {
+    let iface = "vcan5";
+    if !have(iface) {
+        return eprintln!("{iface} or mosquitto missing: skipped");
+    }
+    let (_dir, _b, h, _e, g, _vic) = setup(iface, 600.0, 15.0).await;
+    let late = g.request("espar", "set", json!({"mode": "heat", "setpoint_c": 21.0}), "kiosk", -1, Duration::from_secs(15)).await;
+    assert_eq!(late.result, ResultKind::Refused, "{late:?}");
+    assert_eq!(h.report().frames_054, 0, "nothing sent");
+    heat(&g).await;
+    let off = g.request("espar", "set", json!({"mode": "off"}), "kiosk", -1, Duration::from_secs(15)).await;
+    assert_eq!(off.result, ResultKind::Ok, "{off:?}");
+    assert_eq!(h.report().state, "after-run");
+}

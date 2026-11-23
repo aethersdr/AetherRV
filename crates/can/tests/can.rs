@@ -291,7 +291,7 @@ async fn vcan_own_echo_is_flagged() {
 /// A real bus end to end on vcan: run(), handlers, link_up, send through the gate.
 #[tokio::test]
 async fn vcan_canbus_end_to_end() {
-    let Some(i) = vcan(5) else { return eprintln!("vcan5 missing: skipped") };
+    let Some(i) = vcan(8) else { return eprintln!("vcan8 missing: skipped") };
     let a = CanBus::socketcan("a", &i, false, None);
     let b = CanBus::socketcan("b", &i, false, None);
     let got = Arc::new(Mutex::new(vec![]));

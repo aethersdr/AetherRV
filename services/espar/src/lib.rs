@@ -399,14 +399,15 @@ impl CommandHandler for Handler {
 }
 
 /// Keys this service reads from other services.
+use aetherrv_core::names::{BATTERIES, POWER_GUARD, VICTRON};
 pub const FOLLOW: &[(&str, &str)] = &[
-    ("victron", "climate.cabin_front.temp"),
-    ("victron", "victron.connected"),
-    ("victron", "victron.battery.soc"),
-    ("victron", "victron.battery.current"),
-    ("batteries-ble", "batteries.ble"),
-    ("batteries-ble", "batteries.ble.current"),
-    ("power-guard", "power.heat_lockout"),
+    (VICTRON, "climate.cabin_front.temp"),
+    (VICTRON, "victron.connected"),
+    (VICTRON, "victron.battery.soc"),
+    (VICTRON, "victron.battery.current"),
+    (BATTERIES, "batteries.ble"),
+    (BATTERIES, "batteries.ble.current"),
+    (POWER_GUARD, "power.heat_lockout"),
 ];
 
 /// Run the service until SIGTERM/SIGINT.
@@ -416,7 +417,7 @@ pub async fn run(cfg: Cfg, mut opts: Options) -> anyhow::Result<()> {
     let me = {
         // attach the bus client (the Arc is still unique here)
         let mut e = Arc::try_unwrap(me).map_err(|_| anyhow::anyhow!("espar: unexpected shared state"))?;
-        let mut bo = BusOptions::new("espar");
+        let mut bo = BusOptions::new(aetherrv_core::names::ESPAR);
         if let Some(s) = socket {
             bo = bo.socket(s);
         }

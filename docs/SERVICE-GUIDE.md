@@ -48,6 +48,6 @@ When you create a new crate directory, write `src/lib.rs` (even empty) **before*
 - `CARGO_TARGET_DIR=target/<you> cargo test -p aetherrv-<name>` (a private target dir avoids lock contention with
   parallel work). `cargo clippy -p aetherrv-<name> --all-targets` clean.
 - A private broker for tests: `aetherrv_core::testutil::Broker::start(false)` (feature `testutil` in
-  dev-dependencies). vcan interfaces vcan0–vcan7 exist on the workstation; ask the lead which one you may use.
+  dev-dependencies). vcan0–vcan15 exist on the workstation (`harness/dev-setup.sh`). Taken: vcan0–5 Espar process tests, vcan6–8 the CAN crate. Ask the lead before using one.
 - Regenerate `docs/TEST-PARITY.md` with `harness/test-parity.sh` after adding `/// py:` tags.
 - Never run anything against the van or a real device. Never `git commit` unless the lead asked you to.

@@ -17,6 +17,7 @@ pub mod cmdlog;
 pub mod command;
 pub mod config;
 pub mod logging;
+pub mod names;
 pub mod notify;
 pub mod num;
 pub mod pyfmt;

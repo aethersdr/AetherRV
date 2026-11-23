@@ -112,10 +112,14 @@ pub struct RunState {
 }
 
 impl RunState {
-    /// Everything but the liveness stamp (to tell a change from a heartbeat write).
+    /// The run itself is unchanged (the liveness stamp, the room value's time and the last bus contact change all
+    /// the time; the 1 s liveness write keeps them current enough).
     pub fn same_run(&self, o: &RunState) -> bool {
         let mut a = self.clone();
         a.alive = o.alive;
+        a.room_t = o.room_t;
+        a.last_contact = o.last_contact;
+        a.last_room = o.last_room;
         a == *o
     }
 }

@@ -401,7 +401,11 @@ impl Bus {
                     if let Event::Incoming(p) = event {
                         self.inner.last_contact.store(boot_ms(), Ordering::SeqCst);
                         match p {
-                            Packet::ConnAck(_) => self.on_connect().await,
+                            // the subscribe/publish requests go through a bounded queue this loop drains:
+                            // never await them here (a full queue at reconnect would deadlock)
+                            Packet::ConnAck(_) => {
+                                tokio::spawn(self.clone().on_connect());
+                            }
                             Packet::Publish(p) => self.on_publish(p),
                             _ => {}
                         }
@@ -420,7 +424,7 @@ impl Bus {
         }
     }
 
-    async fn on_connect(&self) {
+    async fn on_connect(self) {
         let n = self.inner.connects.fetch_add(1, Ordering::SeqCst) + 1;
         tracing::info!("bus: connected to {} (connect #{n})", self.inner.opts.socket.display());
         let c = &self.inner.client;
