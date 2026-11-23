@@ -561,6 +561,8 @@ function renderClimate() {
     "flame ramp-up": "flame ramp-up", burning: "burning", "control pause": "pause (at temperature)", "cool-down": "cool-down" };
   const espPhase = () => { const ph = D("phase")?.phase; return E("asleep") || ph == null ? null : ph in ESP_PHASE ? ESP_PHASE[ph] : `phase ${ph}`; };
   const fmtDur = sec => sec < 3600 ? `${Math.floor(sec / 60)} min` : `${Math.floor(sec / 3600)} h ${Math.floor(sec % 3600 / 60)} min`;
+  // Burner tiles stay in place when there's no live data; values show "—" (owner: keep the slots)
+  const tilesOrDash = (on, rows) => on ? rows : rows.map(([k, , sub, idleSub]) => [k, "—", idleSub ?? sub]);   // 4th = label when idle
   const heaters = [
     { id: "rixens", name: "Rixens MCS7", noSub: true,   // owner: no status line under the name
       sub: live ? `Hydronic · ${esc(R("heater_state") || "")}` : "Hydronic heat", state: rState,
@@ -571,14 +573,14 @@ function renderClimate() {
       kv: rState == null ? [] : live ? [
         ["Coolant", fluidPill(R)],               // battery, runtime, fuel today: Settings → MCS7
       ] : [["Coolant", R("coolant") == null ? "—" : fmtT(R("coolant"))], ["Fan speed", R("fan") ?? "—"]],
-      burner: live ? [
+      burner: rState == null ? [] : tilesOrDash(live, [
         ["Fan", R("fan_rpm") == null ? "—" : `${R("fan_rpm").toLocaleString()} rpm`, "Burner fan"],
         ["Glow", R("glow_w") == null ? "—" : `${Math.round(R("glow_w"))} W`, "Glow plug"],
         ["Fuel", R("fuel_gph") == null ? "—" : `${(+R("fuel_gph")).toFixed(3)} gal/h`, "Fuel flow"],
         ["Inlet", R("inlet_c") == null ? "—" : fmtT(R("inlet_c")), "Coolant in"],
         ["Outlet", R("outlet_c") == null ? "—" : fmtT(R("outlet_c")), "Coolant out"],
         ["Flame", R("flame_c") == null ? "—" : fmtT(R("flame_c")), "Flame sensor"],
-      ] : [],
+      ]),
       fault: R("fault_active") },
     { id: "espar", name: "Espar Airtronic S2", state: E("state"), buttons: [], chips: [], control: S["espar.controls_ok"] === true,
       noSub: true,                                // owner: no status line under the name (the tiles and controls say it)
@@ -595,15 +597,16 @@ function renderClimate() {
         E("cooldown_left_s") != null ? `${Math.floor(E("cooldown_left_s") / 60)}:${String(E("cooldown_left_s") % 60).padStart(2, "0")} left` : null,
       ].filter(Boolean).join(" · ") || "EasyStart Pro"}`,
       kv: [],    // owner: no big numbers (the intake temp is the Intake tile; battery, runtime, fuel: Settings → Espar)
-      burner: D("enabled") && !E("asleep") ? [
+      // tiles always shown; "—" while the heater's bus is asleep / not read (the last values would be stale)
+      burner: E("state") == null ? [] : tilesOrDash(D("enabled") && !E("asleep"), [
         ["Fan", D("blower") == null ? "—" : `${Math.round(D("blower") / 45.59)} %`, "Blower drive"],
         ["Glow", D("glow_w") == null ? "—" : `${Math.round(D("glow_w"))} W`, "Glow plug"],
         ["Fuel", D("fuel")?.rate_ul_s == null ? "—" : `${(D("fuel").rate_ul_s * 3600 / 1e6 / 3.785).toFixed(3)} gal/h`,
-          D("pump_hz") == null ? "Fuel pump" : `pump ${num(D("pump_hz"), 1)} Hz`],
+          D("pump_hz") == null ? "Fuel pump" : `pump ${num(D("pump_hz"), 1)} Hz`, "Fuel pump"],
         ["Power", D("power_pct") == null ? "—" : `${Math.round(D("power_pct"))} %`, "Demand"],
         ["Intake", D("temps")?.intake_c == null ? "—" : fmtT(D("temps").intake_c), "Air in"],
-        ["Flame", D("temps")?.flame_c == null ? "—" : fmtT(D("temps").flame_c), D("flame")?.flame ? "Flame on" : "Flame sensor"],
-      ] : [],
+        ["Flame", D("temps")?.flame_c == null ? "—" : fmtT(D("temps").flame_c), D("flame")?.flame ? "Flame on" : "Flame sensor", "Flame sensor"],
+      ]),
       note: null,                                 // fault memory, hours, software: Settings → Espar (owner: less text here)
       fault: D("lockout") ? `${D("lockout").code} · locked out: ${D("lockout").why}. ${D("lockout").help}`
         : C("problem") ? `Control: ${C("problem")}` : E("issue") ? `Not heating: ${E("issue")}`
