@@ -729,7 +729,7 @@ function nudgeSetpoint(d) {
   spPending = UNIT === "F" ? F2C(next) : next;
   render();
   clearTimeout(spTimer);   // debounce taps; send one absolute value
-  spTimer = setTimeout(() => control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`), 1500);
+  spTimer = setTimeout(() => { if (!spRefusedForEspar(spPending)) control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`); }, 1500);
 }
 // Drag the setpoint knob around the cabin dial. Snaps to whole degrees (display unit), clamps to the
 // dial's range, and sends ONE absolute setpoint when the finger lifts (same path as the ± buttons).
@@ -766,7 +766,7 @@ const endDrag = ev => {
   spDragging = false;
   const next = spDisplay(), cur = S["climate.cabin.setpoint"];
   if (spPending != null && (cur == null || Math.round(tC(cur)) !== next)) {
-    control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`);
+    if (!spRefusedForEspar(spPending)) control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`);
   } else { spPending = null; }
   renderClimate();
 };
@@ -833,12 +833,31 @@ let espRun = (v => v === "inf" ? null : ESP_RUNS.includes(+v) ? +v : null)(store
 // One cabin setpoint for both heaters: the Climate dial (the MCS7's setpoint) also drives the Espar, clamped to the
 // Espar's accepted 10-30 °C. Falls back to the Espar's own last setpoint when the MCS7 isn't reporting.
 const ESP_SP_RANGE = [10, 30];
-const espClamp = c => Math.max(ESP_SP_RANGE[0], Math.min(ESP_SP_RANGE[1], Math.round(c * 10) / 10));
-const espSet = () => espClamp(spPending ?? S["climate.cabin.setpoint"] ?? S["climate.espar.ctl.setpoint_c"] ?? 21);
+// Outside that range nothing is clamped: the action is refused with an error toast and no setpoint changes.
+const espSet = () => Math.round((spPending ?? S["climate.cabin.setpoint"] ?? S["climate.espar.ctl.setpoint_c"] ?? 21) * 10) / 10;
+const espInRange = c => c >= ESP_SP_RANGE[0] - 0.05 && c <= ESP_SP_RANGE[1] + 0.05;
+const espHeating = () => !!(S["climate.espar.ctl.active"] && S["climate.espar.ctl.mode"] === "heat");
+const espRangeMsg = c => `${fmtT(c)} is outside the Espar's ${fmtT(ESP_SP_RANGE[0])}–${fmtT(ESP_SP_RANGE[1])} range`;
+// A setpoint change the heating Espar couldn't follow: refuse it (toast), keep both heaters where they are.
+function spRefusedForEspar(c) {
+  if (!espHeating() || espInRange(c)) return false;
+  toast(`Setpoint not changed: ${espRangeMsg(c)} (the Espar is heating)`, "bad");
+  spPending = null; render();
+  return true;
+}
+// Start the Espar heating at the shared setpoint, or refuse with a toast when it's out of the Espar's range.
+function espStartHeat() {
+  const sp = espSet();
+  if (!espInRange(sp)) { toast(`Espar not started: ${espRangeMsg(sp)}. Raise the setpoint first.`, "bad"); return; }
+  askConfirm(`Start the Espar heating to ${fmtT(sp)}?`,
+    `Run time: ${espRun == null ? "until you turn it off" : espRunLabel(espRun)}. The heater runs its own 4-minute cool-down after heating.`,
+    () => espSend("heat", `Espar heat ${fmtT(sp)}`, sp));
+}
 // After the shared setpoint is set on the MCS7, a heating Espar follows it (one more logged, verified command).
 function espFollowSetpoint(c) {
-  if (!(S["climate.espar.ctl.active"] && S["climate.espar.ctl.mode"] === "heat") || !canControlDev("espar")) return;
-  const sp = espClamp(c);
+  if (!espHeating() || !canControlDev("espar")) return;
+  const sp = Math.round(c * 10) / 10;
+  if (!espInRange(sp)) return;
   if (Math.abs(sp - (S["climate.espar.ctl.setpoint_c"] ?? -99)) < 0.05) return;
   setTimeout(() => espSend("heat", `Espar set ${fmtT(sp)}`, sp), 0);
 }
@@ -862,14 +881,16 @@ $("#heaters").addEventListener("click", e => {
   const k = b.dataset.esp, active = S["climate.espar.ctl.active"], mode = active ? S["climate.espar.ctl.mode"] : "off";
   if (k === "off") { espSend("off", "Espar off"); return; }
   if (k === "heat" || k === "fan") {
-    askConfirm(k === "heat" ? `Start the Espar heating to ${fmtT(espSet())}?` : "Run the Espar fan only?",
+    if (k === "heat") { espStartHeat(); return; }
+    askConfirm("Run the Espar fan only?",
       `Run time: ${espRun == null ? "until you turn it off" : espRunLabel(espRun)}. The heater runs its own 4-minute cool-down after heating.`,
-      () => espSend(k, k === "heat" ? `Espar heat ${fmtT(espSet())}` : "Espar fan"));
+      () => espSend(k, "Espar fan"));
     return;
   }
   if (k === "run") {
     espRun = ESP_RUNS[(ESP_RUNS.indexOf(espRun) + 1) % ESP_RUNS.length]; store.set("vp.espar.run", espRun ?? "inf"); render();
-    if (mode === "heat" || mode === "fan") { clearTimeout(espSpTimer); espSpTimer = setTimeout(() => espSend(mode, `Espar run time ${espRunLabel(espRun)}`), 1500); }
+    if (mode === "heat" || mode === "fan") { clearTimeout(espSpTimer); espSpTimer = setTimeout(() => espSend(mode, `Espar run time ${espRunLabel(espRun)}`,
+      S["climate.espar.ctl.setpoint_c"] ?? espSet()), 1500); }   // a run-time change keeps the setpoint it's running at
   }
 });
 $("#heaters").addEventListener("click", e => {
@@ -2741,8 +2762,7 @@ $("#heat-quick").addEventListener("click", e => {
   const k = b.dataset.hq;
   if (k === "espar") {                          // tap: heat at the last setpoint and run time, or off
     if (b.classList.contains("on")) { espSend("off", "Espar off"); return; }
-    askConfirm(`Start the Espar heating to ${fmtT(espSet())}?`, `Run time: ${espRun == null ? "until you turn it off" : espRunLabel(espRun)}.`,
-      () => espSend("heat", `Espar heat ${fmtT(espSet())}`));
+    espStartHeat();
     return;
   }
   if (!HQ_CTL.has(k)) return;
