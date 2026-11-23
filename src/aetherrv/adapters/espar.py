@@ -85,6 +85,10 @@ def _decode(i: int, d: bytes) -> tuple[str, str]:
         return ("EasyStart Pro settings", "")
     if i == 0x10A:
         return ("Clock", d.hex(" "))
+    if i == 0x7A0:
+        return ("Diagnostic request", "flow control" if d[:1] == b"\x30" else d.hex(" "))
+    if i == 0x73C:
+        return ("Diagnostic reply", d.hex(" "))
     return ("", "")
 
 

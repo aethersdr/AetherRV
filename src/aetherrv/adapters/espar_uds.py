@@ -86,7 +86,7 @@ DIDS = {
     0xFD58: ("variant", lambda d: d.decode("ascii", "replace").strip("\x00 ")),
 }
 LIVE_DIDS = [0xFD10, 0xFD04, 0xFD08, 0xFD0A, 0xFD0D, 0xFD0E, 0xFD0F, 0xFD01, 0xFD45, 0xFD11, 0xFD2A]
-ONCE_DIDS = [0xF195, 0xF193, 0xFD58, 0xFD17, 0xFD06]
+ONCE_DIDS = [0xF195, 0xF193, 0xFD17, 0xFD06]          # (FD58 variant: 'out of range' on the S2 D2L)
 
 
 def request(service: int, *args: int) -> bytes:

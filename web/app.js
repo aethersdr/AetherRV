@@ -554,6 +554,11 @@ function renderClimate() {
   const avail = R("available") || {};
   const srcs = R("sources") || [];
   const E = k => S[`climate.espar.${k}`];
+  const D = k => S[`climate.espar.diag.${k}`];
+  // combustion phase from the diagnostic reads (FD10); S2 codes not in the S3 table show as hex until named
+  const ESP_PHASE = { off: null, ventilation: "ventilation", startup: "starting", "pre-glow": "pre-glow", ignition: "ignition",
+    "flame ramp-up": "flame ramp-up", burning: "burning", "control pause": "pause (at temperature)", "cool-down": "cool-down" };
+  const espPhase = () => { const ph = D("phase")?.phase; return E("asleep") || ph == null ? null : ph in ESP_PHASE ? ESP_PHASE[ph] : `phase ${ph}`; };
   const fmtDur = sec => sec < 3600 ? `${Math.floor(sec / 60)} min` : `${Math.floor(sec / 3600)} h ${Math.floor(sec % 3600 / 60)} min`;
   const heaters = [
     { id: "rixens", name: "Rixens MCS7", sub: live ? `Hydronic · ${esc(R("heater_state") || "")}` : "Hydronic heat", state: rState,
@@ -576,16 +581,31 @@ function renderClimate() {
         ["Flame", R("flame_c") == null ? "—" : fmtT(R("flame_c")), "Flame sensor"],
       ] : [],
       fault: R("fault_active") },
-    { id: "espar", name: "Espar Airtronic S2", sub: `D2L forced-air · EasyStart Pro${E("asleep") ? " · bus asleep" : ""}`,
-      state: E("state"), buttons: [], chips: [],
-      // read-only decode of the heater's own CAN bus (adapters/espar.py); control stays with the EasyStart Pro
+    { id: "espar", name: "Espar Airtronic S2", state: E("state"), buttons: [], chips: [],
+      // read-only: the heater's own CAN bus (adapters/espar.py) + UDS diagnostic reads (espar_uds.py)
+      sub: `D2L forced-air · ${E("asleep") ? "bus asleep" : [
+        E("mode") === "heat" && E("setpoint_c") != null ? `set ${fmtT(E("setpoint_c"))}` : E("mode") === "fan" ? "fan only" : null,
+        E("room_c") != null ? `room ${fmtT(E("room_c"))}` : null,
+        espPhase(), E("run_s") != null ? fmtDur(E("run_s")) : null,
+        E("cooldown_left_s") != null ? `${Math.floor(E("cooldown_left_s") / 60)}:${String(E("cooldown_left_s") % 60).padStart(2, "0")} left` : null,
+      ].filter(Boolean).join(" · ") || "EasyStart Pro"}`,
       kv: E("state") == null ? [] : [
-        ["Mode", E("asleep") ? "off" : { heat: "Heat", fan: "Fan only", off: "Off" }[E("mode")] || "—"],
-        ["Set", E("setpoint_c") == null ? "—" : fmtT(E("setpoint_c"))],
-        ["Room (panel)", E("room_c") == null ? "—" : fmtT(E("room_c"))],
-        E("cooldown_left_s") != null ? ["Cool-down", `${Math.floor(E("cooldown_left_s") / 60)}:${String(E("cooldown_left_s") % 60).padStart(2, "0")} left`]
-          : E("run_s") != null ? ["Running", fmtDur(E("run_s"))] : ["Heater", E("heater_c") == null ? "—" : fmtT(E("heater_c"))],
+        ["Heater", E("heater_c") != null ? fmtT(E("heater_c")) : D("temps")?.intake_c != null ? fmtT(D("temps").intake_c) : "—"],
+        ["Battery", D("voltage_v") == null ? "—" : `${num(D("voltage_v"), 1)} V`],
+        ["Runtime", D("operating_min") == null ? "—" : `${Math.round(D("operating_min") / 60).toLocaleString()} h`],
+        ["Fuel total", D("fuel")?.total_l == null ? "—" : `${(D("fuel").total_l / 3.785).toFixed(1)} gal`],
       ],
+      burner: D("enabled") && !E("asleep") ? [
+        ["Fan", D("blower") == null ? "—" : `${Math.round(D("blower") / 45.59)} %`, "Blower drive"],
+        ["Glow", D("glow_w") == null ? "—" : `${Math.round(D("glow_w"))} W`, "Glow plug"],
+        ["Fuel", D("fuel")?.rate_ul_s == null ? "—" : `${(D("fuel").rate_ul_s * 3600 / 1e6 / 3.785).toFixed(3)} gal/h`,
+          D("pump_hz") == null ? "Fuel pump" : `pump ${num(D("pump_hz"), 1)} Hz`],
+        ["Power", D("power_pct") == null ? "—" : `${Math.round(D("power_pct"))} %`, "Demand"],
+        ["Intake", D("temps")?.intake_c == null ? "—" : fmtT(D("temps").intake_c), "Air in"],
+        ["Flame", D("temps")?.flame_c == null ? "—" : fmtT(D("temps").flame_c), D("flame")?.flame ? "Flame on" : "Flame sensor"],
+      ] : [],
+      note: (D("dtcs") || []).length ? `Fault memory: ${D("dtcs").map(x => `${x.code}${x.active ? " (active)" : ""}`).join(", ")}`
+        + ` · ${D("dtcs").map(x => x.text).join("; ")}` : null,
       fault: E("fault") ? `${E("fault")} · ${E("fault_text")}` : null },
   ];
   $("#cold").innerHTML = `<div class="card-h"><h2>Refrigeration</h2><span class="muted">Ruuvi tags</span></div><div class="cold-row">` +
@@ -608,7 +628,8 @@ function renderClimate() {
         ${h.buttons.length ? `<div class="src-btns">${h.buttons.map(b => `<button class="src-btn ${b.on ? "sel" : ""} st-${b.st || "off"}" data-src="${b.k}" ${canControl() && !ctlPending ? "" : "disabled"}>
             ${icon(b.k === "furnace" ? "flame" : b.k === "electric" ? "plug" : "engine")}<span>${b.k[0].toUpperCase() + b.k.slice(1)}</span><small>${b.on ? (b.st === "active" ? "active" : "on · " + (b.st || "")) : "off"}</small></button>`).join("")}</div>` : ""}
         ${h.chips.length ? `<div class="chips-row">${h.chips.map(([k, on]) => `<span class="src ${on ? "on" : ""}">${k}${on ? " on" : ""}</span>`).join("")}</div>` : ""}
-        ${h.fault ? `<div class="warn-t fault-line">${icon("alert")}Fault code ${esc(h.fault)}</div>` : ""}</div>
+        ${h.fault ? `<div class="warn-t fault-line">${icon("alert")}Fault code ${esc(h.fault)}</div>` : ""}
+        ${h.note ? `<div class="muted note-line">${esc(h.note)}</div>` : ""}</div>
       <span class="ro pill">${icon(h.buttons.length && canControl() ? "check" : "lock")}${h.buttons.length && canControl() ? "control" : "read-only"}</span></div>`;
   }).join("");
 }

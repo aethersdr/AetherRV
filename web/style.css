@@ -1211,3 +1211,5 @@ html.night .t-cold { color: var(--c-batt); }
 .climate-mini .temp-side { gap: 14px; }
 .climate-mini .temp-side small { margin-top: -2px; }
 .climate-mini .coolant-therm { margin-left: 0; }
+
+.heater .note-line { margin-top: 10px; font-size: 13px; line-height: 1.35; }   /* e.g. the Espar's stored fault codes */
