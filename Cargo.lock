@@ -39,6 +39,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-espar"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-can",
+ "aetherrv-core",
+ "aetherrv-power",
+ "anyhow",
+ "proto-espar",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "aetherrv-power"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -463,11 +490,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "proto-mcs7"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "proto-n2k"
 version = "0.1.0"
 dependencies = [
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "proto-nmea"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "proto-roypow"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

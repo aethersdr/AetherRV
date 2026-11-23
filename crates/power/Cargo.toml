@@ -1,0 +1,18 @@
+[package]
+name = "aetherrv-power"
+description = "House-bank SoC, charging and the heat-lockout tracker (lowbatt.py's rules), shared by the guard and the heaters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aetherrv-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

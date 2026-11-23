@@ -1,0 +1,28 @@
+[package]
+name = "aetherrv-espar"
+description = "AetherRV Espar heater service: the heater's controller on hat1"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-espar"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+aetherrv-can.workspace = true
+aetherrv-power.workspace = true
+proto-espar.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true
