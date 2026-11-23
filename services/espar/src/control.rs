@@ -405,8 +405,9 @@ impl Control {
             self.logc(cmd, v, "rejected", "heat locked out: house battery low", client);
             return Begin::Done(Reply::refused("Heat is locked out: the house battery is too low. Charge first."));
         }
+        // Python: v.get("setpoint_c", self.setpoint_c) → float(); a key present with null is "bad setpoint"
         let sp = match v.get("setpoint_c") {
-            None | Some(Value::Null) => Some(self.setpoint_c),
+            None => Some(self.setpoint_c),
             Some(Value::Number(n)) => n.as_f64(),
             Some(Value::String(s)) => s.trim().parse::<f64>().ok(),
             _ => None,

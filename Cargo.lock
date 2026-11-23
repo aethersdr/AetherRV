@@ -45,7 +45,9 @@ dependencies = [
  "aetherrv-can",
  "aetherrv-core",
  "aetherrv-power",
+ "aetherrv-sim",
  "anyhow",
+ "libc",
  "proto-espar",
  "serde",
  "serde_json",
@@ -63,6 +65,31 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
+]
+
+[[package]]
+name = "aetherrv-sim"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-can",
+ "aetherrv-core",
+ "anyhow",
+ "proto-espar",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "aetherrv-sim-espar"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-core",
+ "aetherrv-sim",
+ "anyhow",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

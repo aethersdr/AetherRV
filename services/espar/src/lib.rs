@@ -88,6 +88,11 @@ impl Options {
     }
 }
 
+/// A handler panic caught by the CAN reader must not leave the control loop dead on a poisoned lock.
+fn lock_core(m: &Mutex<Core>) -> std::sync::MutexGuard<'_, Core> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn frame_of(f: &CanFrame) -> Frame {
     Frame { id: f.id, data: f.data.clone(), extended: f.extended, remote: f.remote, error: f.error }
 }
@@ -136,7 +141,7 @@ impl Espar {
             let Some(me) = me.upgrade() else { return };
             let now = boottime_s();
             let ev = {
-                let mut c = me.core.lock().unwrap();
+                let mut c = lock_core(&me.core);
                 let ev = c.dec.on_frame(&frame_of(f), now);
                 if ev == Event::OtherController {
                     c.ctl.on_other_controller();
@@ -154,7 +159,7 @@ impl Espar {
             return;
         }
         let r = self.can.send(DIAG, &CanFrame::std(proto_espar::uds::REQ_ID, data), &self.gate, true);
-        let mut c = self.core.lock().unwrap();
+        let mut c = lock_core(&self.core);
         match r {
             Ok(()) => c.dec.note_sent(),
             Err(e) => c.dec.note_send_error(what, &e.to_string()), // report, never retry
@@ -171,7 +176,7 @@ impl Espar {
         let own = self.lockout.lock().unwrap().lockout;
         let guard = view.is_true("power.heat_lockout") && view.age("power.heat_lockout").is_some_and(|a| a < GUARD_FRESH_S);
         let contact = {
-            let mut c = self.core.lock().unwrap();
+            let mut c = lock_core(&self.core);
             if let Some(b) = self.bus.as_ref().and_then(|b| b.last_contact_boottime()) {
                 c.ctl.last_contact = Some(c.ctl.last_contact.map_or(b, |x| x.max(b)));
             }
@@ -191,7 +196,7 @@ impl Espar {
     pub fn control_tick(&self, view: &dyn StateView) {
         let now = boottime_s();
         let inp = self.inputs(view, now);
-        let mut c = self.core.lock().unwrap();
+        let mut c = lock_core(&self.core);
         let Core { ctl, dec } = &mut *c;
         ctl.step(now, dec, &inp, &mut CanSink { can: &self.can, gate: &self.gate });
         let reset = std::mem::take(&mut ctl.reset_requested);
@@ -253,17 +258,21 @@ impl Espar {
         loop {
             tokio::time::sleep(Duration::from_millis(50)).await;
             let now = boottime_s();
-            let heard = self.core.lock().unwrap().dec.st.is_some();
+            let heard = lock_core(&self.core).dec.st.is_some();
             if (heard && now - t0 >= 0.3) || now - t0 >= listen_s {
                 break;
             }
         }
         let now = boottime_s();
-        let mut c = self.core.lock().unwrap();
+        let mut c = lock_core(&self.core);
         let Core { ctl, dec } = &mut *c;
         match ctl.resume_check(&saved, &self.boot, dec, now) {
             Ok(()) => {
                 ctl.resume(&saved, dec, now);
+                let rs = ctl.run_state(&self.boot, now);
+                drop(c);
+                *self.last_written.lock().unwrap() = None;
+                self.persist(rs); // the resume count must survive an immediate crash
                 tracing::warn!("espar: resumed the {} run after a {:.1} s gap", saved.target.as_deref().unwrap_or(&saved.mode), now - saved.alive);
                 true
             }
@@ -278,7 +287,7 @@ impl Espar {
     /// Diagnostics schedule (50 ms).
     pub fn diag_tick(&self) {
         let en = self.gate.is_enabled(DIAG);
-        let req = self.core.lock().unwrap().dec.diag_due(boottime_s(), en);
+        let req = lock_core(&self.core).dec.diag_due(boottime_s(), en);
         if let Some(r) = req {
             self.send_diag(&r, "read");
         }
@@ -289,7 +298,7 @@ impl Espar {
         let now = boottime_s();
         let wall = now_s();
         let en = self.gate.is_enabled(DIAG);
-        let c = self.core.lock().unwrap();
+        let c = lock_core(&self.core);
         let mut keys = c.dec.snapshot(now);
         for (k, v) in keys.iter_mut() {
             if k == "climate.espar.last_seen"
@@ -322,7 +331,7 @@ impl Espar {
         let guard_locked = guard_fresh && view.is_true("power.heat_lockout");
         self.state.set("climate.espar.lockout", json!(own || guard_locked));
         let heating = {
-            let c = self.core.lock().unwrap();
+            let c = lock_core(&self.core);
             c.ctl.active && (c.ctl.mode == "heat" || c.ctl.target.as_deref() == Some("heat"))
         };
         if own && !guard_fresh && heating {
@@ -344,7 +353,7 @@ impl Espar {
         let inp = self.inputs(&*view, now);
         let gate_ok = cmd != "set" || self.gate.check(DEVICE, &control::request_text(&value), false).is_ok();
         let begin = {
-            let mut c = self.core.lock().unwrap();
+            let mut c = lock_core(&self.core);
             let Core { ctl, dec } = &mut *c;
             ctl.begin(&cmd, &value, &client, now, dec, &inp, gate_ok)
         };
@@ -354,7 +363,7 @@ impl Espar {
         };
         loop {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            let mut c = self.core.lock().unwrap();
+            let mut c = lock_core(&self.core);
             let Core { ctl, dec } = &mut *c;
             if let Some(r) = ctl.check(&p, dec, boottime_s()) {
                 return r;
@@ -366,7 +375,7 @@ impl Espar {
     pub fn suspend(&self) {
         let now = boottime_s();
         let rs = {
-            let mut c = self.core.lock().unwrap();
+            let mut c = lock_core(&self.core);
             c.ctl.suspended = true;
             c.ctl.run_state(&self.boot, now)
         };
@@ -415,16 +424,18 @@ pub async fn run(cfg: Cfg, mut opts: Options) -> anyhow::Result<()> {
     for (owner, key) in FOLLOW {
         bus.subscribe_state(owner, key).await;
     }
-    bus.serve(DEVICE, Arc::new(Handler(me.clone())), Some(me.core.lock().unwrap().ctl.log.clone())).await;
-
-    // resume before the first frame goes out
+    // Resume before the first frame goes out, and before any command is acted on: a command that arrives during
+    // the listen window waits for the decision (its TTL was checked on arrival).
+    let held = me.cmd_lock.lock().await;
+    bus.serve(DEVICE, Arc::new(Handler(me.clone())), Some(lock_core(&me.core).ctl.log.clone())).await;
     let listen = cfg.at("device.espar").f64("resume_listen_s", 1.0);
     me.try_resume(listen).await;
+    drop(held);
 
     aetherrv_core::notify::ready();
     let wd = aetherrv_core::notify::watchdog_interval();
     // the 100 ms control loop: feeds the watchdog itself, so a stalled loop is restarted (and then resumes)
-    {
+    let control_task = {
         let me = me.clone();
         tokio::spawn(async move {
             let view = me.remote_view();
@@ -437,8 +448,8 @@ pub async fn run(cfg: Cfg, mut opts: Options) -> anyhow::Result<()> {
                     aetherrv_core::notify::kick();
                 }
             }
-        });
-    }
+        })
+    };
     {
         let me = me.clone();
         tokio::spawn(async move {
@@ -490,6 +501,12 @@ pub async fn run(cfg: Cfg, mut opts: Options) -> anyhow::Result<()> {
     tokio::select! {
         _ = term.recv() => {},
         _ = tokio::signal::ctrl_c() => {},
+        r = control_task => {
+            // never expected: exit so systemd restarts us (and the next process resumes the run)
+            tracing::error!("espar: the control loop ended ({r:?}); exiting without sending OFF");
+            me.suspend();
+            std::process::exit(70);
+        }
     }
     aetherrv_core::notify::stopping();
     me.suspend();

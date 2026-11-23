@@ -22,7 +22,9 @@ anyhow.workspace = true
 
 [dev-dependencies]
 aetherrv-core = { workspace = true, features = ["testutil"] }
+aetherrv-sim.workspace = true
 tempfile.workspace = true
+libc.workspace = true
 
 [lints]
 workspace = true
