@@ -274,6 +274,10 @@ async def amain(cfg: dict) -> None:
                                                         float(cfg.get("capture_max_gb", 20))), name="prune"))
     tasks.append(asyncio.create_task(publish_bus_stats(buses, gate, state), name="stats"))
     tasks.append(asyncio.create_task(run_derive(state), name="energy"))
+    pcfg = cfg.get("power", {})
+    if pcfg.get("auto_shutdown"):                   # clean power-off before the house bank runs out
+        from .lowbatt import LowBatteryShutdown
+        tasks.append(asyncio.create_task(LowBatteryShutdown(state, admin, pcfg).run(), name="low-battery"))
     if cfg.get("climate", {}).get("cabin_source") == "average":
         tasks.append(asyncio.create_task(run_cabin_average(state), name="cabin-average"))
     try:

@@ -208,3 +208,11 @@ starlink_offline_s = 180  # how long the dish may be offline/obstructed before a
 [device.demo]
 kind = "demo"
 enabled = false
+
+# Clean power-off before the house battery runs out (src/aetherrv/lowbatt.py). SoC from the Victron shunt, else the
+# Bluetooth batteries. Charging cancels it. A Pi 5 stays off until power is cycled or its button is pressed.
+[power]
+auto_shutdown = false
+warn_soc = 8.0
+shutdown_soc = 5.0
+hold_s = 120

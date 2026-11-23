@@ -765,3 +765,13 @@ and no trip was reported (127500 status 0x01 → 0x09); it stayed off until swit
 (13.5 A with the dish heater), far below the 25 A rating and every trip curve. No public reports of this were
 found. **Resolution:** the Starlink runs from the fuse block; a relay or SSR driven by ch15 (VS 8) is planned so
 the tile can switch it again without the CLMD16 carrying the converter's load.
+
+## 48. Clean shutdown on a nearly empty house bank (2026-11-23, owner)
+
+Considered a UPS HAT (Waveshare UPS Module Mini) and decided against it: 5 V 2.5 A is below the Pi 5's 5 A, the
+cells are tiny and dislike a hot van, and the Pi already runs from a 1840 Ah bank. Instead `lowbatt.py`
+(`[power] auto_shutdown`) powers the Pi off through the root helper when the bank's SoC (Victron shunt, else the
+Bluetooth batteries' mean) stays ≤ 5 % for 2 minutes while not charging; a serious alert from 8 % and a
+critical countdown alert before it happens. Charging or recovery cancels it; no SoC never triggers it. The Pi 5
+then stays off until power is cycled (e.g. the BMS cuts and restores it) or its button is pressed.
+

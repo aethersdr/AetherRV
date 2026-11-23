@@ -58,6 +58,17 @@ def _num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
+def r_power_shutdown(s: State, c: dict):
+    p = s.get("power.shutdown") or {}
+    if p.get("in_s") is not None:
+        yield Finding("power.shutdown", "critical", f"Console shutting down in {p['in_s']} s",
+                      f"House battery at {p['soc']:.0f}% and not charging. AetherRV powers the Pi off cleanly at "
+                      f"{p['shutdown_soc']:.0f}% before the BMS cuts power. Start charging to cancel.", "victron")
+    elif p.get("warning"):
+        yield Finding("power.shutdown", "serious", f"Console will shut down at {p['shutdown_soc']:.0f}%",
+                      f"House battery at {p['soc']:.0f}% and not charging.", "victron")
+
+
 def r_battery(s: State, c: dict):
     soc = _num(s.get("victron.battery.soc"))
     if soc is not None:
@@ -318,6 +329,7 @@ def default_rules(cfg: dict | None = None) -> list[Rule]:
 def default_rules_base() -> list[Rule]:
     return [
         Rule("battery", r_battery, for_s=30, clear_s=60),
+        Rule("power_shutdown", r_power_shutdown, for_s=0, clear_s=30),
         Rule("cold", r_cold, for_s=600, clear_s=120),    # 10 min: ride through door openings
         Rule("n2k", r_n2k_devices, for_s=0, clear_s=10),  # the 90 s offline threshold is already a debounce
         Rule("buses", r_buses, for_s=10, clear_s=10),
