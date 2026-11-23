@@ -1,6 +1,27 @@
-# VanPanel — the Pi as Sprinter central console
+# AetherRV — the Pi as Sprinter central console (build log)
 
-Status: **planning draft, 2026-11-20.** Nothing has been installed or configured on the Pi yet.
+Status: **in service in the van, 2026-11-23.** Sections 1–40 are the original log, kept as written (several
+early decisions were later reversed; the newer section says so). Section 41 onward covers 2026-11-22/23. For
+building one from scratch, see [`docs/BUILD-GUIDE.md`](docs/BUILD-GUIDE.md).
+
+## 0. The working system (2026-11-23)
+
+| Area | Device | Path | AetherRV does |
+|---|---|---|---|
+| Console | Raspberry Pi 5 16 GB, NVMe, Arch Linux ARM (custom 7.3.5 kernel), Waveshare 10.1" HDMI LCD (H) | sway + Chromium kiosk on the touchscreen; web UI for the LANs and the tailnet | Everything below |
+| Power | Victron Cerbo GX, MultiPlus 12/3000, SmartSolar MPPT 100/50, Lynx Shunt, Wakespeed WS500 | MQTT (Cerbo); WS500 via NMEA 2000 | Read; MultiPlus mode, shore limit, MPPT on/off |
+| Batteries | 4 × EPOCH 460 Ah (RoyPow BMS) | Bluetooth LE, 1 Hz persistent links | Read; per-battery alerts (cold, cells, faults) |
+| Sensors | 4 Ruuvi tags (cabin, outside, fridge, freezer) | Via the Cerbo | Read |
+| Hydronic heat | Rixens MCS7 | Local HTTP API | Read; setpoint, fan, furnace/electric/engine, cabin heat (thermostat), hot water, engine pre-heat |
+| Air heat | Espar Airtronic S2 D2L | Its own CAN bus on `hat1`, 500 kbit/s | **Is the controller** (the EasyStart Pro is unplugged); read-only UDS diagnostics |
+| Switching | Carling/Maretron CLMD16 + 2 × CKM12 keypads | NMEA 2000 on `hat0`, Cerbo socketcand as automatic backup | Read; presses one CLMD16 virtual switch per channel. All logic lives in the CLMD16 |
+| Internet | Starlink (on its own fused feed), Peplink MAX BR1 Pro 5G | Starlink gRPC; Peplink router API | Read; Starlink heating, sleep, updates, reboot; Peplink WAN priority |
+| Position | Peplink GPS | NMEA 0183 over UDP | Read; time zone, weather, map |
+| Weather | LibreWXR radar, Open-Meteo, TomTom traffic | Internet | Radar loop (recorded + forecast), traffic, 7-day forecast |
+
+**CAN ports:** `hat0` NMEA 2000 (250k, transmitting), `hat1` Espar (500k, transmitting), `fd0`/`fd1` spare
+(listen-only). **Safety model** unchanged: TxGate deny-by-default per device; fresh read → send once → verify →
+never retry → log; the devices keep their own interlocks and fail-safes.
 
 ## 1. Current state of the Pi (surveyed 2026-11-20)
 
@@ -523,6 +544,9 @@ Sections 1–31 use the old names. Mapping:
 
 ## 39. CLMD16 switching: baseline, firmware 1.0.7.1, and the logic moved into AetherRV (2026-11-21)
 
+> **Superseded 2026-11-22 (§42):** the logic went back into the CLMD16. AetherRV no longer relays keypads or
+> switches anything by itself; it only presses CLMD16 virtual switches.
+
 **Baseline on fw 1.0.3.66.** The owner toggled each channel from N2KAnalyzer (via the IPG100) and from the keypads while the bus was recorded. The baseline folder on the Pi holds the raw logs, one file per step, and CHANNEL-MAP.md.
 
 *Commands*
@@ -641,3 +665,103 @@ Sections 1–31 use the old names. Mapping:
   - **Updates:** "Check for updates" sends the `update` request WITHOUT schedule_reboot and watches software_update_state for 30 s. "Install update" (REBOOT_REQUIRED only) and "Reboot dish" are verified by an uptime reset or the dish going offline. All via TxGate, one send, never retried.
   - **Power graph:** `starlink.power_w`, the last-minute average of the dish history `power_in` (1 Hz, 900 s ring), recorded each minute.
   - **Events & outages:** the newest 50 from history `event_log` (~10 h kept by the dish; device ids not copied).
+
+## 41. NMEA 2000 on the Pi's own CAN port, the Cerbo as backup (2026-11-22, owner-approved)
+
+- **Wiring:** a cut N2K drop cable on CAN HAT+ port 0 (`hat0`): white → H, blue → L, black → G; red (+12 V) and
+  the drain not connected; the HAT's 120 Ω off (the backbone is terminated). `30-hat0.network` has
+  `ListenOnly=no` at 250k.
+- **FailoverBus** (`canbus.py`): `[device.n2k] bus = "hat0"`, `backup_bus = "n2k_cerbo"` (the Cerbo's
+  socketcand). It reads and sends on hat0, fails over after 2 s of silence or a failed send, and comes back
+  after 30 s steady. A path-backup alert shows while it runs on the Cerbo.
+- **MCP2515 has no one-shot mode:** an un-ACKed frame is retried forever and floods the bus. AetherRV expects
+  its own TX echo within 250 ms; if it doesn't come, it resets the port through the root helper (`can_reset`).
+- `hat1`, `fd0` and `fd1` stayed listen-only until the Espar work (§43).
+
+## 42. CLMD16: dual control, logic back in the load controller (2026-11-22)
+
+- **Owner decision:** the keypads must not depend on the Pi. AetherRV's keypad relay, the reverse-light follow
+  and the ignition auto-off were removed. **AetherRV switches nothing by itself.**
+- **How AetherRV switches now:** CLMD16 Virtual Switch N (bank 33) mirrors CKM12 button N, and the CLMD16's own
+  logic (OR, toggles, timers, counters) drives each breaker. A tile press pulses VSW N (ON, short hold, OFF) and
+  verifies the channel via 127501. It never sets a breaker directly, with one owner-approved exception: OFF to a
+  **tripped** channel sends one direct breaker OFF to clear the trip.
+- **Dimming:** ch12 dims through a CLMD16 counter (hold to dim). Kiosk dimmer tiles hold the VSW while the finger
+  is down (`hold` command, released on lift, capped at 8 s).
+- **Element numbering (owner):** Logic N always feeds breaker N; extra elements are N+16, then N+32.
+- **Channels (now matching button/VS numbers):** ch4 "Rear scene lights" (button OR VSW → toggle, OR the
+  reverse input through an OFF-delay timer that rides out the van's PWM reverse signal; input 4 debounced
+  1.5 s in AetherRV's display), ch7 water pump (6.5 A average, 10 A peak), ch9 dump valve, ch10 stereo
+  (ignition OR toggle; AetherRV refuses OFF while the ignition is on, `on_with_input = 2`), ch11 drawer locks
+  (10 s OFF-delay in the CLMD16; trigger-only in AetherRV), ch12 cabin lights (dimmer), ch14 spare.
+- **Home grid:** a switch's `home = <n>` pins it to position n; the three scene lights are the top row.
+
+## 43. Espar Airtronic S2 D2L: decoded, then AetherRV as its controller (2026-11-22)
+
+- **Bus:** the EasyStart Pro harness's CAN pair (blue/black = H, blue/red = L, brown = ground; red +12 V unused)
+  tapped where the harness terminator plugs in, terminator kept, `hat1`'s 120 Ω off. 500 kbit/s, 11-bit IDs.
+- **Captured from the EasyStart Pro** (step by step with the owner: handshake, heat, setpoint, off, fan,
+  unplug, timed run):
+  - Controller → heater: `054` every 200 ms `[flags][mode 05 heat / 02 fan / 00 off][setpoint LE ×0.1 °C][room
+    (°C+50)×10]`; `055`/`056`/`057` static; `60D` heartbeat 100 ms; `065` room; a settings burst
+    `05C`–`06D` + `10A` once per wake.
+  - Heater → controller: `2C4` state (00 init, 03 idle, 09 heating, 21 fan, 0B fault) with run/after-run flags,
+    fault byte and temperature; `625` heartbeat.
+  - After-run 240 s after heat, none after fan. The bus sleeps 5–15 s after idle.
+  - Controller lost: the heater stops within ~15 s on its own and logs P000307/P000440. **The fail-safe is the
+    heater's.**
+- **Diagnostics** (`espar_uds.py`, read-only UDS on 0x7A0/0x73C, services 0x22/0x19 only): voltage, blower,
+  glow, pump, power, flame, combustion phase (0x0C = ignition on the S2), fuel, temperatures, regulation,
+  hours by power band, air pressure, fault memory with severity and lockout detection.
+  - A **read-only scan of FD00–FDFF** (49 answer) showed `FD01` carries four temperatures: flame, intake,
+    **outlet** (8.8 °C cold → 52 °C at full heat while intake stayed 9–18 °C) and a fourth that reads exactly
+    0 °C (not fitted).
+  - The card's readings are requested every cycle at 1/s, so tiles refresh every ~9 s.
+- **AetherRV as the controller** (`espar_control.py`; owner decisions: the Pi replaces the EasyStart Pro,
+  room temperature = cabin Ruuvi else the heater's intake sensor, run times as on the Pro: 1–240 min, 270–720
+  in 30-min steps, unlimited). It wakes the heater in OFF, replays the Pro's settings burst, applies the target
+  mode once idle and verifies on `2C4`. It stops if another controller appears or the heater goes silent.
+  Bench steps OFF takeover, FAN and a full HEAT run passed; the owner skipped the fail-safe steps (already shown
+  by the capture).
+- **Fan speed is not adjustable in FAN mode:** a supervised test put 15/20/30 °C words, levels 1/5/10 and 20 %
+  into FAN's setpoint field; the blower stayed at ~56 % every time. FAN sends exactly what the Pro sends.
+- **Restarting the backend stops a running Espar** (it loses its controller). Check the heater is off before
+  any restart.
+
+## 44. CAN port recovery (2026-11-22)
+
+After a reboot with the FD HAT refitted, `hat1`'s MCP2515 "didn't enter config mode" and stayed down. Unbinding
+and rebinding the driver fixed it. `recover_links()` now does that by itself: a local port down for 30 s gets a
+driver rebind through the root helper (`can_rebind`), at most every 5 minutes.
+
+## 45. Weather map (2026-11-22)
+
+TomTom traffic (relative-delay flow + incidents, proxied and cached by the backend); glass controls (locate,
+zoom, opacity slider, timeline with play/scrub, speed 1×/2×/4×, loop length 1/2/6 h, layers menu with
+Streets/Satellite/Topo, radar/IR/off, public lands and traffic); radar history recorded on the Pi (6 h) plus a
+1 h nowcast; a ~15 fps loop interpolated on the GPU from optical-flow motion fields (OpenCV DIS).
+
+## 46. Climate, Energy, Settings and alerts (2026-11-22)
+
+- **One cabin setpoint for both heaters.** The Climate dial sets the MCS7 and, at the same moment and
+  independently, a heating Espar. The Espar accepts 10–30 °C: turning it on below that gives an error toast
+  and sends nothing; dragging the setpoint below 10 °C while it heats turns it off; above 30 °C it keeps its
+  setpoint. Heaters are chosen with their own buttons.
+- **Heater cards:** the MCS7's Heat (thermostat, MCS7 act 9, newly allowed), Hot water and Engine pre-heat
+  icons are tappable toggles (confirm, one verified command); the Espar's flame/fan/clock stack sets heat, fan
+  and run time. Tiles keep their slots with "—" when there's no live data. Battery, runtime and fuel totals
+  moved to Settings.
+- **Settings → MCS7 / Espar:** device details, hours (by power band for the Espar), fuel, fault memory.
+- **Alerts:** stored faults in the Espar fault memory and the MCS7 fault history raise warnings; an
+  acknowledged stored fault stays acknowledged across restarts while it's still stored. Per-battery warning
+  below 32 °F. The BMS-Can "N of 4 modules" alert is dropped when Bluetooth reads all four.
+- **Energy:** battery temperature shows the hottest probe, or the coldest (blue) when any is below 40 °F.
+
+## 47. Starlink power: CLMD16 output cut-outs (2026-11-22)
+
+The Starlink (through a 12→48 V boost converter) on CLMD16 ch16 lost power after 99–822 s, five times; ch15
+held 42 minutes, then the same. Each time the channel's output dropped to ~2 V / 0 A while 127501 still said ON
+and no trip was reported (127500 status 0x01 → 0x09); it stayed off until switched OFF and ON. Current was 2–3.5 A
+(13.5 A with the dish heater), far below the 25 A rating and every trip curve. No public reports of this were
+found. **Resolution:** the Starlink runs from the fuse block; a relay or SSR driven by ch15 (VS 8) is planned so
+the tile can switch it again without the CLMD16 carrying the converter's load.
