@@ -1,8 +1,7 @@
 # AetherRV in Rust: architecture
 
-Status: **DRAFT for the owner's review (2026-11-23).** Nothing in `services/` is written until the owner approves
-this document (RUST-CONVERSION-PROMPT §9). Sections marked **[open]** are waiting on the owner. Answers go into
-"Decisions" at the end, with their date.
+Status: **approved by the owner on 2026-11-23** (RUST-CONVERSION-PROMPT §9). Sections marked **[open]** are waiting
+on the owner. Answers go into "Decisions" at the end, with their date.
 
 The Python system on `main` is the behaviour reference. When this document doesn't say otherwise, a service does
 exactly what the Python module it replaces does: the same rules, timings, state keys, command-log rows and alert
@@ -148,7 +147,8 @@ So:
   service, `rixens` → the MCS7 service, `average` → `aetherrv-derive`. The gateway raises a config alert if two
   services publish the same key.
 - `history.degraded` → history; `traffic.available` → weather; `bus.<bus>.*` → the CAN service owning that bus.
-- `demo.*`: **[open: Q-D1]** the demo adapter has no service in this plan (see §14).
+- `demo.*`: none. Demo mode is dropped (owner, 2026-11-23); the simulators provide bench data. The migration tool
+  warns when `[device.demo]` is enabled.
 
 ### 4.6 Commands
 
@@ -416,7 +416,7 @@ with a test that tries every other service byte.
 | Q-R1 | Radar motion fields | answered 2026-11-23: pure-Rust optical flow; the visual difference goes to the owner for acceptance |
 | Q-P1 | Recording API inputs through the van Pi | answered 2026-11-23: yes, read-only requests only, through the logged wrapper |
 | Q-P2 | Parity normalisation of time-dependent keys | open: to be asked with the first real diffs |
-| Q-D1 | Demo mode (`[device.demo]`, synthetic data with a DEMO badge; off in the van, no tests): port it, or drop it because the simulators replace it for bench work? | open |
+| Q-D1 | Demo mode: port or drop? | answered 2026-11-23: drop it |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -443,4 +443,6 @@ with a test that tries every other service byte.
 | 2026-11-23 | Heat lockout enforced in the guard and inside both heater services, latch persisted; an unknown SoC never blocks a heat start | owner (Q-L1) |
 | 2026-11-23 | Radar motion fields: pure-Rust optical flow, difference from DIS shown to the owner for acceptance | owner (Q-R1) |
 | 2026-11-23 | Van Pi: read-only access through a logged wrapper; recording device responses with read-only requests (GET, subscribe, status) is allowed; no installs, restarts or writes | owner (Q-P1) |
+| 2026-11-23 | Architecture approved as written in this document (commit 31dde83) | owner |
+| 2026-11-23 | Demo mode dropped; simulators replace it | owner (Q-D1) |
 | 2026-11-23 | Workstation: sudo allowed to install the build and test dependencies (Rust, Mosquitto, vcan, …) | owner (Q-B1) |
