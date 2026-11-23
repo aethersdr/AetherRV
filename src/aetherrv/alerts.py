@@ -32,6 +32,7 @@ class Finding:
     title: str
     detail: str = ""
     source: str = ""
+    keep_ack: bool = False      # an ack survives a backend restart while the condition lasts (stored fault memory)
 
 
 @dataclass
@@ -206,6 +207,10 @@ def r_espar(s: State, c: dict):
         if d.get("active") and not d.get("lockout"):
             sev = "serious" if d.get("severity") in (4, 5, 6) else "warning"
             yield Finding(f"espar.dtc.{d['code']}", sev, f"Espar fault {d['code']}", d.get("text") or "", "espar")
+        elif not d.get("active"):              # in the heater's fault memory, not active now
+            yield Finding(f"espar.stored.{d['code']}", "warning", f"Espar stored fault {d['code']}",
+                          f"{(d.get('text') or 'unknown code')[0].upper()}{(d.get('text') or 'unknown code')[1:]}. In the heater's "
+                          "fault memory, not active now. See Settings → Espar.", "espar", keep_ack=True)
     prob = s.get("climate.espar.ctl.problem")
     if prob:
         yield Finding("espar.control", "warning", "Espar control stopped", prob[0].upper() + prob[1:] + ".", "espar")
@@ -233,6 +238,10 @@ def r_rixens(s: State, c: dict):
     af = s.get("climate.rixens.fault_active")
     if af:
         yield Finding("rixens.fault", "serious", f"Furnace fault code {af}", "Live fault reported by the MCS7 (AF). See the Eberspächer fault table.", "rixens")
+    for code in dict.fromkeys(s.get("climate.rixens.fault_history") or []):
+        if code != af:
+            yield Finding(f"rixens.stored.{code}", "warning", f"Furnace stored fault {code}",
+                          "In the MCS7's fault history, not active now. See Settings → MCS7.", "rixens", keep_ack=True)
 
 
 def r_starlink(s: State, c: dict):
@@ -365,7 +374,7 @@ class Alerts:
                     continue
                 first = rule._pending.setdefault(fid, now)
                 if now - first >= rule.for_s:
-                    self.active[fid] = Active(f, now, rule=rule.name)
+                    self.active[fid] = Active(f, now, rule=rule.name, acked=f.keep_ack and self._was_acked(fid))
                     rule._pending.pop(fid, None)
                     self._log("raised", f, now)
             for pid in [p for p in rule._pending if p not in findings]:
@@ -377,6 +386,18 @@ class Alerts:
                 if now - a.false_since >= rule.clear_s:
                     del self.active[aid]
                     self._log("cleared", a.finding, now)
+
+    def _was_acked(self, fid: str) -> bool:
+        """True when the last logged event for this id is an ack (or a raise after an ack with no clear between):
+        the condition was acknowledged and never seen to clear, e.g. across a backend restart."""
+        if self.db is None:
+            return False
+        try:
+            rows = self.db.execute("SELECT event FROM alert_log WHERE id = ? AND event IN ('acked', 'cleared') "
+                                   "ORDER BY t DESC LIMIT 1", (fid,)).fetchall()
+        except sqlite3.Error:
+            return False
+        return bool(rows) and rows[0][0] == "acked"
 
     def ack(self, aid: str, now: float | None = None) -> bool:
         a = self.active.get(aid)

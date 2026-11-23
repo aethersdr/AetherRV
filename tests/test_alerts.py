@@ -151,3 +151,22 @@ def test_epoch_cold_cells():
         {"name": "354", "ok": True, "temps": [None, 2.0]}])
     f = {x.id: x for x in r_epoch(s, {"batt_cold_c": 0.0})}
     assert set(f) == {"epoch.296.cold"} and f["epoch.296.cold"].severity == "warning" and "30 °F" in f["epoch.296.cold"].title
+
+
+def test_stored_faults_alert_and_ack_survives_restart():
+    import sqlite3
+    db = sqlite3.connect(":memory:")
+    st = State()
+    st.update({"climate.espar.diag.dtcs": [{"code": "P000129", "text": "flame cut-out at 75-100 % power", "active": False,
+                                            "severity": 1, "lockout": False}],
+               "climate.rixens.fault_history": [17, 17], "climate.rixens.fault_active": None})
+    al = Alerts(st, db=db)
+    al.evaluate(0); al.evaluate(100)
+    ids = {a["id"]: a for a in al.snapshot()}
+    assert {"espar.stored.P000129", "rixens.stored.17"} <= set(ids)
+    assert ids["espar.stored.P000129"]["severity"] == "warning" and not ids["espar.stored.P000129"]["acked"]
+    assert al.ack("espar.stored.P000129")
+    al2 = Alerts(st, db=db)                       # backend restart: the stored fault is still there
+    al2.evaluate(200); al2.evaluate(300)
+    ids2 = {a["id"]: a for a in al2.snapshot()}
+    assert ids2["espar.stored.P000129"]["acked"] and not ids2["rixens.stored.17"]["acked"]
