@@ -1,0 +1,53 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+
+[workspace.dependencies]
+aetherrv-core = { path = "crates/core" }
+aetherrv-can = { path = "crates/can" }
+aetherrv-power = { path = "crates/power" }
+proto-n2k = { path = "crates/proto-n2k" }
+proto-espar = { path = "crates/proto-espar" }
+proto-roypow = { path = "crates/proto-roypow" }
+proto-nmea = { path = "crates/proto-nmea" }
+proto-mcs7 = { path = "crates/proto-mcs7" }
+aetherrv-sim = { path = "crates/sim" }
+
+tokio = { version = "1.54", features = ["full"] }
+tokio-util = "0.7"
+futures = "0.3"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+toml = { version = "1", features = ["preserve_order"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-journald = "0.3"
+anyhow = "1"
+thiserror = "2"
+rumqttc = "0.25"
+libc = "0.2"
+rusqlite = { version = "0.43", features = ["bundled"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.7", features = ["fs", "set-header"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "gzip"] }
+quick-xml = "0.42"
+uuid = { version = "1", features = ["v4"] }
+sd-notify = "0.5"
+socket2 = "0.6"
+rand = "0.10"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "debuginfo"
+
+[workspace.lints.cargo]
+unused_workspace_dependencies = "allow"
+missing_lints_inheritance = "allow"

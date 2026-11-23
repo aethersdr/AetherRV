@@ -11,3 +11,10 @@ config/aetherrv.toml
 config/*.local.toml
 # private, never published: the unsanitized build log
 docs/private/
+
+# Rust + UI (rust branch)
+/target/
+/ui/node_modules/
+/ui/dist/
+/packaging/local.env
+/harness/out/
