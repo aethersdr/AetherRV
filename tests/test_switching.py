@@ -399,3 +399,18 @@ async def test_a_quick_hold_still_makes_a_full_length_press():
     await ctl.command("hold", {"channel": 12, "on": False})
     assert time.monotonic() - t0 >= 0.15
     assert [p[:10] for p in sent_payloads(bus)] == [press(12, True), press(12, False)]
+
+
+async def test_off_refused_while_the_input_holds_it_on():
+    s, n2k, node, bus, ctl = ready(on=[10])
+    ctl.channels[10] = {"channel": 10, "name": "Stereo", "press": 10, "on_with_input": 4}
+    ctl.deb[4].value = True
+    r = await ctl.command("set", {"channel": 10, "on": False})
+    assert not r["ok"] and "stays on while Reverse is on" in r["detail"] and bus.sent == []
+    ctl.deb[4].value = False
+
+    async def clmd16():
+        await asyncio.sleep(0.1); status(n2k, 0, 32, on=[])
+    asyncio.get_running_loop().create_task(clmd16())
+    r = await ctl.command("set", {"channel": 10, "on": False})
+    assert r["ok"], r

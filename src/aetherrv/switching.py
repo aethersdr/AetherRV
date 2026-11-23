@@ -334,6 +334,13 @@ class SwitchController:
             return {"ok": False, "detail": f"{name} has no virtual switch, so AetherRV can't ask the load controller "
                                            "to switch it. Nothing was sent."}
         press = int(press)
+        held = conf.get("on_with_input")         # the controller keeps it on while this input is on
+        if not on and held is not None:
+            d = self.deb.get(int(held))
+            if d is not None and d.value is True:
+                nm = self.inputs.get(int(held), {}).get("name", f"input {held}")
+                self._log(cmd, value, "rejected", f"held on by {nm}", client)
+                return {"ok": False, "detail": f"{name} stays on while {nm} is on (load controller logic). Nothing was sent."}
         need = conf.get("requires_input")
         if on and need is not None:              # extra caution on top of the controller's own interlock
             d = self.deb.get(int(need))
