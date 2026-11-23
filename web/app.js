@@ -561,6 +561,13 @@ function renderClimate() {
     "flame ramp-up": "flame ramp-up", burning: "burning", "control pause": "pause (at temperature)", "cool-down": "cool-down" };
   const espPhase = () => { const ph = D("phase")?.phase; return E("asleep") || ph == null ? null : ph in ESP_PHASE ? ESP_PHASE[ph] : `phase ${ph}`; };
   const fmtDur = sec => sec < 3600 ? `${Math.floor(sec / 60)} min` : `${Math.floor(sec / 3600)} h ${Math.floor(sec % 3600 / 60)} min`;
+  // Espar's 8th tile: what's left of the run (∞ when unlimited) or of the heater's own cool-down
+  const espTimeTile = () => {
+    const cd = E("cooldown_left_s"), left = C("left_s"), running = C("active") && C("mode") && C("mode") !== "off";
+    return cd != null ? ["Time left", `${Math.floor(cd / 60)}:${String(cd % 60).padStart(2, "0")}`, "Cool-down", "Run timer"]
+      : running ? ["Time left", left != null ? fmtDur(left) : "∞", left != null ? "Run timer" : "No time limit", "Run timer"]
+      : ["Time left", "—", "Run timer", "Run timer"];
+  };
   // Burner tiles stay in place when there's no live data; values show "—" (owner: keep the slots)
   const tilesOrDash = (on, rows) => on ? rows : rows.map(([k, , sub, idleSub]) => [k, "—", idleSub ?? sub]);   // 4th = label when idle
   const heaters = [
@@ -570,9 +577,8 @@ function renderClimate() {
       // Hot water / pre-heat show as unlabelled icon badges under the cabin-air-heat badge; status only here.
       modes: live ? [["Hot water", "hot_water", R("hot_water")], ["Preheat", "preheat", R("preheat")]] : [],
       chips: live && avail.floor ? [["Floor", R("floor") !== "off"]] : [],
-      kv: rState == null ? [] : live ? [
-        ["Coolant", fluidPill(R)],               // battery, runtime, fuel today: Settings → MCS7
-      ] : [["Coolant", R("coolant") == null ? "—" : fmtT(R("coolant"))], ["Fan speed", R("fan") ?? "—"]],
+      hero: live ? `${fluidPill(R)}<small>coolant</small>` : null,   // beside the name (battery etc.: Settings → MCS7)
+      kv: rState == null || live ? [] : [["Coolant", R("coolant") == null ? "—" : fmtT(R("coolant"))], ["Fan speed", R("fan") ?? "—"]],
       burner: rState == null ? [] : tilesOrDash(live, [
         ["Fan", R("fan_rpm") == null ? "—" : `${R("fan_rpm").toLocaleString()} rpm`, "Burner fan"],
         ["Glow", R("glow_w") == null ? "—" : `${Math.round(R("glow_w"))} W`, "Glow plug"],
@@ -607,6 +613,7 @@ function renderClimate() {
         ["Inlet", D("temps")?.intake_c == null ? "—" : fmtT(D("temps").intake_c), "Air in"],
         ["Outlet", D("temps")?.outlet_c == null ? "—" : fmtT(D("temps").outlet_c), "Air out"],
         ["Flame", D("temps")?.flame_c == null ? "—" : fmtT(D("temps").flame_c), D("flame")?.flame ? "Flame on" : "Flame sensor", "Flame sensor"],
+        espTimeTile(),
       ]),
       note: null,                                 // fault memory, hours, software: Settings → Espar (owner: less text here)
       fault: D("lockout") ? `${D("lockout").code} · locked out: ${D("lockout").why}. ${D("lockout").help}`
@@ -627,9 +634,10 @@ function renderClimate() {
     return `<div class="card heater ${on ? "on" : ""} ${h.kv.length || h.buttons.length || h.badges ? "" : "compact"}">
       <div class="badge-col">${h.badges || `<div class="badge" ${h.id === "rixens" ? 'title="Cabin air heat"' : ""}>${icon(h.state == null ? "can" : h.id === "rixens" ? "air_heat" : "flame")}</div>
         ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}`}</div>
-      <div><h3>${h.name}</h3>${h.noSub ? "" : `<div class="sub">${h.sub} · ${status}</div>`}
+      <div class="heater-main"><div class="heater-h"><h3>${h.name}</h3>${h.hero ? `<div class="heater-hero">${h.hero}</div>` : ""}</div>
+        ${h.noSub ? "" : `<div class="sub">${h.sub} · ${status}</div>`}
         ${h.kv.length ? `<div class="kv">${h.kv.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("")}</div>` : ""}
-        ${h.burner && h.burner.length ? `<div class="burner${h.burner.length > 6 ? " n7" : ""}">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
+        ${h.burner && h.burner.length ? `<div class="burner${h.burner.length > 6 ? " grid4" : ""}">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
         ${h.buttons.length ? `<div class="src-btns">${h.buttons.map(b => `<button class="src-btn ${b.on ? "sel" : ""} st-${b.st || "off"}" data-src="${b.k}" ${canControl() && !ctlPending ? "" : "disabled"}>
             ${icon(b.k === "furnace" ? "flame" : b.k === "electric" ? "plug" : "engine")}<span>${b.k[0].toUpperCase() + b.k.slice(1)}</span><small>${b.on ? (b.st === "active" ? "active" : "on · " + (b.st || "")) : "off"}</small></button>`).join("")}</div>` : ""}
         ${h.chips.length ? `<div class="chips-row">${h.chips.map(([k, on]) => `<span class="src ${on ? "on" : ""}">${k}${on ? " on" : ""}</span>`).join("")}</div>` : ""}
