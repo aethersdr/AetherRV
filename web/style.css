@@ -1223,3 +1223,6 @@ html.night .t-cold { color: var(--c-batt); }
   color: var(--ink); font-size: 22px; font-weight: 600; }
 .esp-run { display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 18px; }
 .esp-run .ic { width: 20px; height: 20px; }
+
+.sl-heat { display: inline-grid; place-items: center; margin-left: 2px; color: var(--c-cabin); }   /* Starlink heating (snow melt) */
+.sl-heat .ic { width: 22px; height: 22px; }

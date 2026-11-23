@@ -2408,13 +2408,15 @@ function renderNetwork() {
   const dishTxt = on ? "dish online" : reach ? "dish " + String(S["starlink.state"] || "").replace(/_/g, " ").toLowerCase() : "dish unreachable";
   const slLed = !reach ? "led-red" : slWan ? `led-${slWan.led}` : on ? "led-green" : "led-yellow";
   const slTip = slWan ? `${slWan.message || ""} · ${dishTxt}` : dishTxt;
-  const slAlerts = (S["starlink.alerts"] || []);
+  // dish alerts go to the alert center (alerts.py); on the card only "heating" shows, as a small icon by the title
+  const slHeating = (S["starlink.alerts"] || []).some(a => a.id === "alert_is_heating");
   const obs = S["starlink.obstructed_pct"], map = S["starlink.obstruction_map"];
   const updReady = on != null && S["starlink.update_state"] === "REBOOT_REQUIRED";
   H($("#sl-card")).html = reach == null ? `<div class="card-h"><h2>Starlink</h2></div><div class="muted">Not enabled.</div>` : `
     <div class="sl-body">
       <div class="sl-left">
-        <h2 class="sl-title" title="${esc(slTip)}"><span class="led ${slLed}"></span>Starlink</h2>
+        <h2 class="sl-title" title="${esc(slTip)}"><span class="led ${slLed}"></span>Starlink${slHeating
+          ? `<span class="sl-heat" title="Heating: melting snow/ice (${S["starlink.heating"] || "auto"})">${icon("heat_waves")}</span>` : ""}</h2>
         <div class="sl-speeds">
           <div><span class="arrow">↓</span><b>${mbps(S["starlink.down_mbps"])}</b><small>Mbps down</small></div>
           <div><span class="arrow up">↑</span><b>${mbps(S["starlink.up_mbps"])}</b><small>Mbps up</small></div>
@@ -2425,7 +2427,7 @@ function renderNetwork() {
           <div><b class="${S["starlink.snr_persistently_low"] ? "warn-text" : ""}">${S["starlink.signal_quality"] == null ? "—" : Math.round(S["starlink.signal_quality"] * 100) + "%"}</b><span>signal quality</span></div>
           <div><b class="${S["starlink.snr_persistently_low"] ? "warn-text" : ""}">${S["starlink.snr_db"] == null ? "—" : (S["starlink.snr_capped"] ? "≥ 10" : (+S["starlink.snr_db"]).toFixed(1)) + " dB"}</b><span>SNR</span></div>
         </div>
-        ${slAlerts.length || updReady ? `<div class="chips-row">${slAlerts.map(a => `<span class="src ${a.severity ? "warn-src" : ""}">${esc(a.label)}</span>`).join("")}
+        ${updReady ? `<div class="chips-row">
           ${updReady && canControlDev("starlink") ? `<button class="btn-soft sl-install" data-sl="install" ${ctlPending ? "disabled" : ""}>${icon("download")}Install update</button>` : ""}</div>` : ""}
       </div>
       ${map?.data ? ((slot3d = sky3dSlot(map)) ? `<figure class="sl-sky has3d">${slot3d}
