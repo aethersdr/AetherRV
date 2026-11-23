@@ -1242,3 +1242,11 @@ html.night .t-cold { color: var(--c-batt); }
 .heater-main .burner span { font-size: 15px; }
 .heater-main .burner b { font-size: 26px; }
 .heater-main .burner small { font-size: 13px; }
+
+/* Heater cards: low-battery heat lockout (lowbatt.py) */
+.lockout-line { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px;
+  color: var(--warning); background: color-mix(in srgb, var(--warning) 14%, var(--surface-2));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 50%, var(--line)); }
+.lockout-line .ic { width: 22px; height: 22px; flex: none; }
+.lockout-line b { font-size: 18px; } .lockout-line span { font-size: 15px; color: var(--ink-2); }
+.heater .badge.tap-b.locked { opacity: .35; }   /* heat start locked out (low battery) */

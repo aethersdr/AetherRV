@@ -637,9 +637,11 @@ function renderClimate() {
         ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}`}</div>
       <div class="heater-main"><div class="heater-h"><h3>${h.name}</h3>${h.hero ? `<div class="heater-hero">${h.hero}</div>` : ""}</div>
         ${h.noSub ? "" : `<div class="sub">${h.sub} · ${status}</div>`}
+        ${heatLockout() ? `<div class="lockout-line">${icon("lock")}<b>Heat locked out</b><span>House battery ${
+          S["power.shutdown"]?.soc != null ? Math.round(S["power.shutdown"].soc) + " % · " : "low · "}charge to unlock</span></div>` : ""}
         ${h.kv.length ? `<div class="kv">${h.kv.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("")}</div>` : ""}
         ${h.burner && h.burner.length ? `<div class="burner${h.burner.length > 6 ? " grid4" : ""}">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
-        ${h.buttons.length ? `<div class="src-btns">${h.buttons.map(b => `<button class="src-btn ${b.on ? "sel" : ""} st-${b.st || "off"}" data-src="${b.k}" ${canControl() && !ctlPending ? "" : "disabled"}>
+        ${h.buttons.length ? `<div class="src-btns">${h.buttons.map(b => `<button class="src-btn ${b.on ? "sel" : ""} st-${b.st || "off"}" data-src="${b.k}" ${canControl() && !ctlPending && (b.on || b.k === "engine" || !heatLockout()) ? "" : "disabled"}>
             ${icon(b.k === "furnace" ? "flame" : b.k === "electric" ? "plug" : "engine")}<span>${b.k[0].toUpperCase() + b.k.slice(1)}</span><small>${b.on ? (b.st === "active" ? "active" : "on · " + (b.st || "")) : "off"}</small></button>`).join("")}</div>` : ""}
         ${h.chips.length ? `<div class="chips-row">${h.chips.map(([k, on]) => `<span class="src ${on ? "on" : ""}">${k}${on ? " on" : ""}</span>`).join("")}</div>` : ""}
         ${h.fault ? `<div class="warn-t fault-line">${icon("alert")}Fault code ${esc(h.fault)}</div>` : ""}
@@ -881,6 +883,8 @@ function sendSetpoint(c, next) {
   else { spPending = null; render(); }
 }
 const espRunLabel = m => m == null ? "∞" : m < 60 ? `${m} min` : `${(m / 60).toFixed(m % 60 ? 1 : 0)} h`;
+// Low-battery heat lockout (lowbatt.py): heaters can't start heat; turning things OFF stays possible.
+const heatLockout = () => S["power.heat_lockout"] === true;
 // MCS7 destination stack: Heat (cabin, the MCS7 thermostat) / Hot water / Engine pre-heat. Tap toggles, after a
 // confirm; each is one verified MCS7 command (rixens_http: act 9 / 6 / 7). Lit = on.
 const MCS_DEST = { thermostat: ["Cabin heat", "air_heat", "The MCS7 heats the cabin to the setpoint (thermostat).",
@@ -891,8 +895,8 @@ const MCS_DEST = { thermostat: ["Cabin heat", "air_heat", "The MCS7 heats the ca
 function mcsBadges(R) {
   const ok = canControl() && !ctlPending;
   return Object.entries(MCS_DEST).map(([k, [label, ic]], i) => {
-    const on = !!R(k), na = k === "preheat" && R("available")?.preheat === false;
-    return `<button class="badge ${i ? "mode " : ""}tap-b ${on ? "on" : ""}" data-mcs="${k}" ${ok && !na ? "" : "disabled"}
+    const on = !!R(k), na = (k === "preheat" && R("available")?.preheat === false) || (!on && k !== "thermostat" && heatLockout());
+    return `<button class="badge ${i ? "mode " : ""}tap-b ${on ? "on" : !on && k !== "thermostat" && heatLockout() ? "locked" : ""}" data-mcs="${k}" ${ok && !na ? "" : "disabled"}
       title="${label}${na ? " (not enabled on this MCS7)" : on ? " · on · tap to turn off" : " · off · tap to turn on"}">${icon(ic)}</button>`;
   }).join("");
 }
@@ -907,7 +911,7 @@ $("#heaters").addEventListener("click", e => {
 function espBadges() {
   const ok = canControlDev("espar") && !ctlPending, mode = S["climate.espar.ctl.active"] ? S["climate.espar.ctl.mode"] : "off";
   const dis = ok ? "" : "disabled";
-  return `<button class="badge tap-b ${mode === "heat" ? "on" : ""}" data-esp="${mode === "heat" ? "off" : "heat"}" ${dis}
+  return `<button class="badge tap-b ${mode === "heat" ? "on" : heatLockout() ? "locked" : ""}" data-esp="${mode === "heat" ? "off" : "heat"}" ${mode !== "heat" && heatLockout() ? "disabled" : dis}
       title="${mode === "heat" ? "Heating · tap to turn off" : "Heat"}">${icon("flame")}</button>
     <button class="badge mode tap-b ${mode === "fan" ? "on" : ""}" data-esp="${mode === "fan" ? "off" : "fan"}" ${dis}
       title="${mode === "fan" ? "Fan on · tap to turn off" : "Fan only"}">${icon("fan")}</button>
