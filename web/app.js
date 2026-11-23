@@ -2752,7 +2752,8 @@ const QUICK_DEMO = [
 ];
 const quickOn = new Set();
 function renderQuick() {
-  const real = (S["switches.list"] || []).filter(s => s.home).slice(0, 9);
+  const real = (S["switches.list"] || []).filter(s => s.home)
+    .map((s, i) => [s.home_pos ?? 100 + i, s]).sort((a, b) => a[0] - b[0]).map(x => x[1]).slice(0, 9);
   const tag = document.querySelector(".quick-card .demo-tag");
   if (real.length) {
     if (tag) { tag.textContent = canControlDev("n2k") ? "live" : "view only"; tag.classList.toggle("live-tag", canControlDev("n2k")); }

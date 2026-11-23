@@ -320,6 +320,8 @@ class N2kAdapter:
                     "kind": (lab or {}).get("kind", "switch"),
                     "blocked": bool((lab or {}).get("blocked")),
                     "home": bool((lab or {}).get("home")),
+                    # home = <n> places it at position n on the Home grid (home = true: after those, by channel)
+                    "home_pos": (lab or {}).get("home") if type((lab or {}).get("home")) is int else None,
                     "requires_input": (lab or {}).get("requires_input"),
                     "rating_a": (lab or {}).get("rating_a"),
                     "level": (self.loads.get((src, ch - 1)) or {}).get("duty") if (lab or {}).get("kind") == "dimmer" else None,

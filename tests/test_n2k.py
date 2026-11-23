@@ -67,8 +67,8 @@ def test_126208_header():
 
 def test_adapter_switch_list_with_labels():
     s = State()
-    a = N2kAdapter(s, [{"bank": 0, "channel": 2, "name": "Galley", "icon": "light", "group": "Lights"},
-                       {"bank": 0, "channel": 12, "name": "Spare", "icon": "plug", "group": "Power"}])
+    a = N2kAdapter(s, [{"bank": 0, "channel": 2, "name": "Galley", "icon": "light", "group": "Lights", "home": 1},
+                       {"bank": 0, "channel": 12, "name": "Spare", "icon": "plug", "group": "Power", "home": True}])
     msg = can.Message(arbitration_id=n2k_id(127501, 0x30, priority=3), data=encode_127501(0, [1, 0, 1]),
                       is_extended_id=True)
     a.on_frame(msg)
@@ -77,6 +77,8 @@ def test_adapter_switch_list_with_labels():
     assert lst["0.2"]["name"] == "Galley" and lst["0.2"]["on"] is False and lst["0.2"]["group"] == "Lights"
     assert lst["0.1"]["group"] == "Unassigned" and lst["0.1"]["on"] is True
     assert lst["0.12"]["state"] == "n/a" and lst["0.12"]["on"] is False
+    assert lst["0.2"]["home"] and lst["0.2"]["home_pos"] == 1                # home = 1: first on the Home grid
+    assert lst["0.12"]["home"] and lst["0.12"]["home_pos"] is None and not lst["0.1"]["home"]
 
 
 def test_adapter_reassembles_126208_command():
