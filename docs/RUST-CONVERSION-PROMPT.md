@@ -51,7 +51,7 @@ The Python system on `main` is **frozen** and is the behaviour reference. Before
 | Other screens | Phones and laptops keep using the **same React app in a normal browser** over the van LAN, home LAN and the tailnet, with today's control rules. |
 | Cutover | **Build everything complete first, then one cutover.** No module-by-module migration on the van. |
 | Your reach | **Stop before the van.** Prove everything on the bench Pi, then hand over a cutover runbook and a rollback script. Do not install on or restart anything on the van Pi. |
-| Test rig | A **second Pi 5 with no CAN HAT**; the owner will attach a screen for the engine benchmark and UI checks. CAN is tested on virtual CAN with replayed captures and simulators. |
+| Test rig | A **second Pi 5 (16 GB, NVMe, Arch Linux ARM) with no CAN HAT**. Its screen is **not the van's panel**: a 13.3" 2560×1440 monitor with **no touch**, on HDMI (see §8 for how to measure on it). CAN is tested on virtual CAN with replayed captures and simulators. |
 | Repository | **Same repo, new branch `rust`**: a Cargo workspace plus `ui/`. Python stays untouched on `main`. |
 | Data | The existing `/etc/aetherrv/aetherrv.toml`, `/etc/aetherrv/secrets.toml`, `/var/lib/aetherrv/history.sqlite3`, `settings.json` and the radar cache must **keep working or be converted by a migration tool** you write and test. |
 | Espar: its own restart | If the Espar service itself restarts while the heater runs and is back **within ~10 s**, it **resumes seamlessly** (same mode, setpoint, time left). If it was gone longer, it comes back OFF as today. |
@@ -153,7 +153,7 @@ holds the bus client, config loading, the transmit gate and the command contract
 - **Soak**: run the whole system on the bench Pi for at least 12 hours against simulators; no crashes, no memory
   growth, no stuck state.
 - **Bench Pi** setup (Arch Linux ARM as in `docs/BUILD-GUIDE.md`, virtual CAN) is yours to do. Ask the owner
-  for its SSH name (AskUserQuestion) before you start on it, and for the screen when you reach the benchmark.
+  for its SSH name (AskUserQuestion) before you start on it. The screen is already attached.
 
 ## 7. Choosing the UI runtime
 
@@ -175,6 +175,18 @@ must keep working with whatever you choose.
 - Power-on to a usable UI: **≤ 15 s**.
 - UI process memory: **≤ 400 MB**.
 - Measure the Python/Chromium system the same way first and report before/after.
+
+**The bench screen differs from the van's** (owner's decision, 2026-11-23). The van has a 10.1" 1920×1200
+capacitive touchscreen; the bench has a 2560×1440 non-touch monitor whose mode list has no 1920×1200.
+- First try a custom 1920×1200 mode on the bench screen. If it displays correctly, the numbers above are judged
+  there.
+- If the monitor rejects it, the numbers must pass at **1920×1080**, and you also measure and report native
+  **2560×1440** as the headroom check (about 60 % more pixels than the van). Say plainly in the results which
+  case applied.
+- There is no touch panel, so measure tap latency with **injected touch events** (for example a uinput virtual
+  touchscreen) timed against the frame that shows the response. Run these only against simulators (§5).
+- What the bench cannot prove (real touch feel, the Waveshare panel's own latency, hold-to-dim, screen power
+  control on that panel) goes into `docs/CUTOVER.md` as checks to do on the van.
 
 ## 9. Asking the owner
 
@@ -248,7 +260,7 @@ files, logs):
 - The isolation tests pass for every service and the broker, including the Espar seamless-resume and
   blind-running cases.
 - The 12-hour soak completed cleanly on the bench Pi.
-- The runtime benchmark is done on the bench Pi's real screen and every number in §8 is met by the chosen runtime.
+- The runtime benchmark is done on the bench Pi's real screen and every number in §8 is met by the chosen runtime, at the resolution §8 specifies.
 - Nothing has been installed, restarted or transmitted on the van Pi.
 - No question for the owner is open, and every answer is recorded in `docs/ARCHITECTURE.md`.
 
