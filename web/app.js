@@ -584,7 +584,7 @@ function renderClimate() {
       fault: R("fault_active") },
     { id: "espar", name: "Espar Airtronic S2", state: E("state"), buttons: [], chips: [], control: S["espar.controls_ok"] === true,
       noSub: true,                                // owner: no status line under the name (the tiles and controls say it)
-      extra: espControls(),
+      extra: espControls(), badges: E("state") == null ? null : espBadges(),
       // read-only: the heater's own CAN bus (adapters/espar.py) + UDS diagnostic reads (espar_uds.py)
       sub: `D2L forced-air · ${E("asleep") ? "bus asleep" : [
         // while AetherRV drives the heater its own command is the truth (we never receive our own 054)
@@ -628,8 +628,8 @@ function renderClimate() {
       : { heating: "Heating", off: "Off", standby: "Standby", idle: "Idle", error: "ERROR", "no data": "No data",
           cooldown: "Cooling down", starting: "Starting", fan: "Fan only" }[h.state] || h.state;
     return `<div class="card heater ${on ? "on" : ""} ${h.kv.length || h.buttons.length ? "" : "compact"}">
-      <div class="badge-col"><div class="badge" ${h.id === "rixens" ? 'title="Cabin air heat"' : ""}>${icon(h.state == null ? "can" : h.id === "rixens" ? "air_heat" : "flame")}</div>
-        ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}</div>
+      <div class="badge-col">${h.badges || `<div class="badge" ${h.id === "rixens" ? 'title="Cabin air heat"' : ""}>${icon(h.state == null ? "can" : h.id === "rixens" ? "air_heat" : "flame")}</div>
+        ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}`}</div>
       <div><h3>${h.name}</h3>${h.noSub ? "" : `<div class="sub">${h.sub} · ${status}</div>`}
         ${h.kv.length ? `<div class="kv">${h.kv.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("")}</div>` : ""}
         ${h.burner && h.burner.length ? `<div class="burner">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
@@ -836,12 +836,20 @@ function espControls() {
   const ok = canControlDev("espar") && !ctlPending, mode = S["climate.espar.ctl.active"] ? S["climate.espar.ctl.mode"] : "off";
   const step = UNIT === "F" ? 5 / 9 : 0.5;
   return `<div class="esp-ctl">
-    <div class="seg esp-mode">${[["off", "Off"], ["heat", "Heat"], ["fan", "Fan"]].map(([m, l]) =>
-      `<button data-esp="${m}" class="${mode === m ? "on" : ""}" ${ok ? "" : "disabled"}>${l}</button>`).join("")}</div>
     <div class="esp-sp"><button data-esp="sp-" data-step="${-step}" ${ok ? "" : "disabled"}>−</button><b>${fmtT(espSet())}</b>
       <button data-esp="sp+" data-step="${step}" ${ok ? "" : "disabled"}>+</button></div>
-    <button class="esp-run" data-esp="run" ${ok ? "" : "disabled"} title="Run time (like the EasyStart Pro)">${icon("clock")}${espRunLabel(espRun)}</button>
   </div>`;
+}
+// Espar badge stack (like the MCS7's): flame = HEAT, fan = FAN (one at a time; tap the lit one again for OFF),
+// clock = run time (cycles like the EasyStart Pro).
+function espBadges() {
+  const ok = canControlDev("espar") && !ctlPending, mode = S["climate.espar.ctl.active"] ? S["climate.espar.ctl.mode"] : "off";
+  const dis = ok ? "" : "disabled";
+  return `<button class="badge esp-b ${mode === "heat" ? "on" : ""}" data-esp="${mode === "heat" ? "off" : "heat"}" ${dis}
+      title="${mode === "heat" ? "Heating · tap to turn off" : "Heat"}">${icon("flame")}</button>
+    <button class="badge mode esp-b ${mode === "fan" ? "on" : ""}" data-esp="${mode === "fan" ? "off" : "fan"}" ${dis}
+      title="${mode === "fan" ? "Fan on · tap to turn off" : "Fan only"}">${icon("fan")}</button>
+    <button class="badge mode esp-b esp-timer" data-esp="run" ${dis} title="Run time (like the EasyStart Pro)">${icon("clock")}<small>${espRunLabel(espRun)}</small></button>`;
 }
 function espSend(mode, label) {
   control("set", { mode, setpoint_c: Math.round(espSet() * 10) / 10, run_min: mode === "off" ? null : espRun }, label, "espar");

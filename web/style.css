@@ -1226,3 +1226,13 @@ html.night .t-cold { color: var(--c-batt); }
 
 .sl-heat { display: inline-grid; place-items: center; margin-left: 2px; color: var(--c-cabin); }   /* Starlink heating (snow melt) */
 .sl-heat .ic { width: 22px; height: 22px; }
+
+/* Espar: the badge stack is the control (flame = heat, fan = fan only, clock = run time) */
+.heater .badge.esp-b { border: 0; font: inherit; cursor: pointer; padding: 0; }
+.heater .badge.esp-b:disabled { cursor: default; }
+.heater .badge.esp-b.on { color: var(--c-cabin); background: color-mix(in srgb, var(--c-cabin) 15%, var(--surface-2));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-cabin) 55%, var(--line)); }
+.heater .badge.esp-b:not(:disabled):active { transform: scale(.96); }
+.heater .badge.esp-timer { width: 104px; grid-auto-flow: row; align-content: center; gap: 2px; }
+.heater .badge.esp-timer .ic { width: 36px; height: 36px; }
+.heater .badge.esp-timer small { font-size: 16px; font-weight: 600; color: var(--ink-2); }
