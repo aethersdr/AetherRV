@@ -77,8 +77,8 @@ program; nothing links it.
 
 ### 4.1 Broker
 
-**[open: broker choice, Q-A1]** Recommended: **Mosquitto 2.x** from the Arch Linux ARM `extra` repo (aarch64 package
-2.0.22 at the time of writing). It supports MQTT 5 (response topic, correlation data, message expiry), a Unix-socket
+**Mosquitto 2.x** (owner, 2026-11-23) from the Arch Linux ARM `extra` repo (aarch64 package 2.0.22 at the time of
+writing). It supports MQTT 5 (response topic, correlation data, message expiry), a Unix-socket
 listener (`listener 0 /run/aetherrv/bus/mqtt.sock`), per-username ACLs and retained-message persistence. It's C, not
 Rust: it's a system daemon like sway or systemd. The Rust alternative, rumqttd, lists MQTT 5 but has no Unix-socket
 listener that I could confirm and much less field use.
@@ -123,7 +123,34 @@ new to a fresh subscriber, so:
 - A "fresh read before send" never uses bus state: it is always the owning service's own device read, exactly as
   in Python (the CLMD16 status ≤ 3 s old, a new `status.xml`, an `R/` read on the Cerbo, a new dish call).
 
-### 4.4 Commands
+### 4.4 Keys left behind by a dead or restarted module
+
+In Python a silent *device* flips its own keys (`"no data"`, `reachable: false`, `asleep`), but a dead *process*
+flips nothing, and the broker keeps its retained keys (`climate.espar.state: heating`, `ctl.active: true`) forever.
+So:
+- **At start**, a service reads the retained keys under its own prefix and, after its first full publish, clears
+  every key it no longer publishes (e.g. after a config change moves `climate.cabin.*` to another service).
+- **The shared state reader** (used by services and the gateway) treats every key of an owner whose `status` is
+  down, or whose heartbeat is older than 6 s, as **unknown**. Each consumer says what unknown means for it; the
+  defaults are Python's `None`, except where a heater's safety needs the cautious reading (§8: the guard waits for a
+  heater whose service is down as if it were still in its after-run, up to `heater_wait_s`).
+- **The gateway** sends a down owner's keys to the UI as `null` (tiles show "—", as they already do without data)
+  and sets `svc.<service>.up = false`, so the page can say which module is down.
+- **A reconnect republishes with the original `t`**, so a broker restart never makes an old value look fresh.
+
+### 4.5 Key ownership details
+
+- `ui.bms_expected`, `ui.fridge_max_c`, `ui.freezer_max_c` (set from config by Python's `__main__`): published by
+  `aetherrv-settings`.
+- `tx.enabled.<device>` and `tx.blocked.<device>`: by the service that owns the device (the gateway rebuilds the
+  old dicts).
+- `climate.cabin.*`: one owner chosen by `[climate] cabin_source`, exactly as in Python: `victron` → the Victron
+  service, `rixens` → the MCS7 service, `average` → `aetherrv-derive`. The gateway raises a config alert if two
+  services publish the same key.
+- `history.degraded` → history; `traffic.available` → weather; `bus.<bus>.*` → the CAN service owning that bus.
+- `demo.*`: **[open: Q-D1]** the demo adapter has no service in this plan (see §14).
+
+### 4.6 Commands
 
 Request payload: `{"id", "cmd", "value", "client", "sent_ms", "ttl_ms"}`; MQTT 5 correlation data = `id`, response
 topic = the requester's reply topic, message expiry = `ttl_ms`.
@@ -131,7 +158,8 @@ topic = the requester's reply topic, message expiry = `ttl_ms`.
 - **No retained commands, no queueing.** Services connect with a clean session, so the broker never stores
   commands for an offline service. A service ignores any command with the retain flag set.
 - **TTL.** A service refuses a command older than its `ttl_ms` (default 3 s) with "the request arrived too late;
-  nothing sent". A late "heat on" never runs.
+  nothing sent". A late "heat on" never runs. One exemption: a `hold` *release* always runs (it's the safe
+  direction; refusing it would let the dimmer ramp until the 8 s cap).
 - **At most once.** The service keeps the ids of the last 10 minutes and answers a repeat with the first result
   without acting again. (QoS 1 may deliver twice.)
 - **Results.** Reply: `{"id", "result": "ok" | "refused" | "unverified", "detail", "outcome"}`. `detail` is the
@@ -152,7 +180,7 @@ topic = the requester's reply topic, message expiry = `ttl_ms`.
 - Every attempt (who, what, outcome) goes to `command_log` **in the owning service**, so logging works with the
   broker down (§8).
 
-### 4.5 Lifecycle and module health
+### 4.7 Lifecycle and module health
 
 - On connect: publish `status` (`up: true`), set the last will (`up: false`, retained), then republish every state
   key. Heartbeat every 2 s.
@@ -160,7 +188,7 @@ topic = the requester's reply topic, message expiry = `ttl_ms`.
   engine raises a **new** rule "`<module>` down" (serious for espar, n2k, power-guard and the heater services;
   warning for the rest) after 15 s down. This is an addition the prompt asks for.
 
-### 4.6 Riding out a broker restart
+### 4.8 Riding out a broker restart
 
 - Every service keeps its device loop running with the bus down. The bus client runs in its own task, with a
   "latest value per key" outbox, so a reconnect publishes the newest state and nothing stale is replayed.
@@ -210,26 +238,41 @@ counter, never blocking). The loop sends 60D every 100 ms, 054/055/056/057 every
 burst once per wake, all exactly as `espar_control.py`. A systemd watchdog (`WatchdogSec=2`) is fed from the loop
 itself, so a stalled loop is killed and restarted, and then resumes (§7.2).
 
-### 7.2 Seamless resume (owner decision §3) — details **[open: Q-E1, Q-E2]**
+### 7.2 Seamless resume (owner decisions §3 and 2026-11-23)
+
+The owner's refinement (2026-11-23): **the ~10 s figure is not proven.** How long the heater tolerates a silent
+controller before its own shutdown is unknown and will be measured in the van after cutover. The deciding test is
+therefore *"is the heater still running what we commanded?"*, not the age of the saved state: if it is, the run
+continues uninterrupted. Every timing below is configurable and gets recomputed from the van measurement
+(`docs/CUTOVER.md`).
 
 - **Persisted run state** in `/run/aetherrv/espar/run.json` (tmpfs: survives a service restart, cleared by a reboot,
   which the heater can't ride out anyway; `RuntimeDirectoryPreserve=restart`). Written atomically on every change:
-  version, active, mode, target, setpoint, flags byte, `run_min`, the deadline as `CLOCK_BOOTTIME` (immune to wall
-  clock jumps, e.g. GPS time), burst done, last room value + source + its time, last bus contact, resume count.
-- **Liveness stamp** written every 1 s (`alive_boottime`), so "younger than 10 s" means "the old process was alive
-  less than 10 s ago", not "the run state changed less than 10 s ago".
-- **On start**, if the file is younger than 10 s, the old process was active, the format version matches, and
-  fewer than 3 resumes happened in the last 60 s (a crash loop must not keep a heater running forever):
-  - listen to `hat1` for up to 1 s. Re-attach when no other controller is heard **and** the heater's 2C4 matches the
-    saved command: `heating` for HEAT, `fan` for FAN, idle with the after-run flag for OFF-in-after-run.
+  version, boot id, active, mode, target, setpoint, flags byte, `run_min`, the deadline as `CLOCK_BOOTTIME` (immune
+  to wall clock jumps, e.g. GPS time), burst done, last room value + source + its time, last bus contact, resume
+  history.
+- **Liveness stamp** written every 1 s (`alive_boottime`), so the gap since the old process last ran is known (for
+  the log and the van measurement).
+- **On start**, if the file is from this boot, the old process was active, the format version matches, and fewer
+  than 3 resumes happened in the last 60 s (a crash loop must not keep a heater running forever):
+  - listen to `hat1` for up to 1 s (`resume_listen_s`). Re-attach when no other controller is heard **and** the
+    heater's 2C4 matches the saved command: `heating` for HEAT, `fan` for FAN, idle with the after-run flag for
+    OFF-in-after-run.
   - Re-attaching means: resume the cyclic frames at once with the same flags byte, mode, setpoint, deadline and the
-    saved room value (never `FE FF`, which means 0 °C, i.e. full power), no wake burst, no OFF. Logged as
-    `resume` in `command_log`.
-- Otherwise (state too old, mismatch, crash loop): come back OFF. **[open: Q-E2]** whether "OFF" is silence (as
-  today; a heater still burning stops itself ~15 s after the last frame and logs P000307/P000440) or an explicit
-  takeover with a normal OFF (no stored fault; the heater runs its after-run).
+    saved room value (never `FE FF`, which means 0 °C, i.e. full power), no wake burst, no OFF. Logged as `resume`
+    in `command_log` with the measured gap.
+  - A run whose deadline passed during the gap is re-attached too, and the normal timer OFF then fires at once:
+    a clean stop with the heater's own after-run, instead of the stored controller-loss fault that silence causes.
+- **SIGTERM** (a restart, an upgrade): the service stops transmitting, sends **no** OFF, leaves the run file, and
+  exits, so the next process can resume. (A `systemctl stop` that isn't followed by a start leaves the heater to
+  stop itself, as a stopped Python backend does today.)
+- Otherwise (heater no longer running the saved command, another controller heard, crash loop, a different boot):
+  come back OFF as today, i.e. inactive and silent. A heater that has already shut itself down finishes its own
+  after-run.
 - Restart policy: `Restart=always`, `RestartSec=100ms`, a start-limit wide enough for the crash-loop rule above to
   decide, not systemd.
+- The heater simulator's controller-loss timeout is a parameter (default 15 s, the one observation so far), and
+  the isolation tests run it at several values.
 
 ### 7.3 Running blind (owner decision §3)
 
@@ -254,21 +297,29 @@ exactly as today. With the bus down the intake sensor takes over by itself.
 Read-only, ported as is: requests are built only by a function that refuses any service other than 0x22 and 0x19,
 with a test that tries every other service byte.
 
-## 8. Heat lockout without a single point of failure **[open: Q-L1]**
+## 8. Heat lockout without a single point of failure
 
 - `aetherrv-power` holds the Python logic: `bank_soc` (shunt while fresh < 120 s, else the Bluetooth mean),
   `charging` (> +1 A), the lockout tracker (≤ 10 % for 120 s and not charging → locked; released by charging or
   > 12 %).
-- The guard publishes `power.heat_lockout` (what the UI shows) and runs the 5 % power-off sequence as today (heaters
-  off through their commands, wait up to 10 min for both idle, then `poweroff`).
+- **The guard acts first, exactly as today** (its tests port one for one): it publishes `power.heat_lockout` (what
+  the UI shows), turns a heating heater off through the heaters' own commands (`client = auto:low-battery`, at most
+  once a minute), owns `power.heaters_off` (the alert's list of what was done), and runs the 5 % power-off sequence
+  (heaters off, wait up to 10 min for both idle, then `poweroff`). While waiting, a heater whose service is down
+  counts as busy (§4.4), so the wait runs its full `heater_wait_s` rather than powering off early.
 - **Each heater service also runs the tracker itself**, on the raw `victron.battery.*` and `batteries.ble*` topics,
-  and is locked out if **either** its own tracker or a fresh (< 30 s) `power.heat_lockout` from the guard says so.
-  A guard that is down removes nothing.
+  and is locked out if **either** its own tracker or a fresh (< 30 s) `power.heat_lockout` from the guard says so:
+  - it always **refuses heat starts** while locked out;
+  - it **turns its own heater off** only as the backstop, when the guard's lockout key isn't fresh (guard down or
+    stale), at most once a minute, logged as `auto:low-battery` with "guard not answering" in the detail, and
+    published as `climate.espar.lockout_off` / `climate.rixens.lockout_off`.
+
+  A guard that is down removes nothing; a guard that is up is the only one sending, so there are no duplicate OFFs.
 - The latch is **persisted** in `/var/lib/aetherrv/<service>/lockout.json`, so a restart or reboot at 9 % stays
   locked until fresh readings show charging or > 12 %. (Python forgets the lockout on restart; this is a deliberate
   improvement.)
-- With no fresh SoC at all (Victron and Bluetooth silent, or the bus down): the latched value holds. The open
-  question is whether HEAT may *start* in that state.
+- With no fresh SoC at all (Victron and Bluetooth silent, or the bus down): the latched value holds, and an
+  unlatched heater **may start heat**, as today (owner, 2026-11-23: an unknown SoC never blocks heat).
 
 ## 9. Data and storage
 
@@ -308,7 +359,7 @@ with a test that tries every other service byte.
 | broker | Every device loop continues. Commands stop (the gateway refuses with "bus down"). The UI shows the last values, marked stale after 6 s. The Espar keeps its run; after `blind_off_s` it turns itself off. Alerts and history pause. | services republish on reconnect; history resumes |
 | gateway | The UI reconnects; nothing else notices. | UI snapshot on reconnect |
 | UI / panel | Nothing else notices. | |
-| espar | The heater rides out ≤ 10 s (seamless resume). Longer: OFF as in §7.2. | |
+| espar | The run continues if the heater is still running the saved command when the service is back (§7.2); otherwise OFF as today. | |
 | n2k | Switch tiles show "module down"; the CLMD16 and keypads work on their own (dual control). | |
 | victron | Energy values stale; the heater services' own lockout trackers hold their latch; the Espar falls back to its intake sensor after 15 min. | |
 | rixens | MCS7 runs on its own (it is its own thermostat). | |
@@ -343,7 +394,12 @@ with a test that tries every other service byte.
   every dependency vendored through the lockfile and bundled; no CDN). Native build on the Pi (`cargo build
   --release`), the UI bundle built with Node on the workstation or the Pi.
 - `packaging/`: systemd units, `aetherrv.target`, the Mosquitto config, `install.sh`, and `push.sh`, which has **no
-  default host** (it never reads `deploy/local.env`). Python's `deploy/` stays as it is for the rollback.
+  default host** (it never reads `deploy/local.env`, whose host is the van). Python's `deploy/` stays as it is for
+  the rollback. Until the cutover, `push.sh` and `install.sh` **refuse a host that has `hat0` or `hat1`**, i.e. the
+  van; the bench Pi has no CAN HAT. The cutover script lifts that guard explicitly.
+- All services run as the one `aetherrv` user, as today, so the admin helper's caller check is unchanged.
+  Per-service users would tighten the broker ACL and the admin verbs per caller, at the cost of a shared group for
+  the database and state directory; it can be added later without changing the design.
 - Paths: binaries and the UI under `/opt/aetherrv-rs/` (the Python tree at `/opt/aetherrv/` is left alone),
   config `/etc/aetherrv/` (shared), state `/var/lib/aetherrv/` (shared).
 - Cutover and rollback are one-command scripts (`packaging/cutover.sh`, `packaging/rollback.sh`) that stop one
@@ -351,16 +407,17 @@ with a test that tries every other service byte.
 
 ## 14. Open questions for the owner
 
-| Id | Question |
-|---|---|
-| Q-A1 | Broker: Mosquitto (C, packaged, MQTT 5, Unix socket) or a Rust broker? |
-| Q-E1 | Seamless resume: is "the heater's 2C4 matches the saved command" the right re-attach test, with the 3-resumes-per-minute crash-loop limit? |
-| Q-E2 | Espar back after more than 10 s while the heater still burns: silence (as today) or an explicit OFF? |
-| Q-L1 | No fresh battery reading at all: may HEAT start (as today), or only while the SoC is known? |
-| Q-R1 | Radar motion fields: OpenCV through Rust bindings (same algorithm, a native OpenCV dependency) or a pure-Rust optical flow (no dependency, a parity difference to accept)? |
-| Q-P1 | Recorded API inputs for golden parity: may I record MCS7 `status.xml`, the Cerbo MQTT stream, Starlink and Peplink responses through the van Pi (read-only requests)? |
-| Q-P2 | Parity normalisation: time-dependent keys (ages, timestamps, rates, countdowns) compared with a tolerance. |
-| Q-B1 | The bench Pi's SSH name; first read from the van Pi; workstation toolchain (rustup, mosquitto, vcan) |
+| Id | Question | State |
+|---|---|---|
+| Q-A1 | Broker | answered 2026-11-23: Mosquitto |
+| Q-E1 | Seamless resume re-attach test and crash-loop limit | answered 2026-11-23: as proposed; timings to be measured in the van |
+| Q-E2 | Espar back after a longer gap | answered 2026-11-23: if the heater still runs the saved command, continue uninterrupted |
+| Q-L1 | No fresh battery reading: may HEAT start? | answered 2026-11-23: yes, as today |
+| Q-R1 | Radar motion fields | answered 2026-11-23: pure-Rust optical flow; the visual difference goes to the owner for acceptance |
+| Q-P1 | Recording API inputs through the van Pi | answered 2026-11-23: yes, read-only requests only, through the logged wrapper |
+| Q-P2 | Parity normalisation of time-dependent keys | open: to be asked with the first real diffs |
+| Q-D1 | Demo mode (`[device.demo]`, synthetic data with a DEMO badge; off in the van, no tests): port it, or drop it because the simulators replace it for bench work? | open |
+| Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
 
@@ -380,3 +437,10 @@ with a test that tries every other service byte.
 | 2026-11-23 | Espar restart ≤ ~10 s: resume seamlessly; longer: back OFF | owner, prompt §3 |
 | 2026-11-23 | Espar with no bus contact for a grace period (default 10 min, configurable): OFF, cool down | owner, prompt §3 |
 | 2026-11-23 | Acceptance numbers: the strict set in prompt §8 | owner, prompt §3 |
+| 2026-11-23 | Broker: Mosquitto 2.x on a Unix socket only | owner (Q-A1) |
+| 2026-11-23 | Espar resume: re-attach when no other controller is heard and the heater's 2C4 matches the saved command; max 3 resumes per 60 s. The 10 s figure is unproven; the heater's real controller-loss tolerance is measured in the van and the timings recomputed | owner (Q-E1) |
+| 2026-11-23 | Espar back after a longer gap: if the heater is still running the saved command, continue uninterrupted (age is not the criterion); otherwise inactive and silent, as today | owner (Q-E2) |
+| 2026-11-23 | Heat lockout enforced in the guard and inside both heater services, latch persisted; an unknown SoC never blocks a heat start | owner (Q-L1) |
+| 2026-11-23 | Radar motion fields: pure-Rust optical flow, difference from DIS shown to the owner for acceptance | owner (Q-R1) |
+| 2026-11-23 | Van Pi: read-only access through a logged wrapper; recording device responses with read-only requests (GET, subscribe, status) is allowed; no installs, restarts or writes | owner (Q-P1) |
+| 2026-11-23 | Workstation: sudo allowed to install the build and test dependencies (Rust, Mosquitto, vcan, …) | owner (Q-B1) |
