@@ -271,7 +271,7 @@ function renderHome() {
   renderHeatQuick();
   $("#coolant-therm").innerHTML = coolantThermo(k => S[`climate.rixens.${k}`]);
   { // setpoint ± on the Home climate card (same debounced path as the Climate page)
-    const sp = spDisplay(), ok = canControl() && !ctlPending;
+    const sp = spDisplay(), ok = canSetpoint();
     $("#hsp-val").textContent = sp == null ? "—" : `${sp}°`;
     $("#hsp-note").textContent = spPending != null ? "sending…" : "set";
     $("#hsp-up").disabled = $("#hsp-down").disabled = !ok || sp == null;
@@ -540,7 +540,7 @@ function renderClimate() {
   const [lo, hi] = UNIT === "F" ? [40, 90] : [5, 32];
   $("#dial").innerHTML = dial(tC(cabin), tC(spPending ?? sp), { min: lo, max: hi, size: DIAL_SIZE, stroke: DIAL_STROKE,
     color: "var(--c-cabin)", active: spDragging });
-  $("#dial").classList.toggle("draggable", canControl() && !ctlPending);
+  $("#dial").classList.toggle("draggable", canSetpoint());
   $("#dial-temp").textContent = fmtT(cabin);
   const rh = S["climate.cabin.humidity"];
   const fr = S["climate.cabin.front_temp"], bk = S["climate.cabin.rear_temp"];
@@ -696,8 +696,7 @@ function control(cmd, value, label, device = "rixens") {
   ctlWaiters[id] = r => { clearTimeout(ctlPending?.timer); ctlPending = null; spPending = cmd === "setpoint" ? null : spPending;
     if (cmd === "shore_limit") limPending = null;
     if (cmd === "fan") fanPending = null;
-    toast(r.ok ? `${label}: ${r.detail}` : `${label} failed: ${r.detail}`, r.ok ? "ok" : "bad"); render();
-    if (cmd === "setpoint" && r.ok) espFollowSetpoint(value); };
+    toast(r.ok ? `${label}: ${r.detail}` : `${label} failed: ${r.detail}`, r.ok ? "ok" : "bad"); render(); };
   // Watchdog: a lost result (socket dropped mid-command, or sent while reconnecting) must never leave every
   // control on this screen dead. Longer than any backend verify window (Starlink install verifies for 90 s).
   ctlPending.timer = setTimeout(() => dropPending(id, "no confirmation received — check its status"), cmd === "install_update" ? 150e3 : 60e3);
@@ -720,16 +719,18 @@ function askConfirm(title, detail, onYes) {
   $("#modal-no").onclick = () => { $("#modal").hidden = true; };
 }
 const F2C = f => (f - 32) / 1.8;
-function spDisplay() { const c = spPending ?? S["climate.cabin.setpoint"]; return c == null ? null : Math.round(tC(c)); }
+function spDisplay() { const c = spPending ?? S["climate.cabin.setpoint"] ?? (espHeating() ? S["climate.espar.ctl.setpoint_c"] : null);
+  return c == null ? null : Math.round(tC(c)); }
+const canSetpoint = () => (canControl() && !ctlPending) || (espHeating() && canControlDev("espar"));
 function nudgeSetpoint(d) {
-  if (!canControl() || ctlPending) return;
+  if (!canSetpoint()) return;
   const cur = spDisplay(); if (cur == null) return;
   let next = cur + d;
   next = UNIT === "F" ? Math.min(90, Math.max(35, next)) : Math.min(33, Math.max(1, next));
   spPending = UNIT === "F" ? F2C(next) : next;
   render();
   clearTimeout(spTimer);   // debounce taps; send one absolute value
-  spTimer = setTimeout(() => control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`), 1500);
+  spTimer = setTimeout(() => sendSetpoint(spPending, next), 1500);
 }
 // Drag the setpoint knob around the cabin dial. Snaps to whole degrees (display unit), clamps to the
 // dial's range, and sends ONE absolute setpoint when the finger lifts (same path as the ± buttons).
@@ -744,7 +745,7 @@ function dialValueAt(ev) {
   return { v: Math.round(lo + (hi - lo) * rel / g.sweep), dist: Math.hypot(dx, dy) / k, dx: dx / k, dy: dy / k };
 }
 $("#dial").addEventListener("pointerdown", ev => {
-  if (!canControl() || ctlPending) return;
+  if (!canSetpoint()) return;
   const cur = spDisplay(); if (cur == null) return;
   const g = dialGeom(DIAL_SIZE, DIAL_STROKE), [lo, hi] = UNIT === "F" ? [40, 90] : [5, 32];
   const a = (g.a0 + g.sweep * (Math.max(lo, Math.min(hi, cur)) - lo) / (hi - lo)) * Math.PI / 180;
@@ -766,7 +767,7 @@ const endDrag = ev => {
   spDragging = false;
   const next = spDisplay(), cur = S["climate.cabin.setpoint"];
   if (spPending != null && (cur == null || Math.round(tC(cur)) !== next)) {
-    control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`);
+    sendSetpoint(spPending, next);
   } else { spPending = null; }
   renderClimate();
 };
@@ -807,7 +808,7 @@ function renderClimateControls() {
   const live = S["climate.rixens.live"];
   const sp = spDisplay();
   $("#sp-val").textContent = sp == null ? "—" : `${sp}°`;
-  $("#sp-note").textContent = !live ? "setpoint (MCS7 not connected)" : spDragging ? "setpoint · release to set" : spPending != null ? "setpoint · sending…" :
+  $("#sp-note").textContent = !live && !espHeating() ? "setpoint (MCS7 not connected)" : spDragging ? "setpoint · release to set" : spPending != null ? "setpoint · sending…" :
     !CAN_CTL ? "setpoint · view only" : !S["climate.rixens.controls_ok"] ? "setpoint · control off" : "setpoint · drag the ring";
   const f = S["climate.rixens.fan_speed"];
   const fa = S["climate.rixens.fan_auto_pct"], fanOn = S["climate.rixens.fan_running"];
@@ -847,15 +848,32 @@ function espStartHeat() {
     `Run time: ${espRun == null ? "until you turn it off" : espRunLabel(espRun)}. The heater runs its own 4-minute cool-down after heating.`,
     () => espSend("heat", `Espar heat ${fmtT(sp)}`, sp));
 }
-// After the shared setpoint is set on the MCS7, a heating Espar follows it (one more logged, verified command).
+// A heating Espar follows the shared setpoint in parallel with the MCS7: its own command, sent at the same time,
+// not waiting for (or depending on) the MCS7's answer. Own result slot, so it doesn't hold the MCS7's ctlPending.
+function espDirect(mode, sp, label) {
+  if (!canControlDev("espar")) return;
+  const id = ++ctlSeq;
+  toast(`${label}…`, "busy");
+  const timer = setTimeout(() => { delete ctlWaiters[id]; toast(`${label}: no confirmation received — check its status`, "bad"); }, 60e3);
+  ctlWaiters[id] = r => { clearTimeout(timer); toast(r.ok ? `${label}: ${r.detail}` : `${label} failed: ${r.detail}`, r.ok ? "ok" : "bad"); render(); };
+  if (!sendWS({ type: "control", device: "espar", cmd: "set", value: { mode, setpoint_c: sp, run_min: mode === "off" ? null : espRun }, id })) {
+    clearTimeout(timer); delete ctlWaiters[id]; toast(`${label}: not sent — no connection`, "bad");
+  }
+}
 function espFollowSetpoint(c) {
   if (!espHeating() || !canControlDev("espar")) return;
   const sp = Math.round(c * 10) / 10;
   // owner: a setpoint below the Espar's range means "no Espar heat" → OFF (it runs its own cool-down)
-  if (sp < ESP_SP_RANGE[0] - 0.05) { setTimeout(() => espSend("off", `Espar off (setpoint below ${fmtT(ESP_SP_RANGE[0])})`), 0); return; }
+  if (sp < ESP_SP_RANGE[0] - 0.05) { espDirect("off", sp, `Espar off (setpoint below ${fmtT(ESP_SP_RANGE[0])})`); return; }
   if (!espInRange(sp)) return;                   // above its range: keeps its current setpoint
   if (Math.abs(sp - (S["climate.espar.ctl.setpoint_c"] ?? -99)) < 0.05) return;
-  setTimeout(() => espSend("heat", `Espar set ${fmtT(sp)}`, sp), 0);
+  espDirect("heat", sp, `Espar set ${fmtT(sp)}`);
+}
+// One setpoint change → the MCS7 (if it can be controlled) and a heating Espar, at the same time.
+function sendSetpoint(c, next) {
+  espFollowSetpoint(c);
+  if (canControl() && !ctlPending) control("setpoint", +c.toFixed(2), `Setpoint ${next}°`);
+  else { spPending = null; render(); }
 }
 const espRunLabel = m => m == null ? "∞" : m < 60 ? `${m} min` : `${(m / 60).toFixed(m % 60 ? 1 : 0)} h`;
 // Espar badge stack (like the MCS7's): flame = HEAT, fan = FAN (one at a time; tap the lit one again for OFF),
