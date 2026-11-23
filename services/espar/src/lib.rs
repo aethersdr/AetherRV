@@ -40,6 +40,8 @@ pub struct Espar {
     pub state: Arc<StateStore>,
     pub bus: Option<Bus>,
     pub lockout: Mutex<LockoutTracker>,
+    /// `[power] auto_shutdown`: the heat lockout runs only with the guard enabled (Python ties both together).
+    pub lockout_enabled: bool,
     pub run_path: PathBuf,
     pub boot: String,
     pub admin: AdminClient,
@@ -125,6 +127,7 @@ impl Espar {
             state: Arc::new(StateStore::new()),
             bus: None,
             lockout: Mutex::new(lockout),
+            lockout_enabled: p.bool("auto_shutdown", false),
             run_path: opts.run_path,
             boot: boot_id(),
             admin: AdminClient::new(opts.admin_socket),
@@ -173,7 +176,7 @@ impl Espar {
             Some(Value::Bool(b)) => Some(b),
             _ => None,
         };
-        let own = self.lockout.lock().unwrap().lockout;
+        let own = self.lockout_enabled && self.lockout.lock().unwrap().lockout;
         let guard = view.is_true("power.heat_lockout") && view.age("power.heat_lockout").is_some_and(|a| a < GUARD_FRESH_S);
         let contact = {
             let mut c = lock_core(&self.core);
@@ -324,6 +327,9 @@ impl Espar {
 
     /// The heat lockout inside this service (§8): track it, and turn a heat run off only when the guard isn't there.
     pub async fn lockout_tick(self: &Arc<Self>, view: &dyn StateView) {
+        if !self.lockout_enabled {
+            return;
+        }
         let wall = now_s();
         self.lockout.lock().unwrap().tick_state(view, wall);
         let own = self.lockout.lock().unwrap().lockout;

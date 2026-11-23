@@ -299,6 +299,9 @@ with a test that tries every other service byte.
 
 ## 8. Heat lockout without a single point of failure
 
+As in Python, the lockout and the power-off run only with `[power] auto_shutdown = true` (on in the van); all three
+enforcement points follow that one switch.
+
 - `aetherrv-power` holds the Python logic: `bank_soc` (shunt while fresh < 120 s, else the Bluetooth mean),
   `charging` (> +1 A), the lockout tracker (≤ 10 % for 120 s and not charging → locked; released by charging or
   > 12 %).
