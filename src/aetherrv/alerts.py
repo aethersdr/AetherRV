@@ -204,6 +204,16 @@ def r_buses(s: State, c: dict):
 
 def r_espar(s: State, c: dict):
     """Espar heater fault code from its own status frame (read-only decoder, adapters/espar.py)."""
+    lock = s.get("climate.espar.diag.lockout")
+    if lock:
+        yield Finding("espar.lockout", "serious", f"Espar locked out ({lock['code']})", f"{lock['why']}. {lock['help']}", "espar")
+    for d in s.get("climate.espar.diag.dtcs") or []:
+        if d.get("active") and not d.get("lockout"):
+            sev = "serious" if d.get("severity") in (4, 5, 6) else "warning"
+            yield Finding(f"espar.dtc.{d['code']}", sev, f"Espar fault {d['code']}", d.get("text") or "", "espar")
+    issue = s.get("climate.espar.issue")
+    if issue:
+        yield Finding("espar.issue", "warning", "Espar not heating", issue[0].upper() + issue[1:] + ".", "espar")
     code = s.get("climate.espar.fault")
     if code:
         sev = "serious" if s.get("climate.espar.state") == "error" else "warning"

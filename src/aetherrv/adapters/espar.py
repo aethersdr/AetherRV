@@ -110,6 +110,7 @@ class EsparAdapter(CaptureOnlyAdapter):
         self.last_heater: float | None = None
         self.last_ctrl: float | None = None
         self.heat_since: float | None = None
+        self.heat_cmd_since: float | None = None      # when the controller started commanding HEAT
         self.after_since: float | None = None
 
     def on_frame(self, msg: can.Message) -> None:
@@ -138,6 +139,10 @@ class EsparAdapter(CaptureOnlyAdapter):
             self.cmd = {"flags": d[0], "mode": {0x05: "heat", 0x02: "fan", 0x00: "off"}.get(d[1], f"0x{d[1]:02x}"),
                         "setpoint_c": None if sp in (0xFFFE, 0xFFFF) else round(sp / 10, 1),
                         "room_c": temp_word(d[4], d[5])}
+            if self.cmd["mode"] == "heat":
+                self.heat_cmd_since = self.heat_cmd_since or now
+            else:
+                self.heat_cmd_since = None
             self.last_ctrl = now
         elif i == 0x065 and len(d) >= 2:
             r = temp_word(d[0], d[1])
@@ -192,6 +197,12 @@ class EsparAdapter(CaptureOnlyAdapter):
             state = "off"
         fault = st.get("fault") or 0
         running = state in ("heating", "fan", "starting", "cooldown")
+        # behavioural checks (the S3 project's): HEAT commanded but the heater isn't heating after 30 s;
+        # the power-up lock (fault 0x04 while idle) makes it ignore HEAT/FAN until a ≥5 s FAN, then OFF
+        issue = None
+        if not asleep and self.heat_cmd_since and now - self.heat_cmd_since > 30 and st.get("name") != "heating":
+            issue = ("power-up lock: the heater ignores HEAT after a power interruption. Run FAN for 5 s, then OFF, then HEAT"
+                     if fault == 0x04 else "heat commanded for 30 s but the heater isn't heating")
         return {
             p + "state": state,
             p + "asleep": asleep,
@@ -207,6 +218,7 @@ class EsparAdapter(CaptureOnlyAdapter):
             p + "cooldown_left_s": max(0, round(AFTER_RUN_S - (now - self.after_since)))
             if self.after_since and not asleep else None,
             p + "controller": None if self.last_ctrl is None else now - self.last_ctrl < ASLEEP_S,
+            p + "issue": issue,
             p + "last_seen": self.last_rx,
         }
 
@@ -238,7 +250,12 @@ class EsparAdapter(CaptureOnlyAdapter):
                p + "dtcs": self.dtcs}
         for k, (v, t) in self.diag.items():
             out[p + k] = v if now - t < max(30, self.diag_interval * (len(uds.LIVE_DIDS) + 2)) or k in (
-                "software", "hardware", "variant", "operating_min", "event_count") else None
+                "software", "hardware", "hours", "event_count", "pump_strokes", "air_hpa") else None
+        # the heater's own fuel per pump stroke: lifetime fuel ÷ lifetime strokes (µl)
+        fuel, strokes = self.diag.get("fuel", (None, 0))[0], self.diag.get("pump_strokes", (None, 0))[0]
+        out[p + "ul_per_stroke"] = round(fuel["total_l"] * 1e6 / strokes, 1) if fuel and strokes else None
+        lock = [d for d in (self.dtcs or []) if d.get("lockout") and d.get("active")]
+        out[p + "lockout"] = {"code": lock[0]["code"], "why": uds.LOCKOUT[lock[0]["code"]], "help": uds.LOCKOUT_HELP} if lock else None
         return out
 
     async def run(self) -> None:

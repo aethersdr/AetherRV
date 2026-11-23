@@ -33,7 +33,15 @@ def test_multi_frame_reply_and_phase_and_dtcs():
     assert decode(p) == {"did": 0xFD10, "key": "phase", "value": {"request": "heat", "phase": "burning"}}
     p, _ = rx.feed(bytes.fromhex("100B5902FF000115"), now=2.0)     # two DTCs: P000115 (stored), P000440 (active)
     p, _ = rx.feed(bytes.fromhex("2108000440090000"), now=2.01)
-    assert decode(p)["dtcs"] == [{"code": "P000115", "text": "overheating (software threshold)", "active": False},
-                                 {"code": "P000440", "text": "timeout talking to the controller", "active": True}]
+    assert decode(p)["dtcs"] == [
+        {"code": "P000115", "text": "overheating (software threshold)", "active": False, "severity": 5, "lockout": False},
+        {"code": "P000440", "text": "timeout talking to the controller", "active": True, "severity": 1, "lockout": False}]
     p, _ = rx.feed(bytes.fromhex("2208000440090000"), now=9.0)     # stray consecutive frame: ignored
     assert p is None
+
+
+def test_hours_pressure_and_strokes():
+    p = decode(bytes.fromhex("62FD17") + b"".join(m.to_bytes(4, "big") for m in (600, 60, 120, 180, 240, 30, 0)))
+    assert p["value"] == {"operating": 10.0, "p0_25": 1.0, "p25_50": 2.0, "p50_75": 3.0, "p75_100": 4.0, "pause": 0.5, "altitude": 0.0}
+    assert decode(bytes.fromhex("62FD3627B0"))["value"] == 1016.0
+    assert decode(bytes.fromhex("62FD6A00989680"))["value"] == 10_000_000

@@ -79,14 +79,30 @@ DIDS = {
     0xFD45: ("regulation", lambda d: {"setpoint_c": _temp10(_u16(d, 0)), "regulated_c": _temp10(_u16(d, 2))}
              if len(d) >= 4 else None),
     0xFD2A: ("burn_s", lambda d: None if _u16(d, 0) is None else round(_u16(d, 0) / 100, 1)),
-    0xFD17: ("operating_min", lambda d: int.from_bytes(d[0:4], "big") if len(d) >= 4 else None),
+    0xFD17: ("hours", lambda d: {k: round(int.from_bytes(d[i * 4:i * 4 + 4], "big") / 60, 1) for i, k in enumerate(
+             ("operating", "p0_25", "p25_50", "p50_75", "p75_100", "pause", "altitude")) if len(d) >= i * 4 + 4}),
+    0xFD36: ("air_hpa", lambda d: None if _u16(d, 0) is None else round(_u16(d, 0) / 10, 1)),
+    0xFD6A: ("pump_strokes", lambda d: int.from_bytes(d[0:4], "big") if len(d) >= 4 else None),
+    0xFD2B: ("ignition_s", lambda d: None if _u16(d, 0) is None else round(_u16(d, 0) / 100, 1)),
+    0xFD35: ("unit_c", lambda d: _temp100(_u16(d, 0))),
     0xFD06: ("event_count", lambda d: _u16(d, 0)),
     0xF195: ("software", lambda d: d.decode("ascii", "replace").strip("\x00 ")),
     0xF193: ("hardware", lambda d: d.decode("ascii", "replace").strip("\x00 ")),
     0xFD58: ("variant", lambda d: d.decode("ascii", "replace").strip("\x00 ")),
 }
-LIVE_DIDS = [0xFD10, 0xFD04, 0xFD08, 0xFD0A, 0xFD0D, 0xFD0E, 0xFD0F, 0xFD01, 0xFD45, 0xFD11, 0xFD2A]
-ONCE_DIDS = [0xF195, 0xF193, 0xFD17, 0xFD06]          # (FD58 variant: 'out of range' on the S2 D2L)
+# the combustion phase (FD10) every other read so the start-up sequence is caught; the rest round-robin
+_LIVE = [0xFD04, 0xFD08, 0xFD0A, 0xFD0D, 0xFD0E, 0xFD0F, 0xFD01, 0xFD45, 0xFD11, 0xFD2A, 0xFD2B, 0xFD36, 0xFD35]
+LIVE_DIDS = [x for d in _LIVE for x in (0xFD10, d)]
+ONCE_DIDS = [0xF195, 0xF193, 0xFD17, 0xFD06, 0xFD6A]    # (FD58 variant: 'out of range' on the S2 D2L)
+
+# Severity class per P-code (Airtronic S3 service manual via the S3 project): 1 service, 2 under-voltage,
+# 3 over-voltage, 4 fuel supply (heat stops), 5 air system (immediate stop), 6 overheating lockout, 7 limp/log.
+SEVERITY = {"P0001A": 6, "P00011A": 6, "P000115": 5, "P000116": 5, "P00012A": 4, "P000200": 4, "P000201": 4,
+            "P000202": 4, "P000310": 3, "P000312": 2, "P000143": 7, "P000130": 7, "P000131": 7}
+LOCKOUT = {"P00012B": "10 failed starts in a row", "P00011A": "too many overheating events",
+           "P0001A": "too many overheating events"}
+LOCKOUT_HELP = ("Locked out by the heater. Reset: switch the heater on, pull the heater's fuse within 20 s, "
+                "wait ~5 s, refit it. Find and fix the cause first (fuel, exhaust, air path).")
 
 
 def request(service: int, *args: int) -> bytes:
@@ -157,7 +173,8 @@ def decode(payload: bytes) -> dict:
         dtcs = []
         for i in range(3, len(payload) - 3, 4):
             code = "P" + payload[i:i + 3].hex().upper()
-            dtcs.append({"code": code, "text": P_CODES.get(code, "unknown"), "active": bool(payload[i + 3] & 0x01)})
+            dtcs.append({"code": code, "text": P_CODES.get(code, "unknown"), "active": bool(payload[i + 3] & 0x01),
+                         "severity": SEVERITY.get(code, 1), "lockout": code in LOCKOUT})
         return {"dtcs": dtcs}
     if sid == 0x7F and len(payload) >= 3:
         return {"negative": {"service": payload[1], "nrc": payload[2]}}

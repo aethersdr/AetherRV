@@ -592,7 +592,7 @@ function renderClimate() {
       kv: E("state") == null ? [] : [
         ["Heater", E("heater_c") != null ? fmtT(E("heater_c")) : D("temps")?.intake_c != null ? fmtT(D("temps").intake_c) : "—"],
         ["Battery", D("voltage_v") == null ? "—" : `${num(D("voltage_v"), 1)} V`],
-        ["Runtime", D("operating_min") == null ? "—" : `${Math.round(D("operating_min") / 60).toLocaleString()} h`],
+        ["Runtime", D("hours")?.operating == null ? "—" : `${Math.round(D("hours").operating).toLocaleString()} h`],
         ["Fuel total", D("fuel")?.total_l == null ? "—" : `${(D("fuel").total_l / 3.785).toFixed(1)} gal`],
       ],
       burner: D("enabled") && !E("asleep") ? [
@@ -604,9 +604,15 @@ function renderClimate() {
         ["Intake", D("temps")?.intake_c == null ? "—" : fmtT(D("temps").intake_c), "Air in"],
         ["Flame", D("temps")?.flame_c == null ? "—" : fmtT(D("temps").flame_c), D("flame")?.flame ? "Flame on" : "Flame sensor"],
       ] : [],
-      note: (D("dtcs") || []).length ? `Fault memory: ${D("dtcs").map(x => `${x.code}${x.active ? " (active)" : ""}`).join(", ")}`
-        + ` · ${D("dtcs").map(x => x.text).join("; ")}` : null,
-      fault: E("fault") ? `${E("fault")} · ${E("fault_text")}` : null },
+      note: [
+        (D("dtcs") || []).length ? `Fault memory: ${D("dtcs").map(x => `${x.code}${x.active ? " (active)" : ""} ${x.text}`).join("; ")}` : null,
+        [D("air_hpa") != null ? `air ${Math.round(D("air_hpa"))} hPa` : null,
+         D("ul_per_stroke") != null ? `pump ${D("ul_per_stroke")} µl/stroke (heater's figure)` : null,
+         D("hours")?.p0_25 != null ? `hours at power 0-25/25-50/50-75/75-100 %: ${["p0_25", "p25_50", "p50_75", "p75_100"].map(k => Math.round(D("hours")[k])).join(" / ")}` : null,
+         D("software") ? `software ${D("software")}` : null].filter(Boolean).join(" · ") || null,
+      ].filter(Boolean).join("\n") || null,
+      fault: D("lockout") ? `${D("lockout").code} · locked out: ${D("lockout").why}. ${D("lockout").help}`
+        : E("issue") ? `Not heating: ${E("issue")}` : E("fault") ? `${E("fault")} · ${E("fault_text")}` : null },
   ];
   $("#cold").innerHTML = `<div class="card-h"><h2>Refrigeration</h2><span class="muted">Ruuvi tags</span></div><div class="cold-row">` +
     [["fridge", "Fridge", "fridge"], ["freezer", "Freezer", "snow"]].map(([r, name, ic]) => {

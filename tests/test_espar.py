@@ -73,3 +73,17 @@ def test_espar_diag_is_gated_and_only_reads(monkeypatch):
     assert s["climate.espar.diag.phase"] == {"request": "heat", "phase": "burning"}
     assert s["climate.espar.diag.voltage_v"] == 13.2 and s["climate.espar.diag.enabled"] is True
     assert all(dev == "espar_diag" and aid == 0x7A0 for dev, aid, _ in sent)
+
+
+def test_espar_no_heat_and_power_up_lock_and_lockout_alerts(monkeypatch):
+    import time as _t
+    now = [10.0]; monkeypatch.setattr(_t, "time", lambda: now[0])
+    st = State(); a = EsparAdapter("espar", st)
+    a.on_frame(f(0x054, "09050B01DA020000")); a.on_frame(f(0x2C4, "030004001B020000"))   # HEAT, but idle + 0x04
+    now[0] += 31; a.on_frame(f(0x054, "09050B01DA020000")); a.on_frame(f(0x2C4, "030004001B020000"))
+    st.update(a.snapshot(now[0]))
+    assert "power-up lock" in st.get("climate.espar.issue")
+    a.dtcs = [{"code": "P00012B", "text": "lockout", "active": True, "severity": 1, "lockout": True}]
+    st.update(a.diag_snapshot(now[0]))
+    ids = {x.id: x.severity for x in r_espar(st, {})}
+    assert ids["espar.lockout"] == "serious" and "espar.issue" in ids
