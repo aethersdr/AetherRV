@@ -277,7 +277,7 @@ async def amain(cfg: dict) -> None:
     pcfg = cfg.get("power", {})
     if pcfg.get("auto_shutdown"):                   # clean power-off before the house bank runs out
         from .lowbatt import LowBatteryShutdown
-        tasks.append(asyncio.create_task(LowBatteryShutdown(state, admin, pcfg).run(), name="low-battery"))
+        tasks.append(asyncio.create_task(LowBatteryShutdown(state, admin, pcfg, controls).run(), name="low-battery"))
     if cfg.get("climate", {}).get("cabin_source") == "average":
         tasks.append(asyncio.create_task(run_cabin_average(state), name="cabin-average"))
     try:

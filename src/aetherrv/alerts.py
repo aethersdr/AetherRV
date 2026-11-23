@@ -59,6 +59,10 @@ def _num(v):
 
 
 def r_power_shutdown(s: State, c: dict):
+    h = s.get("power.heaters_off")
+    if h:
+        yield Finding("power.heaters_off", "serious", f"Heaters turned off: house battery at {h['soc']:.0f}%",
+                      "; ".join(h["done"]) or "Nothing was heating any more.", "victron")
     p = s.get("power.shutdown") or {}
     if p.get("in_s") is not None:
         yield Finding("power.shutdown", "critical", f"Console shutting down in {p['in_s']} s",

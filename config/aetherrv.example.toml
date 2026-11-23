@@ -216,3 +216,4 @@ auto_shutdown = false
 warn_soc = 8.0
 shutdown_soc = 5.0
 hold_s = 120
+heater_off_soc = 10.0   # Espar or MCS7 heating at/below this (held hold_s, not charging) → both heaters off
