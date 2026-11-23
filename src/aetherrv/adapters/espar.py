@@ -111,6 +111,9 @@ class EsparAdapter(CaptureOnlyAdapter):
         self.last_ctrl: float | None = None
         self.heat_since: float | None = None
         self.heat_cmd_since: float | None = None      # when the controller started commanding HEAT
+        # 054/60D we *receive* come from another controller (an EasyStart Pro): we never receive our own frames
+        self.last_other_ctrl: float | None = None
+        self.on_other_controller = None
         self.after_since: float | None = None
 
     def on_frame(self, msg: can.Message) -> None:
@@ -143,13 +146,17 @@ class EsparAdapter(CaptureOnlyAdapter):
                 self.heat_cmd_since = self.heat_cmd_since or now
             else:
                 self.heat_cmd_since = None
-            self.last_ctrl = now
+            self.last_ctrl = self.last_other_ctrl = now
+            if self.on_other_controller:
+                self.on_other_controller()
         elif i == 0x065 and len(d) >= 2:
             r = temp_word(d[0], d[1])
             if r is not None:
                 self.cmd["room_c"] = r
         elif i in (0x60D,):
-            self.last_ctrl = now
+            self.last_ctrl = self.last_other_ctrl = now
+            if self.on_other_controller:
+                self.on_other_controller()
         elif i == 0x2C4 and len(d) >= 6:
             code, flags = d[0], d[1]
             name = STATES.get(code, f"0x{code:02x}")

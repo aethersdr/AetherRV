@@ -555,6 +555,7 @@ function renderClimate() {
   const srcs = R("sources") || [];
   const E = k => S[`climate.espar.${k}`];
   const D = k => S[`climate.espar.diag.${k}`];
+  const C = k => S[`climate.espar.ctl.${k}`];
   // combustion phase from the diagnostic reads (FD10); S2 codes not in the S3 table show as hex until named
   const ESP_PHASE = { off: null, ventilation: "ventilation", startup: "starting", "pre-glow": "pre-glow", ignition: "ignition",
     "flame ramp-up": "flame ramp-up", burning: "burning", "control pause": "pause (at temperature)", "cool-down": "cool-down" };
@@ -581,11 +582,16 @@ function renderClimate() {
         ["Flame", R("flame_c") == null ? "—" : fmtT(R("flame_c")), "Flame sensor"],
       ] : [],
       fault: R("fault_active") },
-    { id: "espar", name: "Espar Airtronic S2", state: E("state"), buttons: [], chips: [],
+    { id: "espar", name: "Espar Airtronic S2", state: E("state"), buttons: [], chips: [], control: S["espar.controls_ok"] === true,
+      extra: espControls(),
       // read-only: the heater's own CAN bus (adapters/espar.py) + UDS diagnostic reads (espar_uds.py)
       sub: `D2L forced-air · ${E("asleep") ? "bus asleep" : [
-        E("mode") === "heat" && E("setpoint_c") != null ? `set ${fmtT(E("setpoint_c"))}` : E("mode") === "fan" ? "fan only" : null,
-        E("room_c") != null ? `room ${fmtT(E("room_c"))}` : null,
+        // while AetherRV drives the heater its own command is the truth (we never receive our own 054)
+        ...(C("active") ? [C("mode") === "heat" ? `set ${fmtT(C("setpoint_c"))}` : C("mode") === "fan" ? "fan only" : "off",
+          C("room_c") != null ? `room ${fmtT(C("room_c"))} (${C("room_src")})` : null,
+          C("left_s") != null ? `${fmtDur(C("left_s"))} left` : C("mode") !== "off" ? "no time limit" : null]
+        : [E("mode") === "heat" && E("setpoint_c") != null ? `set ${fmtT(E("setpoint_c"))}` : E("mode") === "fan" ? "fan only" : null,
+          E("room_c") != null ? `room ${fmtT(E("room_c"))}` : null]),
         espPhase(), E("run_s") != null ? fmtDur(E("run_s")) : null,
         E("cooldown_left_s") != null ? `${Math.floor(E("cooldown_left_s") / 60)}:${String(E("cooldown_left_s") % 60).padStart(2, "0")} left` : null,
       ].filter(Boolean).join(" · ") || "EasyStart Pro"}`,
@@ -612,7 +618,8 @@ function renderClimate() {
          D("software") ? `software ${D("software")}` : null].filter(Boolean).join(" · ") || null,
       ].filter(Boolean).join("\n") || null,
       fault: D("lockout") ? `${D("lockout").code} · locked out: ${D("lockout").why}. ${D("lockout").help}`
-        : E("issue") ? `Not heating: ${E("issue")}` : E("fault") ? `${E("fault")} · ${E("fault_text")}` : null },
+        : C("problem") ? `Control: ${C("problem")}` : E("issue") ? `Not heating: ${E("issue")}`
+        : E("fault") ? `${E("fault")} · ${E("fault_text")}` : null },
   ];
   $("#cold").innerHTML = `<div class="card-h"><h2>Refrigeration</h2><span class="muted">Ruuvi tags</span></div><div class="cold-row">` +
     [["fridge", "Fridge", "fridge"], ["freezer", "Freezer", "snow"]].map(([r, name, ic]) => {
@@ -635,8 +642,9 @@ function renderClimate() {
             ${icon(b.k === "furnace" ? "flame" : b.k === "electric" ? "plug" : "engine")}<span>${b.k[0].toUpperCase() + b.k.slice(1)}</span><small>${b.on ? (b.st === "active" ? "active" : "on · " + (b.st || "")) : "off"}</small></button>`).join("")}</div>` : ""}
         ${h.chips.length ? `<div class="chips-row">${h.chips.map(([k, on]) => `<span class="src ${on ? "on" : ""}">${k}${on ? " on" : ""}</span>`).join("")}</div>` : ""}
         ${h.fault ? `<div class="warn-t fault-line">${icon("alert")}Fault code ${esc(h.fault)}</div>` : ""}
+        ${h.extra || ""}
         ${h.note ? `<div class="muted note-line">${esc(h.note)}</div>` : ""}</div>
-      <span class="ro pill">${icon(h.buttons.length && canControl() ? "check" : "lock")}${h.buttons.length && canControl() ? "control" : "read-only"}</span></div>`;
+      <span class="ro pill">${icon((h.buttons.length && canControl()) || (h.control && CAN_CTL) ? "check" : "lock")}${(h.buttons.length && canControl()) || (h.control && CAN_CTL) ? "control" : "read-only"}</span></div>`;
   }).join("");
 }
 
@@ -709,7 +717,7 @@ function dropPending(id, why) {
   if (p.cmd === "fan") fanPending = null;
   toast(`${p.label}: ${why}`, "bad"); render();
 }
-const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok", n2k: "n2k.controls_ok", peplink: "peplink.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
+const canControlDev = d => CAN_CTL && S[{ victron: "victron.controls_ok", starlink: "starlink.controls_ok", n2k: "n2k.controls_ok", peplink: "peplink.controls_ok", espar: "espar.controls_ok" }[d] || "climate.rixens.controls_ok"] === true;
 function askConfirm(title, detail, onYes) {
   $("#modal-t").textContent = title; $("#modal-d").textContent = detail; $("#modal").hidden = false;
   $("#modal-yes").onclick = () => { $("#modal").hidden = true; onYes(); };
@@ -822,6 +830,48 @@ function renderClimateControls() {
   $("#fan-auto").disabled = !ok;
 }
 $("#fan-auto").addEventListener("click", () => control("fan", "auto", "Fan auto"));
+// ── Espar control (AetherRV is the heater's controller; adapters/espar_control.py) ──
+// Run-time choices mirror the EasyStart Pro: 1-240 min by the minute, 270-720 in 30-min steps, unlimited.
+const ESP_RUNS = [null, 15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720];
+let espSp = null, espRun = (v => v === "inf" ? null : ESP_RUNS.includes(+v) ? +v : null)(store.get("vp.espar.run", "inf")), espSpTimer = null;
+const espSet = () => espSp ?? S["climate.espar.ctl.setpoint_c"] ?? 21;
+const espRunLabel = m => m == null ? "∞" : m < 60 ? `${m} min` : `${(m / 60).toFixed(m % 60 ? 1 : 0)} h`;
+function espControls() {
+  if (S["espar.controls_ok"] === undefined) return "";
+  const ok = canControlDev("espar") && !ctlPending, mode = S["climate.espar.ctl.active"] ? S["climate.espar.ctl.mode"] : "off";
+  const step = UNIT === "F" ? 5 / 9 : 0.5;
+  return `<div class="esp-ctl">
+    <div class="seg esp-mode">${[["off", "Off"], ["heat", "Heat"], ["fan", "Fan"]].map(([m, l]) =>
+      `<button data-esp="${m}" class="${mode === m ? "on" : ""}" ${ok ? "" : "disabled"}>${l}</button>`).join("")}</div>
+    <div class="esp-sp"><button data-esp="sp-" data-step="${-step}" ${ok ? "" : "disabled"}>−</button><b>${fmtT(espSet())}</b>
+      <button data-esp="sp+" data-step="${step}" ${ok ? "" : "disabled"}>+</button></div>
+    <button class="esp-run" data-esp="run" ${ok ? "" : "disabled"} title="Run time (like the EasyStart Pro)">${icon("clock")}${espRunLabel(espRun)}</button>
+  </div>`;
+}
+function espSend(mode, label) {
+  control("set", { mode, setpoint_c: Math.round(espSet() * 10) / 10, run_min: mode === "off" ? null : espRun }, label, "espar");
+}
+$("#heaters").addEventListener("click", e => {
+  const b = e.target.closest("[data-esp]"); if (!b || b.disabled) return;
+  const k = b.dataset.esp, active = S["climate.espar.ctl.active"], mode = active ? S["climate.espar.ctl.mode"] : "off";
+  if (k === "off") { espSend("off", "Espar off"); return; }
+  if (k === "heat" || k === "fan") {
+    askConfirm(k === "heat" ? `Start the Espar heating to ${fmtT(espSet())}?` : "Run the Espar fan only?",
+      `Run time: ${espRun == null ? "until you turn it off" : espRunLabel(espRun)}. The heater runs its own 4-minute cool-down after heating.`,
+      () => espSend(k, k === "heat" ? `Espar heat ${fmtT(espSet())}` : "Espar fan"));
+    return;
+  }
+  if (k === "sp-" || k === "sp+") {
+    espSp = Math.max(10, Math.min(30, Math.round((espSet() + +b.dataset.step) * 10) / 10)); render();
+    clearTimeout(espSpTimer);
+    if (mode === "heat") espSpTimer = setTimeout(() => espSend("heat", `Espar set ${fmtT(espSet())}`), 1200);
+    return;
+  }
+  if (k === "run") {
+    espRun = ESP_RUNS[(ESP_RUNS.indexOf(espRun) + 1) % ESP_RUNS.length]; store.set("vp.espar.run", espRun ?? "inf"); render();
+    if (mode === "heat" || mode === "fan") { clearTimeout(espSpTimer); espSpTimer = setTimeout(() => espSend(mode, `Espar run time ${espRunLabel(espRun)}`), 1500); }
+  }
+});
 $("#heaters").addEventListener("click", e => {
   const b = e.target.closest("[data-src]"); if (!b || b.disabled) return;
   const k = b.dataset.src, on = !b.classList.contains("sel");
@@ -2592,10 +2642,11 @@ function renderHeatQuick() {
       const installed = b.k !== "preheat" || avail.preheat !== false;
       usable = live && installed && canControl() && !ctlPending;
       note = !live ? "offline" : !installed ? "n/a" : on ? "on" : "off";
-    } else if (b.kind === "espar") {             // read-only: shows the heater's state, no control yet
+    } else if (b.kind === "espar") {             // AetherRV drives it when espar control is enabled
       const es = S["climate.espar.state"];
       on = es === "heating" || es === "starting" || es === "fan"; st = es === "heating" ? "active" : "";
       note = es == null ? "not connected" : es;
+      usable = canControlDev("espar") && !ctlPending;
     } else { note = "not connected"; }
     return `<button class="hq-btn${on ? " on" : ""}${st === "active" ? " active" : ""}" data-hq="${b.k}" ${usable ? "" : "disabled"}>
       ${icon(b.ic)}<span class="hq-l">${b.label}</span></button>`;
@@ -2603,7 +2654,14 @@ function renderHeatQuick() {
 }
 $("#heat-quick").addEventListener("click", e => {
   const b = e.target.closest("[data-hq]"); if (!b || b.disabled) return;
-  const k = b.dataset.hq; if (!HQ_CTL.has(k)) return;
+  const k = b.dataset.hq;
+  if (k === "espar") {                          // tap: heat at the last setpoint and run time, or off
+    if (b.classList.contains("on")) { espSend("off", "Espar off"); return; }
+    askConfirm(`Start the Espar heating to ${fmtT(espSet())}?`, `Run time: ${espRun == null ? "until you turn it off" : espRunLabel(espRun)}.`,
+      () => espSend("heat", `Espar heat ${fmtT(espSet())}`));
+    return;
+  }
+  if (!HQ_CTL.has(k)) return;
   const on = !b.classList.contains("on");
   control(k, on, `${HQ.find(x => x.k === k).label} ${on ? "on" : "off"}`);
 });

@@ -14,6 +14,7 @@ from aiohttp import web
 
 from .adapters.capture_only import CaptureOnlyAdapter
 from .adapters.espar import EsparAdapter
+from .adapters.espar_control import EsparControl
 from .adapters.demo import DemoAdapter
 from .adapters.epoch_ble import EpochBleAdapter
 from .adapters.n2k import N2kAdapter
@@ -152,6 +153,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
         elif kind == "espar":
             # decoder; with diag_tx it also sends UDS *read* requests (device "<dev>_diag" in the TxGate)
             a = EsparAdapter(dev, state, bus=bus, gate=gate, diag_interval=float(d.get("diag_interval_s", 5)))
+            # AetherRV as the heater's controller (EasyStart Pro unplugged); inert unless tx_enabled
+            adapters.append(EsparControl(state, a, bus, gate, db=history.db if history else None))
         else:
             log.warning("device %s: unknown kind %r", dev, kind)
             continue
@@ -240,9 +243,10 @@ async def amain(cfg: dict) -> None:
     controls = {"rixens": next((a for a in adapters if isinstance(a, RixensHttpAdapter)), None), "victron": vic,
                 "starlink": next((a for a in adapters if isinstance(a, StarlinkAdapter)), None),
                 "n2k": next((a for a in adapters if isinstance(a, SwitchController)), None),
-                "peplink": next((a for a in adapters if isinstance(a, PeplinkAdapter)), None)}
+                "peplink": next((a for a in adapters if isinstance(a, PeplinkAdapter)), None),
+                "espar": next((a for a in adapters if isinstance(a, EsparControl)), None)}
     admin = AdminClient(web_cfg.get("admin_socket", "/run/aetherrv-admin.sock"))
-    for fb in (a for a in adapters if isinstance(a, FailoverBus)):     # stuck-frame reset of the local CAN port
+    for fb in (a for a in adapters if isinstance(a, (FailoverBus, EsparControl))):   # stuck-frame reset of a local CAN port
         fb.reset = lambda iface: admin.call("can_reset", {"iface": iface}, timeout=10)
     prefs = Prefs(state, web_cfg.get("settings_path", "/var/lib/aetherrv/settings.json"))
     adapters.append(AutoTimezone(state, admin, prefs))

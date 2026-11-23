@@ -1213,3 +1213,13 @@ html.night .t-cold { color: var(--c-batt); }
 .climate-mini .coolant-therm { margin-left: 0; }
 
 .heater .note-line { margin-top: 10px; font-size: 13px; line-height: 1.35; white-space: pre-line; }   /* e.g. the Espar's stored fault codes */
+
+/* Espar control row on the Climate card */
+.esp-ctl { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+.esp-ctl .esp-mode button { min-width: 92px; }
+.esp-sp { display: flex; align-items: center; gap: 10px; }
+.esp-sp b { min-width: 64px; text-align: center; font-size: 24px; font-variant-numeric: tabular-nums; }
+.esp-sp button, .esp-run { height: 52px; min-width: 52px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2);
+  color: var(--ink); font-size: 22px; font-weight: 600; }
+.esp-run { display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 18px; }
+.esp-run .ic { width: 20px; height: 20px; }

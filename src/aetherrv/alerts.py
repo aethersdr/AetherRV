@@ -211,6 +211,9 @@ def r_espar(s: State, c: dict):
         if d.get("active") and not d.get("lockout"):
             sev = "serious" if d.get("severity") in (4, 5, 6) else "warning"
             yield Finding(f"espar.dtc.{d['code']}", sev, f"Espar fault {d['code']}", d.get("text") or "", "espar")
+    prob = s.get("climate.espar.ctl.problem")
+    if prob:
+        yield Finding("espar.control", "warning", "Espar control stopped", prob[0].upper() + prob[1:] + ".", "espar")
     issue = s.get("climate.espar.issue")
     if issue:
         yield Finding("espar.issue", "warning", "Espar not heating", issue[0].upper() + issue[1:] + ".", "espar")
