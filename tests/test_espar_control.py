@@ -92,3 +92,53 @@ async def test_another_controller_on_the_bus_stops_us():
     c.active, c.mode = True, "fan"
     a.on_frame(f(0x054, "0000FEFFDA020000"))                    # it appears while we drive the heater
     assert not c.active and "another controller" in c.problem and c.mode == "off"
+
+
+async def test_attach_in_off_then_heat_only_after_idle_and_burst_is_spread():
+    st, a, c, bus, resets = rig()
+    async def heater():
+        for _ in range(30):
+            await asyncio.sleep(0.03)
+            before = len(bus.sent); c.step()
+            assert len(bus.sent) - before <= 7                       # never more than hat1's queue can take
+            heater_says(a, "030000001C020000")                      # woken: idle
+    t = asyncio.ensure_future(heater())
+    r = await c.command("set", {"mode": "off", "attach": True})     # bench step 1: take over, OFF only
+    await t
+    assert r["ok"] and c.active and c.mode == "off"
+    assert all(d[1] == 0x00 for i, d in bus.sent if i == 0x054)     # nothing but OFF was ever sent
+    assert {i for i, _ in bus.sent} >= {0x062, 0x06D, 0x10A}        # the whole settings burst went out
+
+    st2, a2, c2, bus2, _ = rig()
+    async def heater2():
+        for k in range(40):
+            await asyncio.sleep(0.03); c2.step()
+            cmds = [d for i, d in bus2.sent if i == 0x054]
+            heater_says(a2, "090400001C020000" if cmds and cmds[-1][1] == 0x05 else "030000001C020000")
+    t2 = asyncio.ensure_future(heater2())
+    r2 = await c2.command("set", {"mode": "heat", "setpoint_c": 20, "run_min": 60})
+    await t2
+    modes = [d[1] for i, d in bus2.sent if i == 0x054]
+    assert r2["ok"] and modes[0] == 0x00 and 0x05 in modes            # woke in OFF, HEAT only after idle
+    until = c2.until
+    r3 = await c2.command("set", {"mode": "heat", "setpoint_c": 21, "run_min": 60})   # setpoint nudge
+    assert c2.until == until and c2.setpoint_c == 21.0                # countdown not restarted
+
+
+async def test_full_queue_while_waking_is_not_fatal():
+    st, a, c, bus, resets = rig()
+    n = [0]
+    real = bus.send
+    def flaky(device, msg, gate, quiet=False):
+        n[0] += 1
+        if n[0] < 6:
+            raise OSError(105, "No buffer space available")         # ENOBUFS behind the un-ACKed first frame
+        real(device, msg, gate, quiet)
+    bus.send = flaky
+    async def heater():
+        for _ in range(20):
+            await asyncio.sleep(0.03); c.step(); heater_says(a, "030000001C020000")
+    t = asyncio.ensure_future(heater())
+    r = await c.command("set", {"mode": "off", "attach": True})
+    await t
+    assert r["ok"] and c.active and resets == []

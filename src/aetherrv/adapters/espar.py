@@ -114,6 +114,7 @@ class EsparAdapter(CaptureOnlyAdapter):
         # 054/60D we *receive* come from another controller (an EasyStart Pro): we never receive our own frames
         self.last_other_ctrl: float | None = None
         self.on_other_controller = None
+        self.ctl_active = False                       # set by EsparControl while AetherRV drives the heater
         self.after_since: float | None = None
 
     def on_frame(self, msg: can.Message) -> None:
@@ -188,6 +189,8 @@ class EsparAdapter(CaptureOnlyAdapter):
         p = "climate.espar."
         asleep = self.last_rx is None or now - self.last_rx > ASLEEP_S
         st, cmd = self.st, self.cmd
+        if self.last_other_ctrl is None or now - self.last_other_ctrl > 3:
+            cmd = {}                                  # the EasyStart Pro's last command expires once it's gone
         if asleep:                                        # also: nothing heard yet since start (it sleeps when idle)
             state = "off"
         elif st.get("name") == "fault" or (st.get("fault") and st.get("name") != "idle"):
@@ -248,7 +251,8 @@ class EsparAdapter(CaptureOnlyAdapter):
     def awake(self, now: float | None = None) -> bool:
         """Heater and controller both talking within the last 2 s: only then do we ask (we never wake the bus)."""
         now = now or time.time()
-        return bool(self.last_heater and self.last_ctrl and now - self.last_heater < 2 and now - self.last_ctrl < 2)
+        ctrl = self.ctl_active or bool(self.last_ctrl and now - self.last_ctrl < 2)
+        return bool(self.last_heater and now - self.last_heater < 2 and ctrl)
 
     def diag_snapshot(self, now: float | None = None) -> dict:
         now = now or time.time()

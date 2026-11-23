@@ -25,7 +25,7 @@ def test_espar_cycle_from_the_van_capture(monkeypatch):
     assert s["setpoint_c"] is None and s["fault"] is None and s["asleep"] is False
     a.on_frame(f(0x054, "09050B01DA020000"))                           # HEAT, 80 °F
     a.on_frame(f(0x2C4, "09000000DA020000"))
-    now[0] += 300; a.on_frame(f(0x2C4, "09040000DA020000"))
+    now[0] += 300; a.on_frame(f(0x054, "09050B01DA020000")); a.on_frame(f(0x2C4, "09040000DA020000"))
     s = snap(a, now[0])
     assert s["state"] == "heating" and s["mode"] == "heat" and s["setpoint_c"] == 26.7 and s["run_s"] == 300
     assert s["heater_c"] is None                                       # mirrors the room value while running
@@ -33,7 +33,7 @@ def test_espar_cycle_from_the_van_capture(monkeypatch):
     now[0] += 10; a.on_frame(f(0x054, "0800FEFFE4020000")); a.on_frame(f(0x2C4, "030800009B020000"))
     s = snap(a, now[0])
     assert s["state"] == "cooldown" and s["cooldown_left_s"] == 240 and s["mode"] == "off" and s["room_c"] == 24.0
-    now[0] += 240; a.on_frame(f(0x2C4, "0300000095020000"))
+    now[0] += 240; a.on_frame(f(0x054, "0800FEFFE4020000")); a.on_frame(f(0x2C4, "0300000095020000"))
     s = snap(a, now[0]); assert s["state"] == "off" and s["heater_c"] == 16.1 and s["cooldown_left_s"] is None
     now[0] += 30                                                       # the bus goes to sleep: normal
     s = snap(a, now[0]); assert s["state"] == "off" and s["asleep"] is True and s["room_c"] is None

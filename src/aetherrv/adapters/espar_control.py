@@ -69,6 +69,10 @@ class EsparControl:
         self.state, self.a, self.bus, self.gate, self.db = state, adapter, bus, gate, db
         self.reset = reset                           # async (iface): down/up hat1 (root helper)
         self.mode, self.setpoint_c, self.until = "off", 21.0, None
+        self.target: str | None = None               # mode to apply once the woken heater reports idle
+        self.run_min = None
+        self._burst_i = 0
+        self._send_fail = 0
         self.flags = 0x00                            # 00 until the first run since start-up, then 09 on / 08 off
         self.active = False                          # transmitting
         self.started_at = 0.0
@@ -78,7 +82,6 @@ class EsparControl:
         self.problem: str | None = None
         self._lock = asyncio.Lock()
         self._tick = 0
-        self._burst_sent = False
         adapter.on_other_controller = self._other_controller
 
     # ---- inputs ----
@@ -87,12 +90,15 @@ class EsparControl:
         return self.gate.is_enabled(self.device)
 
     def room(self) -> tuple[float | None, str | None]:
+        """The cabin Ruuvi under climate.py's rule (the Cerbo republishes it only on change: stale after 15 min of
+        silence or with the Cerbo disconnected), else the heater's own intake reading (the adapter blanks it when old)."""
+        from ..climate import FRONT_STALE
         s = self.state
         t, age = s.get("climate.cabin_front.temp"), s.age("climate.cabin_front.temp")
-        if t is not None and age is not None and age < self.ROOM_FRESH_S:
+        if t is not None and age is not None and age < FRONT_STALE and s.get("victron.connected") is not False:
             return float(t), "cabin Ruuvi"
         temps = s.get("climate.espar.diag.temps") or {}
-        if temps.get("intake_c") is not None and (s.age("climate.espar.diag.temps") or 1e9) < self.ROOM_FRESH_S:
+        if temps.get("intake_c") is not None:
             return float(temps["intake_c"]), "heater intake sensor"
         return None, None
 
@@ -148,6 +154,8 @@ class EsparControl:
             self._stop("lost the heater (no status for 3 s)")
             return
         room, src = self.room()
+        if self.target and heard and a.st.get("name") in ("idle", "heating", "fan") and now - a.last_heater < 1:
+            self.mode, self.target = self.target, None   # woken and idle (as the EasyStart Pro did): apply the mode
         if self.mode == "heat" and room is None:
             self._log("auto_off", {"mode": "heat"}, "off", "no fresh room temperature (cabin Ruuvi or heater sensor)", "aetherrv")
             self.problem = "no fresh room temperature: heat stopped"
@@ -164,16 +172,24 @@ class EsparControl:
                     self._send(aid, data)
             if self._tick % 100 == 1:
                 self._send(0x065, room_word(room) + bytes([1 + (self._tick // 100) % 3]) + bytes(5))
-            if heard and not self._burst_sent:
-                for aid, h in STARTUP_BURST:
+            if heard and self._burst_i < len(STARTUP_BURST):  # the settings burst, two frames per tick (hat1 qlen 10)
+                for aid, h in STARTUP_BURST[self._burst_i:self._burst_i + 2]:
                     self._send(aid, bytes.fromhex(h))
-                self._burst_sent = True
-        except (TxBlocked, can.CanError, OSError) as e:
-            self._stop(f"send failed: {e}")
+                self._burst_i += 2
+            self._send_fail = 0
+        except TxBlocked as e:
+            self._stop(f"send refused: {e}")
             return
+        except (can.CanError, OSError) as e:
+            # a full send queue is normal while the heater wakes (our first frame waits for its ACK); the wake
+            # timeout handles a heater that never answers. Once running, ~1 s of failed sends is fatal.
+            self._send_fail += 1
+            if heard and self._send_fail > 10:
+                self._stop(f"send failed: {e}")
+                return
         self._tick += 1
         st = a.snapshot(now).get("climate.espar.state")
-        if self.mode == "off" and st in ("off", None) and heard:
+        if self.mode == "off" and not self.target and st in ("off", None) and heard:
             self.idle_since = self.idle_since or now
             if now - self.idle_since > self.IDLE_STOP_S:
                 self._stop(None)                         # idle: let the bus and heater sleep
@@ -188,6 +204,7 @@ class EsparControl:
 
     def publish(self) -> None:
         now = time.time()
+        self.a.ctl_active = self.active                # our own control counts as "controller present" (diag reads)
         self.state.update({
             "espar.controls_ok": self.enabled,
             "climate.espar.ctl.active": self.active, "climate.espar.ctl.mode": self.mode,
@@ -239,17 +256,25 @@ class EsparControl:
         if mode == "heat" and self.room()[0] is None:
             self._log(cmd, v, "rejected", "no fresh room temperature", client)
             return {"ok": False, "detail": "No fresh room temperature (cabin Ruuvi or heater sensor). Nothing sent."}
-        if mode == "off" and not self.active:
+        if mode == "off" and not self.active and not v.get("attach"):
             self.mode, self.until = "off", None
             self._log(cmd, v, "noop", "already off (not driving the heater)", client)
             return {"ok": True, "detail": "already off"}
-        self.mode, self.setpoint_c = mode, sp if mode == "heat" else self.setpoint_c
-        self.until = None if mode == "off" or run is None else now + run * 60
+        same_run = self.active and mode == (self.target or self.mode) and run == self.run_min
+        if not same_run:                                 # a setpoint nudge keeps the countdown running
+            self.until = None if mode == "off" or run is None else now + run * 60
+        self.run_min = None if mode == "off" else run
+        if mode == "heat":
+            self.setpoint_c = sp
+        self.problem = None
+        if not self.active:                              # take over the bus: wake the heater in OFF first
+            self.active, self.started_at, self._tick, self._burst_i, self.idle_since = True, now, 0, 0, None
+            self._send_fail = 0
+            self.mode, self.target = "off", (mode if mode != "off" else None)
+        else:
+            self.mode, self.target = mode, None
         if mode != "off":
             self.flags = 0x08                            # bit 3 stays set once a run has started (as the Pro does)
-        self.problem = None
-        if not self.active:                              # take over the bus: wake the heater
-            self.active, self.started_at, self._tick, self._burst_sent, self.idle_since = True, now, 0, False, None
         want = EXPECT[mode]
         end = time.time() + self.WAKE_S + self.VERIFY_S
         while time.time() < end:
@@ -257,7 +282,7 @@ class EsparControl:
             if not self.active:
                 break
             st = self.a.snapshot().get("climate.espar.state")
-            if st in want and (self.a.last_heater or 0) > now:
+            if st in want and self.target is None and (self.a.last_heater or 0) > now:
                 self._log(cmd, v, "ok", f"heater {st}", client)
                 return {"ok": True, "detail": f"Espar {mode}" + (f" {sp:.1f} °C" if mode == "heat" else "")}
         why = self.problem or "the heater didn't confirm"
