@@ -1,0 +1,26 @@
+[package]
+name = "aetherrv-settings"
+description = "Preferences, automatic time zone, fridge/freezer re-arm, config-derived UI values"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-settings"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,27 @@
+[package]
+name = "aetherrv-batteries-ble"
+description = "EPOCH batteries over Bluetooth LE (RoyPow BMS)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-batteries-ble"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+proto-roypow.workspace = true
+bluer.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,28 @@
+[package]
+name = "aetherrv-screen"
+description = "Kiosk screen power (sway output power) on 127.0.0.1:8091"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-screen"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+http-body-util.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

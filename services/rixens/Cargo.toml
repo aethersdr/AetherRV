@@ -1,0 +1,28 @@
+[package]
+name = "aetherrv-rixens"
+description = "Rixens MCS7 over its local HTTP API: climate, control, heat lockout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-rixens"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+proto-mcs7.workspace = true
+aetherrv-power.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

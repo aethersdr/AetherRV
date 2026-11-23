@@ -1,0 +1,26 @@
+[package]
+name = "aetherrv-derive"
+description = "Derived values: cabin average, energy figures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-derive"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+proto-n2k.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

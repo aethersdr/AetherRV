@@ -1,0 +1,31 @@
+[package]
+name = "aetherrv-starlink"
+description = "Starlink dish over local gRPC (reflection)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-starlink"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+tonic.workspace = true
+prost.workspace = true
+prost-reflect.workspace = true
+prost-types.workspace = true
+tonic-prost.workspace = true
+tonic-reflection.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

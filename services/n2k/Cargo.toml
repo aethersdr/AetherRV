@@ -1,0 +1,27 @@
+[package]
+name = "aetherrv-n2k"
+description = "NMEA 2000: decode, device list, alternator, CLMD16 switching (hat0 + the Cerbo socketcand)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-n2k"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+aetherrv-can.workspace = true
+proto-n2k.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -126,9 +126,10 @@ impl CaptureWriter {
 
     fn rollover(&mut self) -> io::Result<()> {
         self.file.flush()?;
-        self.rollovers += 1;
         let stem = self.base.file_stem().and_then(|s| s.to_str()).unwrap_or("capture").split('.').next().unwrap_or("capture").to_string();
         let rotated = self.dir.join(format!("{stem}_{}_#{:03}.log", local_stamp("%Y-%m-%dT%H%M%S"), self.rollovers));
+        // (the count is used before it's incremented: #000, #001, …)
+        self.rollovers += 1; // python-can numbers the first rotated file #000
         std::fs::rename(&self.base, &rotated)?;
         self.file = BufWriter::with_capacity(64 * 1024, File::options().create(true).append(true).open(&self.base)?);
         self.written = 0;
@@ -228,7 +229,7 @@ mod tests {
         }
         w.flush().unwrap();
         let names: Vec<String> = std::fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
-        assert!(names.iter().any(|n| n.contains("_#001.log")), "{names:?}");
+        assert!(names.iter().any(|n| n.contains("_#000.log")), "{names:?}");
         let total: usize = std::fs::read_dir(d.path()).unwrap().map(|e| read_file(&e.unwrap().path()).unwrap().len()).sum();
         assert_eq!(total, 20);
     }
