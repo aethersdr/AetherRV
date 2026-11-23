@@ -3,6 +3,20 @@
 version = 4
 
 [[package]]
+name = "aetherrv-can"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-core",
+ "anyhow",
+ "libc",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "aetherrv-core"
 version = "0.1.0"
 dependencies = [

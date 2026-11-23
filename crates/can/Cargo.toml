@@ -1,0 +1,21 @@
+[package]
+name = "aetherrv-can"
+description = "AetherRV CAN transport: SocketCAN (with TX echo), socketcand, FailoverBus, capture, link recovery"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+libc.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

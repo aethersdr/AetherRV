@@ -10,6 +10,7 @@
 //! * [`notify`]   systemd readiness and watchdog
 //! * [`pyfmt`]    Python `str()` / `repr()` formatting of JSON values, for log rows identical to the reference
 
+pub mod admin;
 pub mod bus;
 pub mod clock;
 pub mod cmdlog;
@@ -17,6 +18,7 @@ pub mod command;
 pub mod config;
 pub mod logging;
 pub mod notify;
+pub mod num;
 pub mod pyfmt;
 pub mod state;
 pub mod txgate;
