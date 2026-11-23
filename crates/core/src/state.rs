@@ -263,6 +263,19 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// py: tests/test_core.py::test_state_pubsub (a set of an unchanged value isn't a change; changes come out once,
+    /// in order)
+    #[test]
+    fn test_state_pubsub() {
+        let s = StateStore::new();
+        s.set_at("a", json!(1), 1000);
+        s.set_at("a", json!(1), 1001);
+        assert_eq!(s.take_dirty().0, vec![("a".to_string(), Stamped { v: json!(1), t: 1001 })]);
+        s.set_at("a", json!(2), 1002);
+        assert_eq!(s.take_dirty().0, vec![("a".to_string(), Stamped { v: json!(2), t: 1002 })]);
+        assert!(!s.has_dirty());
+    }
+
     #[test]
     fn changes_publish_at_once_unchanged_values_refresh_at_most_every_10s() {
         let s = StateStore::new();

@@ -77,6 +77,29 @@ impl TxGate {
 mod tests {
     use super::*;
 
+    /// py: tests/test_core.py::test_txgate_denies_by_default
+    #[test]
+    fn test_txgate_denies_by_default() {
+        let g = TxGate::new([("espar".to_string(), false)]);
+        for dev in ["espar", "rixens", "unknown"] {
+            assert!(g.check(dev, "test", false).is_err());
+        }
+        let want: BTreeMap<String, u64> = [("espar", 1), ("rixens", 1), ("unknown", 1)].map(|(k, v)| (k.to_string(), v)).into();
+        assert_eq!(g.blocked_count(), want);
+    }
+
+    /// py: tests/test_core.py::test_txgate_requires_literal_true (in TOML only a boolean `true` enables; a string
+    /// "yes" or the integer 1 never does)
+    #[test]
+    fn test_txgate_requires_literal_true() {
+        let c = Cfg::parse("[device.a]\ntx_enabled = true\n[device.b]\ntx_enabled = 'yes'\n[device.c]\ntx_enabled = 1").unwrap();
+        let g = TxGate::from_config(&c);
+        assert!(g.check("a", "ok", false).is_ok());
+        for d in ["b", "c"] {
+            assert!(g.check(d, "x", false).is_err());
+        }
+    }
+
     #[test]
     fn deny_by_default_and_count_blocks() {
         let g = TxGate::new([("n2k".to_string(), true)]);

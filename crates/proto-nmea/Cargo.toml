@@ -1,0 +1,12 @@
+[package]
+name = "proto-nmea"
+description = "NMEA 0183 (RMC/GGA, checksum verified) and the location.* state of the GPS listener"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

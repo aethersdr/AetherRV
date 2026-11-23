@@ -1,0 +1,12 @@
+[package]
+name = "proto-roypow"
+description = "RoyPow BMS protocol (EPOCH batteries over BLE): query frames, frame assembly, decode, the batteries.ble* state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
