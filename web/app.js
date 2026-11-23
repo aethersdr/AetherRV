@@ -584,7 +584,7 @@ function renderClimate() {
       fault: R("fault_active") },
     { id: "espar", name: "Espar Airtronic S2", state: E("state"), buttons: [], chips: [], control: S["espar.controls_ok"] === true,
       noSub: true,                                // owner: no status line under the name (the tiles and controls say it)
-      extra: espControls(), badges: E("state") == null ? null : espBadges(),
+      badges: E("state") == null ? null : espBadges(),
       // read-only: the heater's own CAN bus (adapters/espar.py) + UDS diagnostic reads (espar_uds.py)
       sub: `D2L forced-air · ${E("asleep") ? "bus asleep" : [
         // while AetherRV drives the heater its own command is the truth (we never receive our own 054)
@@ -696,7 +696,8 @@ function control(cmd, value, label, device = "rixens") {
   ctlWaiters[id] = r => { clearTimeout(ctlPending?.timer); ctlPending = null; spPending = cmd === "setpoint" ? null : spPending;
     if (cmd === "shore_limit") limPending = null;
     if (cmd === "fan") fanPending = null;
-    toast(r.ok ? `${label}: ${r.detail}` : `${label} failed: ${r.detail}`, r.ok ? "ok" : "bad"); render(); };
+    toast(r.ok ? `${label}: ${r.detail}` : `${label} failed: ${r.detail}`, r.ok ? "ok" : "bad"); render();
+    if (cmd === "setpoint" && r.ok) espFollowSetpoint(value); };
   // Watchdog: a lost result (socket dropped mid-command, or sent while reconnecting) must never leave every
   // control on this screen dead. Longer than any backend verify window (Starlink install verifies for 90 s).
   ctlPending.timer = setTimeout(() => dropPending(id, "no confirmation received — check its status"), cmd === "install_update" ? 150e3 : 60e3);
@@ -828,18 +829,20 @@ $("#fan-auto").addEventListener("click", () => control("fan", "auto", "Fan auto"
 // ── Espar control (AetherRV is the heater's controller; adapters/espar_control.py) ──
 // Run-time choices mirror the EasyStart Pro: 1-240 min by the minute, 270-720 in 30-min steps, unlimited.
 const ESP_RUNS = [null, 15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720];
-let espSp = null, espRun = (v => v === "inf" ? null : ESP_RUNS.includes(+v) ? +v : null)(store.get("vp.espar.run", "inf")), espSpTimer = null;
-const espSet = () => espSp ?? S["climate.espar.ctl.setpoint_c"] ?? 21;
-const espRunLabel = m => m == null ? "∞" : m < 60 ? `${m} min` : `${(m / 60).toFixed(m % 60 ? 1 : 0)} h`;
-function espControls() {
-  if (S["espar.controls_ok"] === undefined) return "";
-  const ok = canControlDev("espar") && !ctlPending, mode = S["climate.espar.ctl.active"] ? S["climate.espar.ctl.mode"] : "off";
-  const step = UNIT === "F" ? 5 / 9 : 0.5;
-  return `<div class="esp-ctl">
-    <div class="esp-sp"><button data-esp="sp-" data-step="${-step}" ${ok ? "" : "disabled"}>−</button><b>${fmtT(espSet())}</b>
-      <button data-esp="sp+" data-step="${step}" ${ok ? "" : "disabled"}>+</button></div>
-  </div>`;
+let espRun = (v => v === "inf" ? null : ESP_RUNS.includes(+v) ? +v : null)(store.get("vp.espar.run", "inf")), espSpTimer = null;
+// One cabin setpoint for both heaters: the Climate dial (the MCS7's setpoint) also drives the Espar, clamped to the
+// Espar's accepted 10-30 °C. Falls back to the Espar's own last setpoint when the MCS7 isn't reporting.
+const ESP_SP_RANGE = [10, 30];
+const espClamp = c => Math.max(ESP_SP_RANGE[0], Math.min(ESP_SP_RANGE[1], Math.round(c * 10) / 10));
+const espSet = () => espClamp(spPending ?? S["climate.cabin.setpoint"] ?? S["climate.espar.ctl.setpoint_c"] ?? 21);
+// After the shared setpoint is set on the MCS7, a heating Espar follows it (one more logged, verified command).
+function espFollowSetpoint(c) {
+  if (!(S["climate.espar.ctl.active"] && S["climate.espar.ctl.mode"] === "heat") || !canControlDev("espar")) return;
+  const sp = espClamp(c);
+  if (Math.abs(sp - (S["climate.espar.ctl.setpoint_c"] ?? -99)) < 0.05) return;
+  setTimeout(() => espSend("heat", `Espar set ${fmtT(sp)}`, sp), 0);
 }
+const espRunLabel = m => m == null ? "∞" : m < 60 ? `${m} min` : `${(m / 60).toFixed(m % 60 ? 1 : 0)} h`;
 // Espar badge stack (like the MCS7's): flame = HEAT, fan = FAN (one at a time; tap the lit one again for OFF),
 // clock = run time (cycles like the EasyStart Pro).
 function espBadges() {
@@ -851,8 +854,8 @@ function espBadges() {
       title="${mode === "fan" ? "Fan on · tap to turn off" : "Fan only"}">${icon("fan")}</button>
     <button class="badge mode esp-b esp-timer" data-esp="run" ${dis} title="Run time (like the EasyStart Pro)">${icon("clock")}<small>${espRunLabel(espRun)}</small></button>`;
 }
-function espSend(mode, label) {
-  control("set", { mode, setpoint_c: Math.round(espSet() * 10) / 10, run_min: mode === "off" ? null : espRun }, label, "espar");
+function espSend(mode, label, sp = espSet()) {
+  control("set", { mode, setpoint_c: sp, run_min: mode === "off" ? null : espRun }, label, "espar");
 }
 $("#heaters").addEventListener("click", e => {
   const b = e.target.closest("[data-esp]"); if (!b || b.disabled) return;
@@ -862,12 +865,6 @@ $("#heaters").addEventListener("click", e => {
     askConfirm(k === "heat" ? `Start the Espar heating to ${fmtT(espSet())}?` : "Run the Espar fan only?",
       `Run time: ${espRun == null ? "until you turn it off" : espRunLabel(espRun)}. The heater runs its own 4-minute cool-down after heating.`,
       () => espSend(k, k === "heat" ? `Espar heat ${fmtT(espSet())}` : "Espar fan"));
-    return;
-  }
-  if (k === "sp-" || k === "sp+") {
-    espSp = Math.max(10, Math.min(30, Math.round((espSet() + +b.dataset.step) * 10) / 10)); render();
-    clearTimeout(espSpTimer);
-    if (mode === "heat") espSpTimer = setTimeout(() => espSend("heat", `Espar set ${fmtT(espSet())}`), 1200);
     return;
   }
   if (k === "run") {
