@@ -158,8 +158,8 @@ topic = the requester's reply topic, message expiry = `ttl_ms`.
 - **No retained commands, no queueing.** Services connect with a clean session, so the broker never stores
   commands for an offline service. A service ignores any command with the retain flag set.
 - **TTL.** A service refuses a command older than its `ttl_ms` (default 3 s) with "the request arrived too late;
-  nothing sent". A late "heat on" never runs. One exemption: a `hold` *release* always runs (it's the safe
-  direction; refusing it would let the dimmer ramp until the 8 s cap).
+  nothing sent". A late "heat on" never runs. Exempt, because they are the safe direction: a `hold` *release*
+  (refusing it would let the dimmer ramp until the 8 s cap) and every heater OFF (owner, 2026-11-23, Q-T1).
 - **At most once.** The service keeps the ids of the last 10 minutes and answers a repeat with the first result
   without acting again. (QoS 1 may deliver twice.)
 - **Results.** Reply: `{"id", "result": "ok" | "refused" | "unverified", "detail"}`. `detail` is the Python
@@ -414,7 +414,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | D1 | All Espar timing (heard/lost/wake/verify, run deadline, after-run countdown) runs on `CLOCK_BOOTTIME`, not the wall clock | In Python a forward clock jump during a run (NTP sync after boot on the RTC-less Pi) reads as "lost the heater (no status for 3 s)" and stops the heater; a backward jump stretches the run timer |
 | D2 | Ages of bus values (the cabin Ruuvi, battery readings) are still wall-clock (`t` in the payload). A forward jump of over 15 min makes the Ruuvi look stale; the Espar then uses its intake sensor, or with diagnostics off stops heat (same as Python) | One clock shared by all processes; only the in-process Espar loop needs a monotonic clock |
 | D3 | After a resume, the room value saved before the restart is used for up to 15 min if neither the Ruuvi nor the intake sensor is available yet | The first 054 after a resume must carry a real room value (never FE FF = full power), and the bus may still be reconnecting |
-| D4 | A command older than its TTL (3 s) is refused, **including a heater OFF**; only a dimmer `hold` release is exempt | A late "heat on" must never run. Whether OFF commands should also be exempt (the safe direction) is an open question (Q-T1) |
+| D4 | A command older than its TTL (3 s) is refused, except the safe direction: a dimmer `hold` release and every heater OFF (Espar `set` mode off; MCS7 furnace / electric / hot water / pre-heat off) still run | A late "heat on" must never run (owner, Q-T1) |
 | D5 | `tx_enabled` / `diag_tx` must be TOML booleans; Python's `bool()` would also accept e.g. the string `"false"` as true | Safe direction; `aetherrv-migrate` warns |
 | D6 | The heat-lockout latch is persisted (Python forgets it on restart) | Owner (Q-L1) |
 | D7 | New state keys: `climate.espar.lockout`, `climate.espar.lockout_off`, `climate.rixens.lockout*`, `svc.*`, `tx.enabled.<device>`, `tx.blocked.<device>` (the gateway also rebuilds the old `tx.enabled`/`tx.blocked` dicts) | §4.5, §8 |
@@ -434,8 +434,8 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-P1 | Recording API inputs through the van Pi | answered 2026-11-23: yes, read-only requests only, through the logged wrapper |
 | Q-P2 | Parity normalisation of time-dependent keys | open: to be asked with the first real diffs |
 | Q-D1 | Demo mode: port or drop? | answered 2026-11-23: drop it |
-| Q-T1 | Should a late heater OFF (older than the 3 s TTL) still run, as the safe direction? (D4) | open |
-| Q-D2 | Accept the differences D1–D10 in §13a | open |
+| Q-T1 | Should a late heater OFF (older than the 3 s TTL) still run, as the safe direction? (D4) | answered 2026-11-23: yes |
+| Q-D2 | Accept the differences D1–D10 in §13a | answered 2026-11-23: all accepted |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -464,4 +464,6 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Van Pi: read-only access through a logged wrapper; recording device responses with read-only requests (GET, subscribe, status) is allowed; no installs, restarts or writes | owner (Q-P1) |
 | 2026-11-23 | Architecture approved as written in this document (commit 31dde83) | owner |
 | 2026-11-23 | Demo mode dropped; simulators replace it | owner (Q-D1) |
+| 2026-11-23 | Late heater OFF commands are exempt from the command TTL (safe direction); late ONs are refused | owner (Q-T1) |
+| 2026-11-23 | Differences D1–D10 (§13a) accepted | owner (Q-D2) |
 | 2026-11-23 | Workstation: sudo allowed to install the build and test dependencies (Rust, Mosquitto, vcan, …) | owner (Q-B1) |

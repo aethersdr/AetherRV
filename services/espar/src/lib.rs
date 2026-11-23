@@ -391,6 +391,11 @@ impl CommandHandler for Handler {
         let me = self.0.clone();
         Box::pin(async move { me.command(cmd, value, client).await })
     }
+
+    /// A late OFF still runs: it's the safe direction (owner, 2026-11-23, Q-T1).
+    fn ttl_exempt(&self, cmd: &str, value: &Value) -> bool {
+        cmd == "set" && value.get("mode").and_then(Value::as_str) == Some("off")
+    }
 }
 
 /// Keys this service reads from other services.
