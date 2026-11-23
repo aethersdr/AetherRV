@@ -611,13 +611,7 @@ function renderClimate() {
         ["Intake", D("temps")?.intake_c == null ? "—" : fmtT(D("temps").intake_c), "Air in"],
         ["Flame", D("temps")?.flame_c == null ? "—" : fmtT(D("temps").flame_c), D("flame")?.flame ? "Flame on" : "Flame sensor"],
       ] : [],
-      note: [
-        (D("dtcs") || []).length ? `Fault memory: ${D("dtcs").map(x => `${x.code}${x.active ? " (active)" : ""} ${x.text}`).join("; ")}` : null,
-        [D("air_hpa") != null ? `air ${Math.round(D("air_hpa"))} hPa` : null,
-         D("ul_per_stroke") != null ? `pump ${D("ul_per_stroke")} µl/stroke (heater's figure)` : null,
-         D("hours")?.p0_25 != null ? `hours at power 0-25/25-50/50-75/75-100 %: ${["p0_25", "p25_50", "p50_75", "p75_100"].map(k => Math.round(D("hours")[k])).join(" / ")}` : null,
-         D("software") ? `software ${D("software")}` : null].filter(Boolean).join(" · ") || null,
-      ].filter(Boolean).join("\n") || null,
+      note: null,                                 // fault memory, hours, software: Settings → Espar (owner: less text here)
       fault: D("lockout") ? `${D("lockout").code} · locked out: ${D("lockout").why}. ${D("lockout").help}`
         : C("problem") ? `Control: ${C("problem")}` : E("issue") ? `Not heating: ${E("issue")}`
         : E("fault") ? `${E("fault")} · ${E("fault_text")}` : null },
