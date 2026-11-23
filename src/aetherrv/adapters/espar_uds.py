@@ -24,7 +24,8 @@ PAD = 0xAA
 FLOW_CONTROL = bytes([0x30, 0x00, 0x14] + [PAD] * 5)
 READ_ONLY_SERVICES = {0x22, 0x19}
 
-PHASES = {0x00: "off", 0xD2: "ventilation", 0x04: "startup", 0x0F: "startup", 0x10: "startup", 0x07: "pre-glow",
+# 0x0C seen on this S2 D2L (2026-11-22): glow plug on (~80 W), then fuel pump 2 Hz, until the flame is detected (~2 min)
+PHASES = {0x00: "off", 0xD2: "ventilation", 0x04: "startup", 0x0F: "startup", 0x10: "startup", 0x07: "pre-glow", 0x0C: "ignition",
           0x08: "ignition", 0x09: "flame ramp-up", 0x14: "burning", 0x28: "control pause", 0x1E: "cool-down"}
 
 P_CODES = {
