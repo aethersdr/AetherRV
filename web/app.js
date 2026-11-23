@@ -583,6 +583,7 @@ function renderClimate() {
       ] : [],
       fault: R("fault_active") },
     { id: "espar", name: "Espar Airtronic S2", state: E("state"), buttons: [], chips: [], control: S["espar.controls_ok"] === true,
+      noSub: true,                                // owner: no status line under the name (the tiles and controls say it)
       extra: espControls(),
       // read-only: the heater's own CAN bus (adapters/espar.py) + UDS diagnostic reads (espar_uds.py)
       sub: `D2L forced-air · ${E("asleep") ? "bus asleep" : [
@@ -635,7 +636,7 @@ function renderClimate() {
     return `<div class="card heater ${on ? "on" : ""} ${h.kv.length || h.buttons.length ? "" : "compact"}">
       <div class="badge-col"><div class="badge" ${h.id === "rixens" ? 'title="Cabin air heat"' : ""}>${icon(h.state == null ? "can" : h.id === "rixens" ? "air_heat" : "flame")}</div>
         ${(h.modes || []).map(([k, ic, mon]) => `<div class="badge mode ${mon ? "on" : ""}" title="${k}${mon ? " on" : " off"}">${icon(ic)}</div>`).join("")}</div>
-      <div><h3>${h.name}</h3><div class="sub">${h.sub} · ${status}</div>
+      <div><h3>${h.name}</h3>${h.noSub ? "" : `<div class="sub">${h.sub} · ${status}</div>`}
         ${h.kv.length ? `<div class="kv">${h.kv.map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("")}</div>` : ""}
         ${h.burner && h.burner.length ? `<div class="burner">${h.burner.map(([k, v, sub]) => `<div><span>${k}</span><b>${v}</b><small>${sub}</small></div>`).join("")}</div>` : ""}
         ${h.buttons.length ? `<div class="src-btns">${h.buttons.map(b => `<button class="src-btn ${b.on ? "sel" : ""} st-${b.st || "off"}" data-src="${b.k}" ${canControl() && !ctlPending ? "" : "disabled"}>
