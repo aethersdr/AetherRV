@@ -425,3 +425,25 @@ async def test_failover_bus_unacked_frame_resets_and_fails_over():
     assert resets == ["hat0"] and fb.active is cerbo and len(cerbo.sent) == 0      # not replayed on the backup
     hat.hear(_frame()); fb.tick()
     assert fb.active is cerbo                               # failback held off after a stuck frame
+
+
+async def test_recover_links_rebinds_a_port_that_stays_down_once_per_interval():
+    import asyncio
+    from aetherrv.canbus import recover_links
+    calls = []
+
+    class B:
+        interface, channel, name = "socketcan", "hat1", "hat1"
+        up, reopened = False, 0
+        def link_up(self): return self.up
+        def reopen(self): self.reopened += 1
+
+    class Admin:
+        async def call(self, verb, args, timeout=0):
+            calls.append((verb, args)); b.up = len(calls) > 1     # first rebind doesn't help, second does
+    b, other = B(), B(); other.interface = "socketcand"
+    st = State()
+    t = asyncio.ensure_future(recover_links([b, other], Admin(), st, down_s=0, every_s=0.05, poll_s=0.01, settle_s=0))
+    await asyncio.sleep(0.3); t.cancel()
+    assert calls[:2] == [("can_rebind", {"iface": "hat1"})] * 2 and len(calls) == 2
+    assert b.reopened == 2 and st.get("bus.hat1.rebind_ok") is True

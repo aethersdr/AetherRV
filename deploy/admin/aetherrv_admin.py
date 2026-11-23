@@ -427,8 +427,30 @@ def v_can_reset(a: dict) -> dict:
     return {"iface": iface}
 
 
+def v_can_rebind(a: dict) -> dict:
+    """Unbind + rebind a CAN port's SPI driver: a full chip re-init. Fixes an MCP2515 that won't enter config mode
+    (seen once after a reboot with the FD HAT stacked; `ip link down/up` alone didn't help)."""
+    iface = a.get("iface")
+    if iface not in CAN_PORTS:
+        raise Bad("invalid iface")
+    dev = os.path.realpath(f"/sys/class/net/{iface}/device")
+    drv = os.path.realpath(os.path.join(dev, "driver"))
+    name = os.path.basename(dev)
+    if not name.startswith("spi") or not os.path.isdir(drv):
+        raise Bad("no SPI device for that interface")
+    with open(os.path.join(drv, "unbind"), "w") as f:
+        f.write(name)
+    time.sleep(0.5)
+    with open(os.path.join(drv, "bind"), "w") as f:
+        f.write(name)
+    time.sleep(2.0)
+    run(["networkctl", "reconfigure", iface], timeout=15)
+    return {"iface": iface, "device": name}
+
+
 VERBS = {
     "can_reset": v_can_reset,
+    "can_rebind": v_can_rebind,
     "status": v_status,
     "set_hostname": v_set_hostname,
     "set_timezone": v_set_timezone,

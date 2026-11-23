@@ -78,6 +78,7 @@ class CanBus:
         self.connected = False
         self._bus: can.BusABC | None = None
         self._writer: can.Listener | None = None
+        self._kick = asyncio.Event()                # set → drop the socket and reopen (e.g. after a driver rebind)
 
     def link_up(self) -> bool:
         """Kernel interface admin state (socketcan). A bound socket survives `ip link set
@@ -142,10 +143,20 @@ class CanBus:
                 log.info("[%s] open on %s:%s", self.name, self.interface, self.channel)
                 reader = can.AsyncBufferedReader()
                 notifier = can.Notifier(self._bus, [reader], loop=asyncio.get_running_loop())
-                try:
+                self._kick.clear()
+
+                async def pump() -> None:
                     async for msg in reader:
                         self._dispatch(msg)
+                pump_t, kick_t = asyncio.create_task(pump()), asyncio.create_task(self._kick.wait())
+                try:
+                    done, _ = await asyncio.wait({pump_t, kick_t}, return_when=asyncio.FIRST_COMPLETED)
+                    if kick_t in done:
+                        raise ConnectionResetError("reopening (requested)")
+                    pump_t.result()
                 finally:
+                    for t in (pump_t, kick_t):
+                        t.cancel()
                     notifier.stop()
             except asyncio.CancelledError:
                 raise
@@ -163,6 +174,9 @@ class CanBus:
         if self._bus is None:
             raise can.CanOperationError(f"[{self.name}] bus not open")
         self._bus.send(msg)
+
+    def reopen(self) -> None:
+        self._kick.set()
 
     def close(self) -> None:
         if self._writer is not None:
@@ -299,6 +313,38 @@ class FailoverBus:
         while True:
             await asyncio.sleep(0.5)
             self.tick()
+
+
+async def recover_links(buses: list[CanBus], admin, state=None, down_s: float = 30.0, every_s: float = 300.0,
+                        poll_s: float = 10.0, settle_s: float = 2.0) -> None:
+    """A local CAN port that stays down (IFF_UP clear) for down_s gets its SPI driver rebound by the root helper
+    (verb can_rebind), at most once per every_s, and the bus reopens. Seen once: after a reboot with the FD HAT
+    stacked, hat1's MCP2515 wouldn't enter config mode until its driver was rebound."""
+    down_since: dict[str, float] = {}
+    tried: dict[str, float] = {}
+    while True:
+        await asyncio.sleep(poll_s)
+        now = time.time()
+        for b in buses:
+            if b.interface != "socketcan" or b.channel not in ("hat0", "hat1", "fd0", "fd1"):
+                continue
+            if b.link_up():
+                down_since.pop(b.name, None)
+                continue
+            since = down_since.setdefault(b.name, now)
+            if now - since < down_s or now - tried.get(b.name, 0) < every_s:
+                continue
+            tried[b.name] = now
+            log.warning("[%s] %s down for %.0f s: rebinding its driver", b.name, b.channel, now - since)
+            try:
+                await admin.call("can_rebind", {"iface": b.channel}, timeout=30)
+                await asyncio.sleep(settle_s)
+                b.reopen()
+                log.warning("[%s] driver rebound, reopening (%s)", b.name, "up" if b.link_up() else "still down")
+            except Exception as e:                          # noqa: BLE001
+                log.error("[%s] rebind failed: %s", b.name, e)
+            if state is not None:
+                state.update({f"bus.{b.name}.rebind_at": now, f"bus.{b.name}.rebind_ok": b.link_up()})
 
 
 async def replay(path: Path, bus: can.BusABC, speed: float = 1.0, loop_forever: bool = False) -> None:

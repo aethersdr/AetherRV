@@ -29,7 +29,7 @@ from .adapters.rixens import RixensAdapter
 from .adapters.rixens_http import RixensHttp, RixensHttpAdapter
 from .adapters.victron import VictronAdapter
 from .alerts import Alerts
-from .canbus import CanBus, FailoverBus, prune_captures
+from .canbus import CanBus, FailoverBus, prune_captures, recover_links
 from .history import History
 from .state import State
 from .txgate import TxGate
@@ -266,6 +266,7 @@ async def amain(cfg: dict) -> None:
     tasks = [asyncio.create_task(b.run(), name=f"bus:{b.name}") for b in buses]
     tasks += [asyncio.create_task(a.run(), name=type(a).__name__) for a in adapters]
     tasks.append(asyncio.create_task(systemd_watchdog(), name="watchdog"))
+    tasks.append(asyncio.create_task(recover_links(buses, admin, state), name="can-recover"))
     if cfg.get("capture", True):
         tasks.append(asyncio.create_task(prune_captures(Path(cfg.get("capture_dir", "captures")),
                                                         float(cfg.get("capture_keep_days", 14)),
