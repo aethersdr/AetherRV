@@ -1,0 +1,20 @@
+# Rust conversion: status and evidence
+
+Working file for the conversion in `docs/RUST-CONVERSION-PROMPT.md`. Each goal-condition item has its current
+state and where its evidence lives. Updated as work lands; the final report is built from this page.
+
+| # | Goal-condition item | State | Evidence |
+|---|---|---|---|
+| 1 | Every §11 deliverable exists on the pushed `rust` branch | not started | — |
+| 2 | Full test suite passes; `docs/TEST-PARITY.md` maps all 197 reference tests | not started | reference: 197 collected, 197 passed (Python, 2026-11-23) |
+| 3 | Golden-parity diffs empty or each difference accepted by the owner | not started | — |
+| 4 | Isolation tests pass for every service and the broker, incl. Espar resume and blind running | not started | — |
+| 5 | 12-hour soak clean on the bench Pi | not started | — |
+| 6 | UI runtime benchmark on the bench screen; every §8 number met at the §8 resolution | not started | — |
+| 7 | Nothing installed, restarted or transmitted on the van Pi | holding | every van access goes through `tools/van-read.sh`, which logs each command (none yet) |
+| 8 | No open owner question; every answer in `docs/ARCHITECTURE.md` | open | ARCHITECTURE.md §14 |
+
+## Log
+
+- 2026-11-23: read the Python reference; 197 tests collected and passing. Architecture draft written
+  (`docs/ARCHITECTURE.md`), waiting for the owner's review before any service is written.
