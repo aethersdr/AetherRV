@@ -729,7 +729,7 @@ function nudgeSetpoint(d) {
   spPending = UNIT === "F" ? F2C(next) : next;
   render();
   clearTimeout(spTimer);   // debounce taps; send one absolute value
-  spTimer = setTimeout(() => { if (!spRefusedForEspar(spPending)) control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`); }, 1500);
+  spTimer = setTimeout(() => control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`), 1500);
 }
 // Drag the setpoint knob around the cabin dial. Snaps to whole degrees (display unit), clamps to the
 // dial's range, and sends ONE absolute setpoint when the finger lifts (same path as the ± buttons).
@@ -766,7 +766,7 @@ const endDrag = ev => {
   spDragging = false;
   const next = spDisplay(), cur = S["climate.cabin.setpoint"];
   if (spPending != null && (cur == null || Math.round(tC(cur)) !== next)) {
-    if (!spRefusedForEspar(spPending)) control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`);
+    control("setpoint", +spPending.toFixed(2), `Setpoint ${next}°`);
   } else { spPending = null; }
   renderClimate();
 };
@@ -833,18 +833,12 @@ let espRun = (v => v === "inf" ? null : ESP_RUNS.includes(+v) ? +v : null)(store
 // One cabin setpoint for both heaters: the Climate dial (the MCS7's setpoint) also drives the Espar, clamped to the
 // Espar's accepted 10-30 °C. Falls back to the Espar's own last setpoint when the MCS7 isn't reporting.
 const ESP_SP_RANGE = [10, 30];
-// Outside that range nothing is clamped: the action is refused with an error toast and no setpoint changes.
+// Nothing is clamped: turning the Espar on at a setpoint outside its range is refused with an error toast; a dial
+// change while it heats always sets the MCS7, and the Espar follows only when the new value is inside its range.
 const espSet = () => Math.round((spPending ?? S["climate.cabin.setpoint"] ?? S["climate.espar.ctl.setpoint_c"] ?? 21) * 10) / 10;
 const espInRange = c => c >= ESP_SP_RANGE[0] - 0.05 && c <= ESP_SP_RANGE[1] + 0.05;
 const espHeating = () => !!(S["climate.espar.ctl.active"] && S["climate.espar.ctl.mode"] === "heat");
 const espRangeMsg = c => `${fmtT(c)} is outside the Espar's ${fmtT(ESP_SP_RANGE[0])}–${fmtT(ESP_SP_RANGE[1])} range`;
-// A setpoint change the heating Espar couldn't follow: refuse it (toast), keep both heaters where they are.
-function spRefusedForEspar(c) {
-  if (!espHeating() || espInRange(c)) return false;
-  toast(`Setpoint not changed: ${espRangeMsg(c)} (the Espar is heating)`, "bad");
-  spPending = null; render();
-  return true;
-}
 // Start the Espar heating at the shared setpoint, or refuse with a toast when it's out of the Espar's range.
 function espStartHeat() {
   const sp = espSet();
