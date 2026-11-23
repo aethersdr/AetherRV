@@ -152,7 +152,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
             a = CaptureOnlyAdapter(dev, state)
         elif kind == "espar":
             # decoder; with diag_tx it also sends UDS *read* requests (device "<dev>_diag" in the TxGate)
-            a = EsparAdapter(dev, state, bus=bus, gate=gate, diag_interval=float(d.get("diag_interval_s", 5)))
+            a = EsparAdapter(dev, state, bus=bus, gate=gate, diag_interval=float(d.get("diag_interval_s", 5)),
+                             scan=bool(d.get("diag_scan", False)))   # owner-approved read-only DID scan
             # AetherRV as the heater's controller (EasyStart Pro unplugged); inert unless tx_enabled
             adapters.append(EsparControl(state, a, bus, gate, db=history.db if history else None))
         else:

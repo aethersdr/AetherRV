@@ -87,3 +87,28 @@ def test_espar_no_heat_and_power_up_lock_and_lockout_alerts(monkeypatch):
     st.update(a.diag_snapshot(now[0]))
     ids = {x.id: x.severity for x in r_espar(st, {})}
     assert ids["espar.lockout"] == "serious" and "espar.issue" in ids
+
+
+def test_espar_did_scan_reads_only_and_records(monkeypatch):
+    import time as _t
+    from aetherrv.txgate import TxGate
+    now = [100.0]; monkeypatch.setattr(_t, "time", lambda: now[0])
+    sent = []
+
+    class Bus:
+        def send(self, device, msg, gate, quiet=False):
+            gate.check(device, "x"); sent.append(bytes(msg.data))
+    a = EsparAdapter("espar", State(), bus=Bus(), gate=TxGate({"espar_diag": True}), scan=True)
+    a.SCAN_DIDS = [0xFD01, 0xFD02, 0xFD03]; a.scan_todo = list(a.SCAN_DIDS)
+    a.on_frame(f(0x054, "0000FEFFDA020000")); a.on_frame(f(0x2C4, "030000001B020000"))
+    assert a._scan_step(now[0]) and sent[-1] == bytes.fromhex("0322FD01AAAAAAAA")
+    a.on_frame(f(0x73C, "0762FD0115E01608"))                            # known DID: raw kept, still decoded
+    assert a._scan_step(now[0]) and sent[-1][1:4] == bytes.fromhex("22FD02")
+    a.on_frame(f(0x73C, "037F2231AAAAAAAA"))                            # not supported
+    assert a._scan_step(now[0])
+    a.on_frame(f(0x73C, "0562FD031234AAAA"))                            # unknown DID answers
+    assert not a._scan_step(now[0])                                     # pass 1 done → pass 2 set up
+    assert a.scan_res == {0xFD01: "15 e0 16 08", 0xFD02: "NRC 0x31", 0xFD03: "12 34"}
+    assert a.scan_watch == [0xFD03] and a._scan_step(now[0]) and sent[-1][1:4] == bytes.fromhex("22FD03")
+    assert all(d[1] == 0x22 for d in sent)                              # read service only
+    assert a.diag_snapshot(now[0])["climate.espar.diag.scan"] == {"FD01": "15 e0 16 08", "FD03": "12 34"}

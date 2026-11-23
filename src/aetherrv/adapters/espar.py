@@ -20,6 +20,7 @@ not a fault. Fan speed, fuel pump and power level are not in these frames (only 
 
 from __future__ import annotations
 
+import logging
 import time
 
 import can
@@ -27,6 +28,8 @@ import can
 from ..state import State
 from . import espar_uds as uds
 from .capture_only import CaptureOnlyAdapter
+
+log = logging.getLogger(__name__)
 
 STATES = {0x00: "init", 0x01: "stopping", 0x02: "startup", 0x03: "idle", 0x08: "init", 0x09: "heating",
           0x0B: "fault", 0x21: "fan"}
@@ -95,7 +98,11 @@ def _decode(i: int, d: bytes) -> tuple[str, str]:
 class EsparAdapter(CaptureOnlyAdapter):
     """Decodes the heater's status and the EasyStart Pro's commands; never transmits (it has no send path)."""
 
-    def __init__(self, device: str, state: State, bus=None, gate=None, diag_interval: float = 5.0) -> None:
+    SCAN_DIDS = list(range(0xFD00, 0xFE00))         # owner-approved read-only scan (looking for the outlet temperature)
+    SCAN_GAP_S, SCAN_WATCH_S = 0.3, 1800.0
+
+    def __init__(self, device: str, state: State, bus=None, gate=None, diag_interval: float = 5.0,
+                 scan: bool = False) -> None:
         super().__init__(device, state)
         # Diagnostics: UDS *read* requests through TxGate device "<device>_diag" (off unless diag_tx = true).
         self.bus, self.gate, self.diag_interval = bus, gate, max(1.0, diag_interval)
@@ -116,6 +123,14 @@ class EsparAdapter(CaptureOnlyAdapter):
         self.on_other_controller = None
         self.ctl_active = False                       # set by EsparControl while AetherRV drives the heater
         self.after_since: float | None = None
+        # Read-only DID scan (owner-approved, looking for the outlet temperature): pass 1 asks every FDxx once and
+        # keeps the raw replies; pass 2 keeps re-reading the DIDs that answered but aren't decoded yet and logs each
+        # change, so a value that tracks the outlet temperature shows up against the flame/intake readings.
+        self.scan_todo: list[int] = list(self.SCAN_DIDS) if scan else []
+        self.scan_res: dict[int, str] = {}           # DID → raw reply hex | "NRC 0xNN"
+        self.scan_wait: int | None = None            # DID of the outstanding scan request
+        self.scan_watch: list[int] = []
+        self.scan_until: float | None = None
 
     def on_frame(self, msg: can.Message) -> None:
         super().on_frame(msg)
@@ -127,6 +142,7 @@ class EsparAdapter(CaptureOnlyAdapter):
             if need_fc:
                 self._send_diag(uds.FLOW_CONTROL, "flow control")
             if payload:
+                self._scan_reply(payload)
                 r = uds.decode(payload)
                 if "key" in r:
                     self.diag[r["key"]] = (r["value"], now)
@@ -236,6 +252,40 @@ class EsparAdapter(CaptureOnlyAdapter):
     def diag_enabled(self) -> bool:
         return self.bus is not None and self.gate is not None and self.gate.is_enabled(f"{self.device}_diag")
 
+    def _scan_reply(self, payload: bytes) -> None:
+        did = payload[1] << 8 | payload[2] if payload[0] == 0x62 and len(payload) >= 3 else None
+        if did is None and payload[:2] == b"\x7f\x22" and self.scan_wait is not None and len(payload) >= 3:
+            did, val = self.scan_wait, f"NRC 0x{payload[2]:02x}"
+        elif did is not None and (did == self.scan_wait or did in self.scan_res):
+            val = payload[3:].hex(" ")
+        else:
+            return
+        if did == self.scan_wait:
+            self.scan_wait = None
+        if val != self.scan_res.get(did):
+            if self.scan_res.get(did) is not None or not val.startswith("NRC"):
+                log.info("espar scan %04X: %s", did, val)
+            self.scan_res[did] = val
+
+    def _scan_step(self, now: float) -> bool:
+        """One scan request if one is due (returns True if it sent). Read service 0x22 only (uds.read_did)."""
+        if self.scan_todo:
+            did = self.scan_todo.pop(0)
+        elif self.scan_until is None and self.scan_res:          # pass 1 done → pass 2 on the undecoded responders
+            self.scan_watch = [d for d, v in sorted(self.scan_res.items()) if not v.startswith("NRC") and d not in uds.DIDS]
+            self.scan_until = now + self.SCAN_WATCH_S
+            log.warning("espar scan: pass 1 done, %d answered (%s); watching the %d undecoded ones for %d min",
+                        sum(not v.startswith("NRC") for v in self.scan_res.values()),
+                        " ".join(f"{d:04X}" for d, v in sorted(self.scan_res.items()) if not v.startswith("NRC")),
+                        len(self.scan_watch), self.SCAN_WATCH_S // 60)
+            return False
+        elif self.scan_watch and self.scan_until and now < self.scan_until:
+            did = self.scan_watch[0]; self.scan_watch.append(self.scan_watch.pop(0))
+        else:
+            return False
+        self.scan_wait = did
+        return self._send_diag(uds.read_did(did), "scan")
+
     def _send_diag(self, data: bytes, what: str) -> bool:
         if not self.diag_enabled:
             return False
@@ -265,6 +315,8 @@ class EsparAdapter(CaptureOnlyAdapter):
         # the heater's own fuel per pump stroke: lifetime fuel ÷ lifetime strokes (µl)
         fuel, strokes = self.diag.get("fuel", (None, 0))[0], self.diag.get("pump_strokes", (None, 0))[0]
         out[p + "ul_per_stroke"] = round(fuel["total_l"] * 1e6 / strokes, 1) if fuel and strokes else None
+        if self.scan_res:
+            out[p + "scan"] = {f"{d:04X}": v for d, v in sorted(self.scan_res.items()) if not v.startswith("NRC")}
         lock = [d for d in (self.dtcs or []) if d.get("lockout") and d.get("active")]
         out[p + "lockout"] = {"code": lock[0]["code"], "why": uds.LOCKOUT[lock[0]["code"]], "help": uds.LOCKOUT_HELP} if lock else None
         return out
@@ -272,11 +324,20 @@ class EsparAdapter(CaptureOnlyAdapter):
     async def run(self) -> None:
         import asyncio
         once = list(uds.ONCE_DIDS)
-        live, dtc_at, next_req = 0, 0.0, 0.0
+        live, dtc_at, next_req, scan_at, tick = 0, 0.0, 0.0, 0.0, 0
         while True:
             now = time.time()
             self.state.set(f"{self.device}.ids", self.summary())
             self.state.update(self.snapshot(now) | self.diag_snapshot(now))
+            if self.diag_enabled and self.awake(now) and (self.scan_todo or (self.scan_until and now < self.scan_until)) \
+                    and now >= scan_at and not once:
+                # scanning: pass 1 back to back; pass 2 alternates with the normal live reads (flame/intake to compare)
+                tick += 1
+                if self.scan_todo or tick % 2:
+                    self._scan_step(now); scan_at = now + self.SCAN_GAP_S if self.scan_todo else now + 1.0
+                    await asyncio.sleep(0.05)
+                    continue
+                scan_at = now + 1.0
             if self.diag_enabled and self.awake(now) and now >= next_req:
                 if once:                              # versions etc. once, then the live set round-robin
                     self._send_diag(uds.read_did(once.pop(0)), "read")
