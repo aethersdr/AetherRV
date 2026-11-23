@@ -834,7 +834,7 @@ let espRun = (v => v === "inf" ? null : ESP_RUNS.includes(+v) ? +v : null)(store
 // Espar's accepted 10-30 °C. Falls back to the Espar's own last setpoint when the MCS7 isn't reporting.
 const ESP_SP_RANGE = [10, 30];
 // Nothing is clamped: turning the Espar on at a setpoint outside its range is refused with an error toast; a dial
-// change while it heats always sets the MCS7, and the Espar follows only when the new value is inside its range.
+// change while it heats always sets the MCS7; the Espar follows values inside its range and turns off below it.
 const espSet = () => Math.round((spPending ?? S["climate.cabin.setpoint"] ?? S["climate.espar.ctl.setpoint_c"] ?? 21) * 10) / 10;
 const espInRange = c => c >= ESP_SP_RANGE[0] - 0.05 && c <= ESP_SP_RANGE[1] + 0.05;
 const espHeating = () => !!(S["climate.espar.ctl.active"] && S["climate.espar.ctl.mode"] === "heat");
@@ -851,7 +851,9 @@ function espStartHeat() {
 function espFollowSetpoint(c) {
   if (!espHeating() || !canControlDev("espar")) return;
   const sp = Math.round(c * 10) / 10;
-  if (!espInRange(sp)) return;
+  // owner: a setpoint below the Espar's range means "no Espar heat" → OFF (it runs its own cool-down)
+  if (sp < ESP_SP_RANGE[0] - 0.05) { setTimeout(() => espSend("off", `Espar off (setpoint below ${fmtT(ESP_SP_RANGE[0])})`), 0); return; }
+  if (!espInRange(sp)) return;                   // above its range: keeps its current setpoint
   if (Math.abs(sp - (S["climate.espar.ctl.setpoint_c"] ?? -99)) < 0.05) return;
   setTimeout(() => espSend("heat", `Espar set ${fmtT(sp)}`, sp), 0);
 }
