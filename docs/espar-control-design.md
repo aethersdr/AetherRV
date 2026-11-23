@@ -1,8 +1,10 @@
 # Espar control from AetherRV: design (draft, not implemented)
 
 Status: discovery complete on this van's **Airtronic S2 D2L** + **EasyStart Pro** (2026-11-22). The bus is read
-(adapters/espar.py), AetherRV sends read-only UDS diagnostics (espar_uds.py), and the controller is **built but
-inert** (adapters/espar_control.py; TxGate device `espar` off). Every live test step needs the owner's approval.
+(adapters/espar.py), AetherRV sends read-only UDS diagnostics (espar_uds.py), and the controller is **live**
+(adapters/espar_control.py; TxGate device `espar` on since 2026-11-22). Bench steps 1-3 passed: OFF-only takeover,
+FAN, and a full HEAT burn ended by the Pi's own timer (regulating on the Ruuvi value the Pi sent; 240 s after-run).
+The owner skipped steps 4-6: the heater's own ~15 s shutdown on controller loss was already shown in test 2.
 
 **Owner decisions (2026-11-22):** the Pi **replaces** the EasyStart Pro (kept as the spare); room temperature = the
 cabin Ruuvi, else the heater's own intake sensor; run times as on the EasyStart Pro: 1-240 min by the minute,
