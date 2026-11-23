@@ -1948,7 +1948,14 @@ let setTab = "device", setInfo = null, setAt = 0, setBusy = false;
 let tsLoginUrl = null, setPollT = null;
 // One poll timer for the Settings view (renderSettings runs on every state delta; never stack timers).
 const setPoll = ms => { clearTimeout(setPollT); setPollT = setTimeout(() => { if (view === "settings") loadSettings(true); }, ms); };
-const SET_TABS = [["network", "Network", "wifi"], ["tailscale", "Tailscale", "ts"], ["starlink", "Starlink", "dish"], ["updates", "Updates", "download"], ["device", "Device", "info"]];
+const SET_TABS = [["network", "Network", "wifi"], ["tailscale", "Tailscale", "ts"], ["starlink", "Starlink", "dish"], ["mcs7", "MCS7", "air_heat"],
+  ["espar", "Espar", "flame"], ["updates", "Updates", "download"], ["device", "Device", "info"]];
+// Heater tabs: read-only device details (the controls live on the Climate page). Their state keys, for the re-render signature.
+const HEATER_TAB_KEYS = { mcs7: "climate.rixens.", espar: "climate.espar." };
+const heaterTabSig = t => HEATER_TAB_KEYS[t] ? Object.keys(S).filter(k => k.startsWith(HEATER_TAB_KEYS[t]) && !/\.(updated|last_seen|uptime|ids)$/.test(k))
+  .map(k => [k, S[k]]) : 0;
+const setRow = (label, sub, val) => `<div class="set-row"><div><b>${label}</b>${sub ? `<small>${sub}</small>` : ""}</div><div class="set-v"><span>${val}</span></div></div>`;
+const gal = l => l == null ? "—" : `${(l / 3.785).toFixed(1)} gal`;
 // Starlink tab: sleep-schedule edits held here so live re-renders don't reset the pickers mid-edit.
 let slSleepEdit = null;
 const hhmm = m => { const d = new Date(); d.setHours(0, m, 0, 0); return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); };
@@ -1982,7 +1989,7 @@ function renderSettings(force = false) {
   const sig = JSON.stringify([setTab, setInfo, S["settings.timezone"], S["settings.screen_off_min"], UNIT, isNight(), tsLoginUrl,
     setTab === "starlink" ? [S["starlink.heating"], S["starlink.sleep"], S["starlink.update_state"], S["starlink.update_checked"],
       S["starlink.software"], S["starlink.online"], S["starlink.reachable"], S["starlink.controls_ok"], ctlPending?.cmd, slSleepEdit,
-      S["starlink.power_w"], (S["starlink.events"] || [])[0]?.t, (S["starlink.events"] || []).length, span.slpow] : 0]);
+      S["starlink.power_w"], (S["starlink.events"] || [])[0]?.t, (S["starlink.events"] || []).length, span.slpow] : 0, heaterTabSig(setTab)]);
   if (!force && sig === setSig) return;
   setSig = sig;
   $("#set-tabs").innerHTML = SET_TABS.map(([id, label, ic]) =>
@@ -2120,6 +2127,46 @@ function renderSettings(force = false) {
       <div class="chart sl-pow" id="chart-slpow"></div>
       ${slEventsHtml()}`;
     drawSlPower();
+  } else if (setTab === "mcs7") {
+    const R = k => S[`climate.rixens.${k}`];
+    const srcs = Object.entries(R("available") || {}).filter(([, v]) => v).map(([k]) => k[0].toUpperCase() + k.slice(1)).join(", ") || "—";
+    const hist = R("fault_history") || [];
+    body.innerHTML = `
+      <div class="set-h"><h2>Rixens MCS7</h2><span class="muted">${R("reachable") === false ? "unreachable" : R("live") ? esc(String(R("state") || "online")) : "—"}</span></div>
+      <div class="set-rows">
+        ${setRow("Firmware", esc(R("heat_version") ? `Heat controller ${R("heat_version")}` : ""), esc(R("version") || "—"))}
+        ${setRow("Burner runtime", "Total hours on the heater", R("runtime_h") == null ? "—" : `${Math.round(R("runtime_h")).toLocaleString()} h`)}
+        ${setRow("Controller uptime", "", dur(R("uptime")))}
+        ${setRow("Heat sources", "Fitted on this install", esc(srcs))}
+        ${setRow("Thermostat", "The MCS7 regulates the cabin", R("thermostat") == null ? "—" : R("thermostat") ? `on · ${fmtT(R("setpoint_c"))}` : "off")}
+        ${setRow("Fan", "", R("fan_speed") == null ? "—" : R("fan_speed") === "auto" ? `auto${R("fan_auto_pct") != null ? ` · ${R("fan_auto_pct")} %` : ""}` : esc(String(R("fan_speed"))))}
+        ${setRow("Fuel today", R("fuel_ml_per_pulse") ? `Fuel pump ${R("fuel_ml_per_pulse")} ml per stroke` : "", R("fuel_today_gal") == null ? "—" : `${(+R("fuel_today_gal")).toFixed(2)} gal`)}
+        ${setRow("Altitude", "Used by the burner's altitude compensation", R("altitude_m") == null ? "—" : UNIT === "F" ? `${Math.round(R("altitude_m") * 3.281).toLocaleString()} ft` : `${Math.round(R("altitude_m"))} m`)}
+        ${setRow("Control from AetherRV", "", R("controls_ok") ? "on" : "off")}
+      </div>
+      <div class="set-h sub"><h2>Faults</h2><span class="muted">${R("fault_active") != null ? `active: ${esc(String(R("fault_active")))}` : "none active"}</span></div>
+      ${hist.length ? `<div class="upks">${hist.map(f => `<div class="upk"><b>${esc(String(f))}</b></div>`).join("")}</div>` : `<div class="set-p muted">No stored faults.</div>`}`;
+  } else if (setTab === "espar") {
+    const E = k => S[`climate.espar.${k}`], D = k => S[`climate.espar.diag.${k}`], C = k => S[`climate.espar.ctl.${k}`];
+    const h = D("hours") || {}, dtcs = D("dtcs") || [];
+    const band = [["p0_25", "0–25 % power"], ["p25_50", "25–50 %"], ["p50_75", "50–75 %"], ["p75_100", "75–100 %"], ["pause", "Control pause"]];
+    body.innerHTML = `
+      <div class="set-h"><h2>Espar Airtronic S2</h2><span class="muted">${!E("heard") ? "not heard on the bus" : E("asleep") ? "bus asleep" : esc(String(E("state") || ""))}</span></div>
+      <div class="set-rows">
+        ${setRow("Controller", "AetherRV replaces the EasyStart Pro (keep it unplugged)", C("active") ? "AetherRV" : S["espar.controls_ok"] ? "AetherRV · idle" : "off")}
+        ${setRow("Room temperature", "What the heater regulates on: the cabin Ruuvi, else the heater's own intake sensor",
+          C("room_c") == null ? "—" : `${fmtT(C("room_c"))} · ${esc(C("room_src") || "")}`)}
+        ${setRow("Software", D("hardware") ? `Hardware ${esc(D("hardware"))}` : "", esc(D("software") || "—"))}
+        ${setRow("Operating hours", "Total time the heater has run", h.operating == null ? "—" : `${Math.round(h.operating).toLocaleString()} h`)}
+        ${setRow("Fuel burned", "Lifetime, from the heater's own counter", gal(D("fuel")?.total_l))}
+        ${setRow("Air pressure", "The heater adjusts fuel for altitude", D("air_hpa") == null ? "—" : `${Math.round(D("air_hpa"))} hPa`)}
+      </div>
+      ${h.p0_25 != null ? `<div class="set-h sub"><h2>Hours by power</h2></div>
+      <div class="upks">${band.map(([k, l]) => `<div class="upk"><b>${h[k] == null ? "—" : Math.round(h[k]).toLocaleString() + " h"}</b><span>${l}</span></div>`).join("")}</div>` : ""}
+      <div class="set-h sub"><h2>Fault memory</h2><span class="muted">${D("lockout") ? "locked out" : dtcs.some(x => x.active) ? "fault active" : dtcs.length ? "stored only" : ""}</span></div>
+      ${D("lockout") ? `<div class="set-p" style="color:#ff8a80">${esc(D("lockout").help)}</div>` : ""}
+      ${dtcs.length ? `<div class="upks">${dtcs.map(x => `<div class="upk"><b>${esc(x.code)}${x.active ? " · active" : ""}</b><span>${esc(x.text)}</span></div>`).join("")}</div>`
+        : `<div class="set-p muted">${D("enabled") ? "No stored faults." : "Diagnostics are off."}</div>`}`;
   } else if (setTab === "updates") {
     const u = setInfo.update || {}, st = u.state || {}, chk = u.check, dis = CAN_CTL ? "" : "disabled";
     const running = st.status === "running";
