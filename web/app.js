@@ -904,12 +904,15 @@ function renderBattModal() {
       ]) + `</section>`;
   }
   if (bms) {
-    const on = bms["System/NrOfModulesOnline"], short = exp && on != null && on < exp;
+    // read over Bluetooth (owner 2026-11-22): the BMS-Can module count is information, not a fault
+    const ble = S["batteries.ble.reporting"], on = bms["System/NrOfModulesOnline"], short = exp && on != null && on < exp && ble == null;
     const vmin = bms["System/MinCellVoltage"], vmax = bms["System/MaxCellVoltage"];
     const spread = vmin != null && vmax != null ? Math.round((vmax - vmin) * 1000) : null;
     const alarms = Object.keys(bms.active_alarms || {});
     html += `<section class="battm-card"><h4>${icon("chip")}${esc(bms.CustomName || bms.ProductName || "BMS")}<small>BMS (CAN-bus)</small></h4>
-      <div class="battm-mods ${short ? "warn" : "ok"}">${icon(short ? "alert" : "check")}<b>${on ?? "—"}${exp ? ` of ${exp}` : ""}</b> batteries reporting</div>` + kv([
+      <div class="battm-mods ${short ? "warn" : "ok"}">${icon(short ? "alert" : "check")}${ble != null
+        ? `<b>${ble}${exp ? ` of ${exp}` : ""}</b> batteries via Bluetooth · ${on ?? "—"} on the BMS CAN bus`
+        : `<b>${on ?? "—"}${exp ? ` of ${exp}` : ""}</b> batteries reporting`}</div>` + kv([
         ["BMS SoC / SoH", `${bms.Soc == null ? "—" : Math.round(bms.Soc) + "%"} / ${bms.Soh == null ? "—" : Math.round(bms.Soh) + "%"}`],
         ["BMS current", a(bms["Dc/0/Current"])],
         ["Cells", vmin == null ? "—" : `${(+vmin).toFixed(3)}–${(+vmax).toFixed(3)} V`],

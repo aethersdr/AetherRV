@@ -87,17 +87,12 @@ def r_bms(s: State, c: dict):
         name = b.get("CustomName") or b.get("ProductName") or "Battery BMS"
         exp = c.get("bms_expected_modules")
         online = b.get("System/NrOfModulesOnline")
-        if exp and isinstance(online, (int, float)) and online < exp:
-            ble_ok = s.get("batteries.ble.reporting")
-            if ble_ok is not None and ble_ok >= exp:
-                # Bluetooth reads every battery directly and they're healthy: only the CAN comms link is missing.
-                yield Finding(f"bms.modules.{b['instance']}", "warning", f"Only {int(online)} of {int(exp)} batteries on the CAN bus",
-                              f"Bluetooth reads all {int(exp)} batteries directly and they are healthy, but {name} sees only "
-                              f"{int(online)} on its CAN comms. Check the battery comms daisy-chain / DIP switches.", "victron")
-            else:
-                yield Finding(f"bms.modules.{b['instance']}", "serious", f"Only {int(online)} of {int(exp)} batteries reporting",
-                              f"{name}: the BMS reports {int(online)} module(s) online, expected {int(exp)}. "
-                              "Check the battery comms daisy-chain / DIP switches (and that every battery's breaker is closed).", "victron")
+        # Owner 2026-11-22: the batteries are read over Bluetooth; the BMS-Can count is not a fault when Bluetooth
+        # is in use (a silent battery there has its own alert, r_epoch). Without Bluetooth the count still matters.
+        if exp and isinstance(online, (int, float)) and online < exp and s.get("batteries.ble.reporting") is None:
+            yield Finding(f"bms.modules.{b['instance']}", "serious", f"Only {int(online)} of {int(exp)} batteries reporting",
+                          f"{name}: the BMS reports {int(online)} module(s) online, expected {int(exp)}. "
+                          "Check the battery comms daisy-chain / DIP switches (and that every battery's breaker is closed).", "victron")
         for k, v in (b.get("active_alarms") or {}).items():
             sev = "serious" if v == 2 else "warning"
             yield Finding(f"bms.alarm.{b['instance']}.{k}", sev, f"{name}: {BMS_ALARM_NAMES.get(k, k)}",

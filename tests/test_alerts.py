@@ -138,9 +138,8 @@ def test_epoch_alerts_and_bms_count_downgrade():
     ids = {f.id: f.severity for f in r_epoch(s, {})}
     assert ids == {"epoch.337.charge_fet": "serious", "epoch.337.cells": "warning", "epoch.354.silent": "warning"}
     s.set("victron.batteries", [{"kind": "bms", "instance": 512, "System/NrOfModulesOnline": 1}])
-    s.set("batteries.ble.reporting", 4)
-    f = list(r_bms(s, {"bms_expected_modules": 4}))
-    assert f[0].severity == "warning" and "CAN" in f[0].title
+    s.set("batteries.ble.reporting", 4)                    # read over Bluetooth: the BMS-Can count is no fault
+    assert [x for x in r_bms(s, {"bms_expected_modules": 4}) if x.id.startswith("bms.modules")] == []
 
 
 def test_epoch_cold_cells():
