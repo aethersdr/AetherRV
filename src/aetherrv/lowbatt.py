@@ -11,11 +11,16 @@ for `hold_s` while not charging, AetherRV powers the Pi off cleanly through the 
   hold_s = 120          # ...held this long (rides out load spikes and a jumpy reading)
   heater_off_soc = 10.0 # owner 2026-11-23: if the Espar or the MCS7 is heating at or below this, turn BOTH off
 
-Heaters off (owner-approved automatic action, the one exception to "AetherRV acts only when a person asks"):
-when the SoC stays at or below `heater_off_soc` for `hold_s` while not charging and either heater is heating,
-the Espar gets OFF (it runs its own cool-down) and the MCS7's furnace, electric, hot-water and pre-heat are
-switched off (the burner does its own after-run). Each is one normal verified command, logged as
-"auto:low-battery". Once per low episode; it re-arms after the SoC is 2 % above the threshold or charging.
+Heat lockout (owner-approved automatic action, the one exception to "AetherRV acts only when a person asks"):
+the heaters must never lose power while burning or in their after-run (owner: serious damage to the Espar and
+the MCS7). So once the SoC has been at or below `heater_off_soc` for `hold_s` while not charging:
+  * heat is LOCKED OUT (`power.heat_lockout`): both heaters' command paths refuse to start heat;
+  * a heater found heating is turned off (Espar OFF; MCS7 furnace, electric, hot water, pre-heat off), again
+    whenever one is found heating (at most once a minute), each a normal verified command ("auto:low-battery");
+    each heater then runs its own after-run;
+  * the lockout lifts when charging or the SoC is 2 % above the threshold.
+Before the 5 % power-off, the heaters are turned off too and AetherRV waits (up to `heater_wait_s`) for both
+to be idle, after-runs finished, so the Pi is the last thing to go and the heaters are cold before the BMS cuts.
 
 SoC comes from the Victron shunt (victron.battery.soc) while it's fresh, else the mean of the batteries read
 over Bluetooth. Charging (bank current above +1 A) or a SoC back above the threshold cancels the countdown.
@@ -58,8 +63,11 @@ class LowBatteryShutdown:
         c = cfg or {}
         self.state, self.admin, self.controls = state, admin, controls or {}
         self.heater_off_soc = float(c.get("heater_off_soc", 10.0))
+        self.heater_wait_s = float(c.get("heater_wait_s", 600.0))
         self.heat_low_since: float | None = None
-        self.heaters_done = False
+        self.lockout = False
+        self.last_off: float | None = None
+        self.off_wait_since: float | None = None
         self.warn_soc = float(c.get("warn_soc", 8.0))
         self.shutdown_soc = float(c.get("shutdown_soc", 5.0))
         self.hold_s = float(c.get("hold_s", 120.0))
@@ -68,8 +76,15 @@ class LowBatteryShutdown:
 
     def heating(self) -> dict:
         s = self.state
-        return {"espar": bool(s.get("climate.espar.ctl.active")) and s.get("climate.espar.ctl.mode") == "heat",
+        return {"espar": bool(s.get("climate.espar.ctl.active")) and s.get("climate.espar.ctl.mode") == "heat"
+                         or s.get("climate.espar.state") in ("heating", "starting"),
                 "mcs7": s.get("climate.rixens.state") == "heating" or s.get("climate.rixens.electric") == "active"}
+
+    def busy(self) -> bool:
+        """A heater is burning or still in its after-run (power must stay on)."""
+        s = self.state
+        return (any(self.heating().values()) or s.get("climate.espar.state") == "cooldown"
+                or s.get("climate.rixens.heater_state_code") in (10, 12, 13, 15, 20, 30, 31))
 
     async def heaters_off(self, soc: float) -> list[str]:
         """Espar OFF, then the MCS7's heat sources and modes that are on. Returns what was asked and the result."""
@@ -95,22 +110,24 @@ class LowBatteryShutdown:
         now = time.time() if now is None else now
         soc, src = bank_soc(self.state)
         chg = charging(self.state)
-        # heaters: both off once the bank sits at/below heater_off_soc while either one heats
+        # heat lockout at/below heater_off_soc (held hold_s, not charging); lifted by charging or +2 %
         heat_low = soc is not None and soc <= self.heater_off_soc and not chg
-        if not heat_low:
-            self.heat_low_since = None
-            if chg or (soc is not None and soc > self.heater_off_soc + 2):
-                if self.heaters_done:
-                    self.state.set("power.heaters_off", None)      # recovered: clear the alert, re-arm
-                self.heaters_done = False
-        elif not any(self.heating().values()):
-            self.heat_low_since = None
-        else:
+        if heat_low:
             self.heat_low_since = now if self.heat_low_since is None else self.heat_low_since
-            if now - self.heat_low_since >= self.hold_s and not self.heaters_done:
-                self.heaters_done = True
-                done = await self.heaters_off(soc)
-                self.state.set("power.heaters_off", {"t": round(now), "soc": soc, "done": done})
+            if now - self.heat_low_since >= self.hold_s and not self.lockout:
+                self.lockout = True
+                log.warning("house battery at %.1f%%: heat locked out", soc)
+        else:
+            self.heat_low_since = None
+            if self.lockout and (chg or (soc is not None and soc > self.heater_off_soc + 2)):
+                self.lockout = False
+                log.warning("house battery recovered (%s%%, charging=%s): heat lockout lifted", soc, chg)
+                self.state.set("power.heaters_off", None)
+        self.state.set("power.heat_lockout", self.lockout)
+        if self.lockout and any(self.heating().values()) and (self.last_off is None or now - self.last_off >= 60):
+            self.last_off = now
+            done = await self.heaters_off(soc)
+            self.state.set("power.heaters_off", {"t": round(now), "soc": soc, "done": done})
         low = soc is not None and soc <= self.shutdown_soc and not chg
         if low:
             self.low_since = now if self.low_since is None else self.low_since
@@ -122,6 +139,15 @@ class LowBatteryShutdown:
             "warning": soc is not None and soc <= self.warn_soc and not chg, "in_s": None if left is None else round(left),
         })
         if low and left == 0 and not self.done:
+            # the heaters first: off, then wait until both are idle (after-runs done) before the Pi goes
+            if self.busy():
+                if self.off_wait_since is None:
+                    self.off_wait_since = now
+                    await self.heaters_off(soc)
+                if now - self.off_wait_since < self.heater_wait_s:
+                    self.state.set("power.shutdown", {**self.state.get("power.shutdown"), "waiting_for_heaters": True})
+                    return
+                log.error("heaters still busy after %.0f s; powering off anyway", self.heater_wait_s)
             self.done = True
             log.warning("house battery at %.1f%% (%s) for %.0f s and not charging: powering off cleanly", soc, src, self.hold_s)
             try:

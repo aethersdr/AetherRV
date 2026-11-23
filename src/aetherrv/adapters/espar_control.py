@@ -239,6 +239,9 @@ class EsparControl:
         mode = v.get("mode")
         if mode not in MODES:
             return {"ok": False, "detail": "mode must be heat, fan or off"}
+        if mode == "heat" and self.state.get("power.heat_lockout"):     # lowbatt.py: protect the heater's after-run
+            self._log(cmd, v, "rejected", "heat locked out: house battery low", client)
+            return {"ok": False, "detail": "Heat is locked out: the house battery is too low. Charge first."}
         sp = v.get("setpoint_c", self.setpoint_c)
         try:
             sp = round(float(sp), 1)

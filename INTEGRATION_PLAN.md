@@ -775,8 +775,11 @@ Bluetooth batteries' mean) stays ≤ 5 % for 2 minutes while not charging; a ser
 critical countdown alert before it happens. Charging or recovery cancels it; no SoC never triggers it. The Pi 5
 then stays off until power is cycled (e.g. the BMS cuts and restores it) or its button is pressed.
 
-**Heaters off at 10 % (owner, 2026-11-23).** If the Espar or the MCS7 is heating when the SoC has been ≤ 10 % for
-2 minutes and not charging, both are turned off with normal verified commands (Espar OFF; MCS7 furnace,
-electric, hot water and pre-heat off), logged as `auto:low-battery`, with a serious alert. Each heater runs its
-own cool-down. Once per low episode; re-armed by charging or SoC above 12 %. This is the one owner-approved
-exception to "AetherRV acts only when a person asks".
+**Heat lockout at 10 % (owner, 2026-11-23): required, because the Espar and the MCS7 can be seriously damaged if
+they lose power while burning or in their after-run.** Once the SoC has been ≤ 10 % for 2 minutes and not
+charging, heat is locked out (`power.heat_lockout`, serious alert): both heaters' command paths refuse to start
+heat, and a heater found heating is turned off with normal verified commands (Espar OFF; MCS7 furnace, electric,
+hot water and pre-heat off; `auto:low-battery`), again whenever one is found heating, at most once a minute.
+Each runs its own after-run. The lockout lifts when charging or above 12 %. Before the 5 % power-off, AetherRV
+turns the heaters off too and waits (up to 10 min) until both are idle, so the heaters are cold before the BMS
+can cut power. This is the one owner-approved exception to "AetherRV acts only when a person asks".

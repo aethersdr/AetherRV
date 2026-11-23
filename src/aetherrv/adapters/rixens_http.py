@@ -325,6 +325,10 @@ class RixensHttpAdapter:
 
     async def command(self, cmd: str, value, client: str = "kiosk", verify_timeout: float = 15.0) -> dict:
         async with self._cmd_lock:
+            if cmd in ("furnace", "electric", "hot_water", "preheat") and bool(value) \
+                    and self.state.get("power.heat_lockout"):          # lowbatt.py: protect the burner's after-run
+                self._log(cmd, value, "rejected", "heat locked out: house battery low", client)
+                return {"ok": False, "detail": "Heat is locked out: the house battery is too low. Charge first."}
             try:
                 self.gate.check(DEVICE, f"{cmd}={value}")
             except TxBlocked as e:

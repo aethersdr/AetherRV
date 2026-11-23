@@ -216,4 +216,5 @@ auto_shutdown = false
 warn_soc = 8.0
 shutdown_soc = 5.0
 hold_s = 120
-heater_off_soc = 10.0   # Espar or MCS7 heating at/below this (held hold_s, not charging) → both heaters off
+heater_off_soc = 10.0   # at/below this (held hold_s, not charging): heat locked out, heaters turned off
+heater_wait_s = 600     # before the power-off: wait for the heaters' after-runs (at most this long)

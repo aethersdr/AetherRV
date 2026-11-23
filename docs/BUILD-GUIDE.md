@@ -362,7 +362,7 @@ the tools below write them to `/etc/aetherrv/secrets.toml`, readable only by roo
 | Espar heater | `[device.espar]`: the bus (`hat1`). Leave `tx_enabled = false` until step 8. |
 | TomTom traffic | `tools/set_tomtom_key.sh`, from your computer (prompts for the key on the Pi). |
 | Remote control | `[web] control_subnets` / `control_tailnet`: who besides the touchscreen may control. |
-| Low-battery shutdown | `[power] auto_shutdown = true`: the Pi powers itself off cleanly when the house bank stays at or below `shutdown_soc` (5 %) for 2 minutes while not charging, before the battery BMS cuts it off. A Pi 5 then stays off until its power is cycled or its button is pressed. This replaces a UPS HAT. Earlier, at `heater_off_soc` (10 %), if either heater is heating, both are turned off cleanly (each runs its own cool-down). |
+| Low-battery shutdown | `[power] auto_shutdown = true`: the Pi powers itself off cleanly when the house bank stays at or below `shutdown_soc` (5 %) for 2 minutes while not charging, before the battery BMS cuts it off. A Pi 5 then stays off until its power is cycled or its button is pressed. This replaces a UPS HAT. Earlier, at `heater_off_soc` (10 %), heat is locked out: both heaters are turned off and kept off, so they're never burning (or still in their after-run) when the BMS cuts power, which can seriously damage them. Before the 5 % power-off, AetherRV waits for the after-runs to finish. |
 
 After each change: `sudo systemctl restart aetherrv`.
 

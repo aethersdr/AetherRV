@@ -57,7 +57,7 @@ class Ctl:
         self.log.append((self.name, cmd, value, client)); return {"ok": True, "detail": "ok"}
 
 
-def test_heaters_both_off_at_10_percent_once_then_rearm():
+def test_heat_lockout_turns_both_off_and_keeps_them_off_until_charging():
     s = State(); log = []
     s.update({"victron.battery.soc": 9.5, "victron.battery.current": -20.0,
               "climate.espar.ctl.active": True, "climate.espar.ctl.mode": "heat",
@@ -66,16 +66,61 @@ def test_heaters_both_off_at_10_percent_once_then_rearm():
     lb = LowBatteryShutdown(s, Admin(), {"heater_off_soc": 10, "hold_s": 120},
                             {"espar": Ctl("espar", log), "rixens": Ctl("mcs7", log)})
     run(lb, 0); run(lb, 60)
-    assert log == []                                                     # still inside the hold
+    assert log == [] and not s.get("power.heat_lockout")             # still inside the hold
     run(lb, 121)
+    assert s.get("power.heat_lockout") is True
     assert log == [("espar", "set", {"mode": "off"}, "auto:low-battery"), ("mcs7", "furnace", False, "auto:low-battery"),
                    ("mcs7", "hot_water", False, "auto:low-battery")]
-    assert [f.id for f in r_power_shutdown(s, {})] == ["power.heaters_off"]
+    ids = [f.id for f in r_power_shutdown(s, {})]
+    assert "power.heat_lockout" in ids and "power.heaters_off" in ids
+    run(lb, 150)
+    assert len(log) == 3                                             # at most once a minute
+    s.update({"climate.espar.ctl.mode": "off", "climate.rixens.sources": [], "climate.rixens.hot_water": False})
     run(lb, 300)
-    assert len(log) == 3                                                 # once per low episode
-    s.set("victron.battery.current", 15.0)                               # charging re-arms and clears the alert
-    run(lb, 310)
-    assert lb.heaters_done is False and list(r_power_shutdown(s, {})) == []
+    assert len(log) == 3                                             # nothing heating: nothing sent
+    s.update({"climate.espar.ctl.mode": "heat"})                     # someone got it going again: off again
+    run(lb, 400)
+    assert log[-1] == ("espar", "set", {"mode": "off"}, "auto:low-battery")
+    s.set("victron.battery.current", 15.0)                           # charging lifts the lockout and clears alerts
+    run(lb, 410)
+    assert s.get("power.heat_lockout") is False and list(r_power_shutdown(s, {})) == []
+
+
+def test_heat_starts_refused_during_lockout():
+    from aetherrv.adapters.espar import EsparAdapter
+    from aetherrv.adapters.espar_control import EsparControl
+    from aetherrv.adapters.rixens_http import RixensHttpAdapter
+    from aetherrv.txgate import TxGate
+    s = State(); s.set("power.heat_lockout", True); s.set("climate.cabin_front.temp", 18.0)
+    c = EsparControl(s, EsparAdapter("espar", s), object(), TxGate({"espar": True}))
+    r = asyncio.run(c.command("set", {"mode": "heat", "setpoint_c": 20}))
+    assert not r["ok"] and "locked out" in r["detail"]
+    m = RixensHttpAdapter.__new__(RixensHttpAdapter)
+    m.state, m._cmd_lock, m.db = s, asyncio.Lock(), None
+    m._log = lambda *a: None
+    r = asyncio.run(m.command("furnace", True))
+    assert not r["ok"] and "locked out" in r["detail"]
+
+
+def test_poweroff_waits_for_heater_after_run():
+    s = State(); a = Admin()
+    s.update({"victron.battery.soc": 4.0, "victron.battery.current": -5.0, "climate.espar.state": "cooldown"})
+    lb = LowBatteryShutdown(s, a, {"hold_s": 10, "heater_wait_s": 600}, {})
+    run(lb, 0); run(lb, 20)
+    assert a.calls == [] and s.get("power.shutdown")["waiting_for_heaters"]
+    s.set("climate.espar.state", "off")                              # after-run finished
+    run(lb, 300)
+    assert a.calls == ["poweroff"]
+
+
+def test_poweroff_waits_at_most_heater_wait_s():
+    s = State(); a = Admin()
+    s.update({"victron.battery.soc": 4.0, "victron.battery.current": -5.0, "climate.rixens.heater_state_code": 30})
+    lb = LowBatteryShutdown(s, a, {"hold_s": 10, "heater_wait_s": 300}, {})
+    run(lb, 0); run(lb, 20); run(lb, 200)
+    assert a.calls == []
+    run(lb, 330)
+    assert a.calls == ["poweroff"]
 
 
 def test_heaters_left_alone_when_not_heating_or_above_threshold():

@@ -59,6 +59,10 @@ def _num(v):
 
 
 def r_power_shutdown(s: State, c: dict):
+    if s.get("power.heat_lockout"):
+        yield Finding("power.heat_lockout", "serious", "Heat locked out: house battery low",
+                      "Below the heater cut-off and not charging: the Espar and MCS7 won't start (and are turned off) "
+                      "so they can't lose power mid-burn. Lifts when charging.", "victron")
     h = s.get("power.heaters_off")
     if h:
         yield Finding("power.heaters_off", "serious", f"Heaters turned off: house battery at {h['soc']:.0f}%",
