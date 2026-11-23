@@ -569,10 +569,7 @@ function renderClimate() {
       modes: live ? [["Hot water", "hot_water", R("hot_water")], ["Preheat", "preheat", R("preheat")]] : [],
       chips: live && avail.floor ? [["Floor", R("floor") !== "off"]] : [],
       kv: rState == null ? [] : live ? [
-        ["Coolant", fluidPill(R)],
-        ["Battery", R("battery_v") == null ? "—" : `${num(R("battery_v"), 1)} V`],
-        ["Runtime", R("runtime_h") == null ? "—" : `${Math.round(R("runtime_h")).toLocaleString()} h`],
-        ["Fuel today", R("fuel_today_gal") == null ? "—" : `${(+R("fuel_today_gal")).toFixed(R("fuel_today_gal") < 0.1 ? 3 : 2)} gal`],
+        ["Coolant", fluidPill(R)],               // battery, runtime, fuel today: Settings → MCS7
       ] : [["Coolant", R("coolant") == null ? "—" : fmtT(R("coolant"))], ["Fan speed", R("fan") ?? "—"]],
       burner: live ? [
         ["Fan", R("fan_rpm") == null ? "—" : `${R("fan_rpm").toLocaleString()} rpm`, "Burner fan"],
@@ -599,10 +596,7 @@ function renderClimate() {
       ].filter(Boolean).join(" · ") || "EasyStart Pro"}`,
       kv: E("state") == null ? [] : [
         ["Heater", E("heater_c") != null ? fmtT(E("heater_c")) : D("temps")?.intake_c != null ? fmtT(D("temps").intake_c) : "—"],
-        ["Battery", D("voltage_v") == null ? "—" : `${num(D("voltage_v"), 1)} V`],
-        ["Runtime", D("hours")?.operating == null ? "—" : `${Math.round(D("hours").operating).toLocaleString()} h`],
-        ["Fuel total", D("fuel")?.total_l == null ? "—" : `${(D("fuel").total_l / 3.785).toFixed(1)} gal`],
-      ],
+      ],                                         // battery, runtime, fuel total: Settings → Espar
       burner: D("enabled") && !E("asleep") ? [
         ["Fan", D("blower") == null ? "—" : `${Math.round(D("blower") / 45.59)} %`, "Blower drive"],
         ["Glow", D("glow_w") == null ? "—" : `${Math.round(D("glow_w"))} W`, "Glow plug"],
@@ -2170,6 +2164,7 @@ function renderSettings(force = false) {
       <div class="set-h"><h2>Rixens MCS7</h2><span class="muted">${R("reachable") === false ? "unreachable" : R("live") ? esc(String(R("state") || "online")) : "—"}</span></div>
       <div class="set-rows">
         ${setRow("Firmware", esc(R("heat_version") ? `Heat controller ${R("heat_version")}` : ""), esc(R("version") || "—"))}
+        ${setRow("Battery", "Supply voltage at the MCS7", R("battery_v") == null ? "—" : `${num(R("battery_v"), 1)} V`)}
         ${setRow("Burner runtime", "Total hours on the heater", R("runtime_h") == null ? "—" : `${Math.round(R("runtime_h")).toLocaleString()} h`)}
         ${setRow("Controller uptime", "", dur(R("uptime")))}
         ${setRow("Heat sources", "Fitted on this install", esc(srcs))}
@@ -2192,6 +2187,7 @@ function renderSettings(force = false) {
         ${setRow("Room temperature", "What the heater regulates on: the cabin Ruuvi, else the heater's own intake sensor",
           C("room_c") == null ? "—" : `${fmtT(C("room_c"))} · ${esc(C("room_src") || "")}`)}
         ${setRow("Software", D("hardware") ? `Hardware ${esc(D("hardware"))}` : "", esc(D("software") || "—"))}
+        ${setRow("Battery", "Supply voltage at the heater", D("voltage_v") == null ? "—" : `${num(D("voltage_v"), 1)} V`)}
         ${setRow("Operating hours", "Total time the heater has run", h.operating == null ? "—" : `${Math.round(h.operating).toLocaleString()} h`)}
         ${setRow("Fuel burned", "Lifetime, from the heater's own counter", gal(D("fuel")?.total_l))}
         ${setRow("Air pressure", "The heater adjusts fuel for altitude", D("air_hpa") == null ? "—" : `${Math.round(D("air_hpa"))} hPa`)}
