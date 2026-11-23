@@ -48,3 +48,28 @@ def test_espar_fault_alert(monkeypatch):
     assert st.get("climate.espar.state") == "error" and st.get("climate.espar.fault") == "0x20"
     (x,) = list(r_espar(st, {}))
     assert x.severity == "serious" and "flame loss" in x.detail
+
+
+def test_espar_diag_is_gated_and_only_reads(monkeypatch):
+    import time as _t
+    from aetherrv.txgate import TxGate
+    now = [100.0]; monkeypatch.setattr(_t, "time", lambda: now[0])
+    sent = []
+
+    class Bus:
+        def send(self, device, msg, gate, quiet=False):
+            gate.check(device, "x"); sent.append((device, msg.arbitration_id, bytes(msg.data)))
+    off = EsparAdapter("espar", State(), bus=Bus(), gate=TxGate({"espar_diag": False}))
+    assert not off.diag_enabled and not off._send_diag(b"\x03\x22\xfd\x04" + b"\xaa" * 4, "read") and sent == []
+    a = EsparAdapter("espar", State(), bus=Bus(), gate=TxGate({"espar_diag": True}))
+    assert not a.awake()                                               # bus asleep: never send (no wake-ups)
+    a.on_frame(f(0x054, "0000FEFFDA020000")); a.on_frame(f(0x2C4, "030000001B020000"))
+    assert a.awake()
+    a.on_frame(f(0x73C, "100B62FD10011400"))                           # first frame → we send flow control
+    assert sent == [("espar_diag", 0x7A0, bytes.fromhex("30001400AAAAAAAA".replace("1400", "14AA")))]
+    a.on_frame(f(0x73C, "2100000000000000"))
+    a.on_frame(f(0x73C, "0562FD040084FFFF"))
+    s = a.diag_snapshot(now[0])
+    assert s["climate.espar.diag.phase"] == {"request": "heat", "phase": "burning"}
+    assert s["climate.espar.diag.voltage_v"] == 13.2 and s["climate.espar.diag.enabled"] is True
+    assert all(dev == "espar_diag" and aid == 0x7A0 for dev, aid, _ in sent)

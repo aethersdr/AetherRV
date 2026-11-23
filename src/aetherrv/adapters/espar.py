@@ -25,6 +25,7 @@ import time
 import can
 
 from ..state import State
+from . import espar_uds as uds
 from .capture_only import CaptureOnlyAdapter
 
 STATES = {0x00: "init", 0x01: "stopping", 0x02: "startup", 0x03: "idle", 0x08: "init", 0x09: "heating",
@@ -90,8 +91,15 @@ def _decode(i: int, d: bytes) -> tuple[str, str]:
 class EsparAdapter(CaptureOnlyAdapter):
     """Decodes the heater's status and the EasyStart Pro's commands; never transmits (it has no send path)."""
 
-    def __init__(self, device: str, state: State) -> None:
+    def __init__(self, device: str, state: State, bus=None, gate=None, diag_interval: float = 5.0) -> None:
         super().__init__(device, state)
+        # Diagnostics: UDS *read* requests through TxGate device "<device>_diag" (off unless diag_tx = true).
+        self.bus, self.gate, self.diag_interval = bus, gate, max(1.0, diag_interval)
+        self.isotp = uds.IsoTpRx()
+        self.diag: dict = {}                  # key → (value, time)
+        self.dtcs: list | None = None
+        self.diag_sent = 0
+        self.diag_err: str | None = None
         self.cmd: dict = {}
         self.st: dict = {}
         self.last_rx: float | None = None
@@ -105,6 +113,21 @@ class EsparAdapter(CaptureOnlyAdapter):
         if msg.is_error_frame or msg.is_remote_frame or msg.is_extended_id:
             return
         now, d, i = time.time(), bytes(msg.data), msg.arbitration_id
+        if i == uds.RESP_ID:                          # a diagnostic reply (ours, or the EasyStart Pro's workshop menu)
+            payload, need_fc = self.isotp.feed(d, now)
+            if need_fc:
+                self._send_diag(uds.FLOW_CONTROL, "flow control")
+            if payload:
+                r = uds.decode(payload)
+                if "key" in r:
+                    self.diag[r["key"]] = (r["value"], now)
+                elif "dtcs" in r:
+                    self.dtcs = r["dtcs"]
+                elif "negative" in r:
+                    self.diag_err = f"negative reply {r['negative']}"
+            return
+        if i == uds.REQ_ID:
+            return
         self.last_rx = now
         if i == 0x054 and len(d) >= 6:
             sp = d[2] | d[3] << 8
@@ -183,9 +206,51 @@ class EsparAdapter(CaptureOnlyAdapter):
             p + "last_seen": self.last_rx,
         }
 
+    @property
+    def diag_enabled(self) -> bool:
+        return self.bus is not None and self.gate is not None and self.gate.is_enabled(f"{self.device}_diag")
+
+    def _send_diag(self, data: bytes, what: str) -> bool:
+        if not self.diag_enabled:
+            return False
+        try:
+            self.bus.send(f"{self.device}_diag", can.Message(arbitration_id=uds.REQ_ID, data=data, is_extended_id=False),
+                          self.gate, quiet=True)
+            self.diag_sent += 1
+            return True
+        except Exception as e:                        # noqa: BLE001 — report, never retry
+            self.diag_err = f"{what}: {e}"
+            return False
+
+    def awake(self, now: float | None = None) -> bool:
+        """Heater and controller both talking within the last 2 s: only then do we ask (we never wake the bus)."""
+        now = now or time.time()
+        return bool(self.last_heater and self.last_ctrl and now - self.last_heater < 2 and now - self.last_ctrl < 2)
+
+    def diag_snapshot(self, now: float | None = None) -> dict:
+        now = now or time.time()
+        p = "climate.espar.diag."
+        out = {p + "enabled": self.diag_enabled, p + "sent": self.diag_sent, p + "error": self.diag_err,
+               p + "dtcs": self.dtcs}
+        for k, (v, t) in self.diag.items():
+            out[p + k] = v if now - t < max(30, self.diag_interval * (len(uds.LIVE_DIDS) + 2)) or k in (
+                "software", "hardware", "variant", "operating_min", "event_count") else None
+        return out
+
     async def run(self) -> None:
         import asyncio
+        once = list(uds.ONCE_DIDS)
+        live, dtc_at, next_req = 0, 0.0, 0.0
         while True:
+            now = time.time()
             self.state.set(f"{self.device}.ids", self.summary())
-            self.state.update(self.snapshot())
-            await asyncio.sleep(1.0)
+            self.state.update(self.snapshot(now) | self.diag_snapshot(now))
+            if self.diag_enabled and self.awake(now) and now >= next_req:
+                if once:                              # versions etc. once, then the live set round-robin
+                    self._send_diag(uds.read_did(once.pop(0)), "read")
+                elif now - dtc_at > 600:
+                    self._send_diag(uds.READ_DTCS, "fault memory"); dtc_at = now
+                else:
+                    self._send_diag(uds.read_did(uds.LIVE_DIDS[live % len(uds.LIVE_DIDS)]), "read"); live += 1
+                next_req = now + self.diag_interval
+            await asyncio.sleep(0.25 if self.diag_enabled else 1.0)

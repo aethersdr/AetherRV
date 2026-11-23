@@ -61,7 +61,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
                              capture_dir if b.get("capture", True) else None, host=b.get("host"), port=b.get("port"))
 
     devices = cfg.get("device", {})
-    gate = TxGate({d: bool(v.get("tx_enabled", False)) for d, v in devices.items()})
+    gate = TxGate({d: bool(v.get("tx_enabled", False)) for d, v in devices.items()}
+                  | {f"{d}_diag": bool(v.get("diag_tx", False)) for d, v in devices.items() if v.get("kind") == "espar"})
     adapters: list = []
     demo = any(d.get("kind") == "demo" and d.get("enabled") for d in devices.values())
     cabin_source = cfg.get("climate", {}).get("cabin_source", "victron")
@@ -149,7 +150,8 @@ def build(cfg: dict, state: State, history: History | None = None) -> tuple[list
         elif kind == "capture":
             a = CaptureOnlyAdapter(dev, state)
         elif kind == "espar":
-            a = EsparAdapter(dev, state)              # read-only decoder (no send path)
+            # decoder; with diag_tx it also sends UDS *read* requests (device "<dev>_diag" in the TxGate)
+            a = EsparAdapter(dev, state, bus=bus, gate=gate, diag_interval=float(d.get("diag_interval_s", 5)))
         else:
             log.warning("device %s: unknown kind %r", dev, kind)
             continue
