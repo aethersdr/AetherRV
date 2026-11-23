@@ -2800,8 +2800,11 @@ function renderHeatQuick() {
       note = es == null ? "not connected" : es;
       usable = canControlDev("espar") && !ctlPending;
     } else { note = "not connected"; }
-    return `<button class="hq-btn${on ? " on" : ""}${st === "active" ? " active" : ""}" data-hq="${b.k}" ${usable ? "" : "disabled"}>
-      ${icon(b.ic)}<span class="hq-l">${b.label}</span></button>`;
+    // low-battery heat lockout: anything that would START heat is locked (turning off still works; engine is exempt)
+    const locked = heatLockout() && !on && b.k !== "engine";
+    return `<button class="hq-btn${on ? " on" : ""}${st === "active" ? " active" : ""}${locked ? " locked" : ""}" data-hq="${b.k}"
+      ${usable && !locked ? "" : "disabled"} ${locked ? 'title="Heat locked out: house battery low"' : ""}>
+      ${icon(b.ic)}<span class="hq-l">${b.label}</span>${locked ? `<span class="hq-lock">${icon("lock")}</span>` : ""}</button>`;
   }).join("");
 }
 $("#heat-quick").addEventListener("click", e => {

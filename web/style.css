@@ -1250,3 +1250,8 @@ html.night .t-cold { color: var(--c-batt); }
 .lockout-line .ic { width: 22px; height: 22px; flex: none; }
 .lockout-line b { font-size: 18px; } .lockout-line span { font-size: 15px; color: var(--ink-2); }
 .heater .badge.tap-b.locked { opacity: .35; }   /* heat start locked out (low battery) */
+/* Home heat buttons: low-battery heat lockout */
+.hq-btn { position: relative; }
+.hq-btn.locked { opacity: .5; }
+.hq-btn .hq-lock { position: absolute; top: 6px; right: 6px; color: var(--warning); display: grid; }
+.hq-btn .hq-lock svg { width: 18px; height: 18px; }
