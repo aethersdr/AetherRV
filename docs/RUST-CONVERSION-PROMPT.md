@@ -2,9 +2,10 @@
 
 You are converting **AetherRV** (this repository) from a single Python process with a hand-written JavaScript UI
 into a **modular control system in Rust with a React UI**. The owner has already made the architecture decisions
-below in an interview; treat them as settled and do not re-ask them. Work autonomously until the goal condition
-at the end is met. Ask the owner only when you are blocked on something physical or on an approval this document
-says you need.
+below in an interview; treat them as settled. Keep working until the goal condition at the end is met.
+
+This is **not** a one-pass job and you are not expected to guess. Whenever the right answer is the owner's to
+give, **stop and ask with the AskUserQuestion tool**, then carry on with the answer. §9 says when and how.
 
 ## 1. Why, and what "better" means
 
@@ -145,14 +146,14 @@ holds the bus client, config loading, the transmit gate and the command contract
 - **Golden parity.** Replay recorded CAN captures and recorded API responses into both the Python reference and
   the Rust system and diff the resulting state key by key. The van Pi holds ~1 GB of raw CAN captures and the
   live history database. You may **read** from the van Pi over SSH to copy captures and sample state; you may not
-  install, restart or send anything there. Sanitize anything you commit (§9).
+  install, restart or send anything there. Sanitize anything you commit (§10).
 - **Isolation tests** (the point of the project): with the full system running against simulators, kill and
   restart each service in turn, and the broker, and assert that every other service keeps working, that state
   recovers, and that a running Espar and an MCS7 are not interrupted.
 - **Soak**: run the whole system on the bench Pi for at least 12 hours against simulators; no crashes, no memory
   growth, no stuck state.
 - **Bench Pi** setup (Arch Linux ARM as in `docs/BUILD-GUIDE.md`, virtual CAN) is yours to do. Ask the owner
-  for its SSH name and for the screen when you reach the benchmark.
+  for its SSH name (AskUserQuestion) before you start on it, and for the screen when you reach the benchmark.
 
 ## 7. Choosing the UI runtime
 
@@ -160,7 +161,8 @@ Build the same React production bundle and run it, on the bench Pi's real screen
 `cog` in kiosk mode, (b) a Tauri v2 application, (c) Chromium in kiosk mode. For each, measure on every page:
 frame rate (including the WebGL2 radar loop and the 3D sky), tap-to-visual latency, page-switch time, cold start
 to first usable frame, CPU and memory. WebKit's WebGL performance on the Pi 5 is unproven, so measure it; do not
-assume. Choose the lightest option that meets every number in §8. Write the method, the numbers and the choice
+assume. Recommend the lightest option that meets every number in §8, show the owner the numbers and let them
+confirm the choice (AskUserQuestion). Write the method, the numbers and the choice
 to `docs/UI-RUNTIME-BENCHMARK.md`. Screen power control (today done through sway) and the boot splash hand-off
 must keep working with whatever you choose.
 
@@ -174,7 +176,42 @@ must keep working with whatever you choose.
 - UI process memory: **≤ 400 MB**.
 - Measure the Python/Chromium system the same way first and report before/after.
 
-## 9. Working rules
+## 9. Asking the owner
+
+Use the **AskUserQuestion** tool for every question. Never put a question, an open decision or a "let me know"
+in closing prose, and never end a turn with something only the owner can unblock left unasked.
+
+**Ask when:**
+- The reference behaviour is ambiguous, looks like a bug, or two parts of the Python system disagree, and the
+  choice changes what the user sees or what a device is sent. Never guess on anything that touches the safety
+  model or a heater.
+- A design choice has a real trade-off that §3 does not settle (for example the broker, the topic layout where
+  it affects parity, a crate with a licence or maintenance concern, how a service behaves when a dependency is
+  down).
+- You find evidence that a settled decision in §3 is wrong or cannot be met. Show the evidence and the options;
+  do not quietly work around it or re-open it without evidence.
+- A number in §8 cannot be met, a test cannot be ported, or a parity difference needs accepting. Do not lower a
+  target, drop a test or accept a difference on your own.
+- You need something physical or an approval: the bench Pi's SSH name, the screen, a secret typed by the owner,
+  permission for a blocked action, reading from the van Pi for the first time.
+- A "deliberate improvement" to a page changes a control's position, meaning or behaviour.
+
+**Do not ask** what you can find out by reading the code, the tests, the docs or the device captures, or what
+§3 already answers.
+
+**How:**
+- First do all the work that does not depend on the answer. Then ask, then continue.
+- Group related questions into one call (up to four). Each question must stand alone: say what you found and
+  name the things you are asking about.
+- Offer two to four concrete options, with your recommendation first and marked, and say what each one costs.
+- Ask early. Raise the architecture questions before building on them: present `docs/ARCHITECTURE.md` and get the
+  owner's go-ahead before writing the services.
+- Record every answer, with the date, in a "Decisions" section of `docs/ARCHITECTURE.md`, so a later session
+  does not ask again.
+- If the owner is away and a question is still open, work on parts that do not depend on it; do not pick an
+  answer for them.
+
+## 10. Working rules
 
 - Branch `rust` only. Never touch `main` (bug-fix exceptions need the owner's request) and never push or rewrite
   the `private-history` branch. Commit in small, described steps; push `rust` regularly.
@@ -186,7 +223,7 @@ must keep working with whatever you choose.
   `INTEGRATION_PLAN.md` section, in the style of the existing ones.
 - Prefer boring, maintained crates. Note the licence of anything you vendor; the project is GPL-3.0.
 
-## 10. Deliverables
+## 11. Deliverables
 
 1. The `rust` branch: Cargo workspace, `ui/`, systemd units, installer and `deploy/push.sh` equivalent, the root
    helper, all tests and simulators.
@@ -204,15 +241,16 @@ must keep working with whatever you choose.
 Stop and report when **all** of these are true, each backed by evidence you can show (test output, benchmark
 files, logs):
 
-- Every item in §10 exists on the pushed `rust` branch.
+- Every item in §11 exists on the pushed `rust` branch.
 - The full test suite passes, and `docs/TEST-PARITY.md` maps all 197 reference tests.
 - Golden-parity diffs against the Python reference are empty or every difference is explained and accepted in
-  writing.
+  writing by the owner.
 - The isolation tests pass for every service and the broker, including the Espar seamless-resume and
   blind-running cases.
 - The 12-hour soak completed cleanly on the bench Pi.
 - The runtime benchmark is done on the bench Pi's real screen and every number in §8 is met by the chosen runtime.
 - Nothing has been installed, restarted or transmitted on the van Pi.
+- No question for the owner is open, and every answer is recorded in `docs/ARCHITECTURE.md`.
 
 Then give the owner a short summary, the measured before/after numbers, anything you could not prove on the
 bench, and the cutover runbook. Do not begin the cutover.
