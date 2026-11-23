@@ -234,6 +234,11 @@ in closing prose, and never end a turn with something only the owner can unblock
 - You type no passwords or tokens. When a secret is needed, give the owner the command to run.
 - Record every design decision and every surprising finding in `docs/ARCHITECTURE.md` or a new
   `INTEGRATION_PLAN.md` section, in the style of the existing ones.
+- **Use your advisor.** If you have an advisor tool, call it: before committing to the architecture, before
+  starting each service, whenever tests fail twice in a row or an approach isn't converging, before accepting any
+  safety-related design, and before declaring any goal-condition item met. Give its advice serious weight; if it
+  conflicts with evidence you have, call it again with the conflict instead of silently choosing. The advisor does
+  not replace the owner: decisions that are the owner's still go to AskUserQuestion (§9).
 - Prefer boring, maintained crates. Note the licence of anything you vendor; the project is GPL-3.0.
 
 ## 11. Deliverables
