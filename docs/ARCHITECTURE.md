@@ -162,8 +162,8 @@ topic = the requester's reply topic, message expiry = `ttl_ms`.
   direction; refusing it would let the dimmer ramp until the 8 s cap).
 - **At most once.** The service keeps the ids of the last 10 minutes and answers a repeat with the first result
   without acting again. (QoS 1 may deliver twice.)
-- **Results.** Reply: `{"id", "result": "ok" | "refused" | "unverified", "detail", "outcome"}`. `detail` is the
-  Python `detail` text, shown to the user. `outcome` is the Python command-log outcome. The mapping:
+- **Results.** Reply: `{"id", "result": "ok" | "refused" | "unverified", "detail"}`. `detail` is the Python
+  `detail` text, shown to the user. The Python command-log outcome maps onto `result` like this:
 
   | Python outcome | result | Meaning |
   |---|---|---|
@@ -174,11 +174,11 @@ topic = the requester's reply topic, message expiry = `ttl_ms`.
 
   The UI's existing `ok` flag stays in the gateway's `control_result` message (`ok = result == "ok"`).
 - **The gateway** refuses at once, "<module> is down; nothing sent", when the owner's `status` is down or its
-  heartbeat is older than 6 s. When a reply doesn't come within the command's own timeout (per device: Espar 8 s,
+  heartbeat is older than 6 s. When a reply doesn't come within the command's own timeout (per device: Espar 15 s,
   MCS7 20 s, Victron 20 s, Starlink 100 s, …), the gateway answers "unverified: no answer from <module>; it may have
   acted". The gateway never retries.
 - Every attempt (who, what, outcome) goes to `command_log` **in the owning service**, so logging works with the
-  broker down (§8).
+  broker down (§8). The reply itself carries `result` and `detail` only.
 
 ### 4.7 Lifecycle and module health
 
@@ -405,6 +405,23 @@ with a test that tries every other service byte.
 - Cutover and rollback are one-command scripts (`packaging/cutover.sh`, `packaging/rollback.sh`) that stop one
   target and start the other. Both are tested on the bench Pi. The runbook is `docs/CUTOVER.md`.
 
+## 13a. Where the Rust system deliberately differs from the Python reference
+
+Each of these changes what a device is sent or what a user sees, so each is listed for the owner (§9).
+
+| # | Difference | Why |
+|---|---|---|
+| D1 | All Espar timing (heard/lost/wake/verify, run deadline, after-run countdown) runs on `CLOCK_BOOTTIME`, not the wall clock | In Python a forward clock jump during a run (NTP sync after boot on the RTC-less Pi) reads as "lost the heater (no status for 3 s)" and stops the heater; a backward jump stretches the run timer |
+| D2 | Ages of bus values (the cabin Ruuvi, battery readings) are still wall-clock (`t` in the payload). A forward jump of over 15 min makes the Ruuvi look stale; the Espar then uses its intake sensor, or with diagnostics off stops heat (same as Python) | One clock shared by all processes; only the in-process Espar loop needs a monotonic clock |
+| D3 | After a resume, the room value saved before the restart is used for up to 15 min if neither the Ruuvi nor the intake sensor is available yet | The first 054 after a resume must carry a real room value (never FE FF = full power), and the bus may still be reconnecting |
+| D4 | A command older than its TTL (3 s) is refused, **including a heater OFF**; only a dimmer `hold` release is exempt | A late "heat on" must never run. Whether OFF commands should also be exempt (the safe direction) is an open question (Q-T1) |
+| D5 | `tx_enabled` / `diag_tx` must be TOML booleans; Python's `bool()` would also accept e.g. the string `"false"` as true | Safe direction; `aetherrv-migrate` warns |
+| D6 | The heat-lockout latch is persisted (Python forgets it on restart) | Owner (Q-L1) |
+| D7 | New state keys: `climate.espar.lockout`, `climate.espar.lockout_off`, `climate.rixens.lockout*`, `svc.*`, `tx.enabled.<device>`, `tx.blocked.<device>` (the gateway also rebuilds the old `tx.enabled`/`tx.blocked` dicts) | §4.5, §8 |
+| D8 | The Espar resumes a run after its own restart (owner, §3 / Q-E1, Q-E2); Python always came back OFF | Owner |
+| D9 | The command reply carries `result` (ok / refused / unverified) and `detail`; the Python outcome string stays in `command_log`, not in the reply | §4.6 |
+| D10 | The gateway waits up to 15 s for an Espar reply (one verify window is 6 s, and a queued command waits for the one before it) | Avoids reporting "unverified" for a command that is still being verified |
+
 ## 14. Open questions for the owner
 
 | Id | Question | State |
@@ -417,6 +434,8 @@ with a test that tries every other service byte.
 | Q-P1 | Recording API inputs through the van Pi | answered 2026-11-23: yes, read-only requests only, through the logged wrapper |
 | Q-P2 | Parity normalisation of time-dependent keys | open: to be asked with the first real diffs |
 | Q-D1 | Demo mode: port or drop? | answered 2026-11-23: drop it |
+| Q-T1 | Should a late heater OFF (older than the 3 s TTL) still run, as the safe direction? (D4) | open |
+| Q-D2 | Accept the differences D1–D10 in §13a | open |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions

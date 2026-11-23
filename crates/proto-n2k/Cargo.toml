@@ -1,0 +1,13 @@
+[package]
+name = "proto-n2k"
+description = "AetherRV NMEA 2000: 29-bit ID split, fast packet, PGN decoders, the CANboat PGN table, 126208 command encoding, the read-only adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
