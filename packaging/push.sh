@@ -11,7 +11,8 @@ if [ "$MODE" != "--cutover" ] && ssh -o BatchMode=yes "$HOST" "ip -br link" | gr
   exit 3
 fi
 if [ -f ui/package.json ] && [ -d ui/node_modules ]; then (cd ui && npm run build --silent); fi
+git describe --always --dirty 2>/dev/null > packaging/VERSION || true
 rsync -a --delete --exclude target --exclude .git --exclude ui/node_modules --exclude harness/out --exclude deploy/local.env \
   --exclude packaging/local.env --exclude '.venv' --exclude __pycache__ --exclude docs/private \
   --rsync-path="sudo rsync" ./ "$HOST":/opt/aetherrv-rs/src/
-ssh "$HOST" "cd /opt/aetherrv-rs/src && cargo build --release --workspace --bins 2>&1 | tail -3 && sudo packaging/install.sh $MODE"
+ssh "$HOST" "set -o pipefail; cd /opt/aetherrv-rs/src && cargo build --release --workspace --bins 2>&1 | tail -3 && sudo packaging/install.sh $MODE"

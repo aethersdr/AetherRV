@@ -18,3 +18,4 @@ docs/private/
 /ui/dist/
 /packaging/local.env
 /harness/out/
+/packaging/VERSION

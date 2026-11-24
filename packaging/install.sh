@@ -21,7 +21,8 @@ install -m 644 "$SRC"/packaging/etc/mosquitto.conf "$SRC"/packaging/etc/mosquitt
 if [ -d "$SRC/ui/dist" ]; then
   rm -rf "$DEST/ui.new" && cp -a "$SRC/ui/dist" "$DEST/ui.new" && rm -rf "$DEST/ui" && mv "$DEST/ui.new" "$DEST/ui"
 fi
-(cd "$SRC" && git describe --always --dirty 2>/dev/null || echo unknown) > "$DEST/VERSION"
+if [ -s "$SRC/packaging/VERSION" ]; then cp "$SRC/packaging/VERSION" "$DEST/VERSION"; else (cd "$SRC" && git describe --always --dirty 2>/dev/null || echo unknown) > "$DEST/VERSION"; fi
+ls "$DEST"/bin/aetherrv-* >/dev/null 2>&1 || { echo "no binaries built: nothing installed" >&2; exit 4; }
 chmod -R a+rX "$DEST"
 
 install -d -m 755 /etc/aetherrv

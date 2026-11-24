@@ -596,7 +596,7 @@ pub fn peer_ok(fd: std::os::fd::RawFd, allowed: &[String]) -> Option<String> {
 }
 
 pub fn user_name(uid: u32) -> Option<String> {
-    let mut buf = vec![0i8; 4096];
+    let mut buf: Vec<libc::c_char> = vec![0; 4096];
     let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
     let mut res: *mut libc::passwd = std::ptr::null_mut();
     // SAFETY: getpwuid_r fills pw/buf we own.
