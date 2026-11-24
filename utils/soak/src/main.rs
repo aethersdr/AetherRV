@@ -1,4 +1,4 @@
-//! `aetherrv-soak --hours 12 --units a,b,... [--ws ws://127.0.0.1:8080/ws] [--out DIR]`
+//! `aetherrv-soak --hours 1 --units a,b,... [--ws ws://127.0.0.1:8080/ws] [--out DIR]`
 //! Run as root on the BENCH with the whole system up against simulators (harness/bench/soak.sh does that).
 //!
 //! Activity, like a day in the van: a switch toggled over the bus every 5 min and over the gateway's WebSocket every
@@ -59,7 +59,7 @@ const ACTIVE: [(&str, f64); 7] =
 async fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().collect();
     let flag = |n: &str| a.iter().position(|x| x == n).and_then(|i| a.get(i + 1)).cloned();
-    let hours: f64 = flag("--hours").and_then(|h| h.parse().ok()).unwrap_or(12.0);
+    let hours: f64 = flag("--hours").and_then(|h| h.parse().ok()).unwrap_or(1.0);
     let units: Vec<String> = flag("--units").unwrap_or_default().split(',').filter(|s| !s.is_empty()).map(str::to_string).collect();
     let ws_url = flag("--ws").unwrap_or_else(|| "ws://127.0.0.1:8080/ws".into());
     let out = std::path::PathBuf::from(flag("--out").unwrap_or_else(|| "/var/tmp/soak".into()));

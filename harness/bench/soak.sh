@@ -1,10 +1,10 @@
 #!/bin/bash
-# On the BENCH Pi as root: the 12-hour soak (prompt §6). The full system against simulators (bench-up.sh, with the
+# On the BENCH Pi as root: the soak (prompt §6; 1 hour by owner decision 2026-11-23). The full system against simulators (bench-up.sh, with the
 # CLMD16 simulator flipping ignition every 10 min), then aetherrv-soak keeps it busy and samples it.
 # Usage: soak.sh <n2k-capture.log> [hours]   Results: /var/tmp/soak/{samples.jsonl,summary.json}
 set -euo pipefail
 SRC=/opt/aetherrv-rs/src; BIN=/opt/aetherrv-rs/bin
-CAP=${1:?usage: soak.sh <n2k capture> [hours]}; HOURS=${2:-12}
+CAP=${1:?usage: soak.sh <n2k capture> [hours]}; HOURS=${2:-1}
 SERVICES=$($SRC/harness/bench/bench-up.sh "$CAP" --toggle-input 2 --every 600 | tail -1)
 UNITS="aetherrv-bus.service"
 for s in $SERVICES; do UNITS="$UNITS,aetherrv-$s.service"; done

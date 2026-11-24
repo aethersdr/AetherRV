@@ -6,7 +6,7 @@ person, one device at a time. The rollback is one command and can be run at any 
 ## 0. Before the day
 
 - [ ] The bench results are green: `docs/STATUS.md` (all eight items), `docs/TEST-PARITY.md`, the parity runs,
-      the isolation tests, the 12 h soak and the UI runtime benchmark (`docs/UI-RUNTIME-BENCHMARK.md`).
+      the isolation tests, the 1 h soak and the UI runtime benchmark (`docs/UI-RUNTIME-BENCHMARK.md`).
 - [ ] The UI runtime the owner chose is installed on the van Pi's package list (§3) and `aetherrv-panel.service` is
       in `packaging/systemd/`.
 - [ ] Read §8 (checks the bench could not do) so they are on the day's list.

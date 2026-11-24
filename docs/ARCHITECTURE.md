@@ -390,7 +390,7 @@ enforcement points follow that one switch.
 - **Isolation tests** (`tools/isolation`): the full system on simulators; kill and restart each service and the
   broker in turn; assert the others keep working, state recovers, a simulated Espar run and the MCS7 are not
   interrupted (the heater simulator logs every gap and any controller-loss fault).
-- **Soak**: 12 h on the bench Pi against the simulators, with memory and restart counts logged.
+- **Soak**: 1 h on the bench Pi against the simulators (owner, 2026-11-23: at most an hour instead of the prompt's 12 h), with memory, restarts, state freshness and every command's result logged.
 - **UI tests** (Playwright) only against simulators or a gateway whose command path is stubbed, never a live page.
 
 ## 13. Build and deploy
@@ -499,3 +499,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Starlink check_update with a failed request answers unverified (D20) | owner (Q-S1) |
 | 2026-11-23 | Settings asks before turning Wi-Fi off; join and rename stay one step | owner (Q-U5) |
 | 2026-11-23 | Energy page: a WebGL (three.js) battery bank replaces the SVG scene | owner (Q-U6) |
+| 2026-11-23 | Soak: at most 1 hour on the bench (replaces the prompt's 12 hours, goal item 5) | owner |
