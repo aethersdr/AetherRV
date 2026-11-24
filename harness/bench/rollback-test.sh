@@ -22,9 +22,18 @@ rust_units() { grep -v '@\.service$' /opt/aetherrv-rs/units.txt | grep -vE '^aet
 none_active() { for u in $(rust_units); do systemctl is-active -q "$u" && { echo "still active: $u"; return 1; }; done; return 0; }
 none_enabled() { for u in $(rust_units); do [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ] && { echo "still enabled: $u"; return 1; }; done; return 0; }
 
+# the bench has no panel: while the test runs, the Rust panel unit gets a headless output (a drop-in in /run, removed
+# on exit), so the cutover really brings it up and the rollback really has to take it down
+PDROP=/run/systemd/system/aetherrv-panel.service.d/50-bench-headless.conf
+mkdir -p "$(dirname "$PDROP")"
+printf '%s\n' '[Service]' 'Environment=WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 WLR_LIBINPUT_NO_DEVICES=1' > "$PDROP"
+systemctl daemon-reload
+trap 'rm -f "$PDROP"; systemctl daemon-reload' EXIT
+
 step "0. the van's starting point: simulators up, the Rust system stopped and disabled, the Python system installed"
 $SRC/harness/bench/bench-up.sh /var/tmp/n2k-replay.log >/dev/null
-systemctl disable --now aetherrv.target $(rust_units) aetherrv-admind.socket >/dev/null 2>&1 || true
+# the panel too: left enabled by an earlier run, its restarts would pull the Rust gateway back up (Wants=)
+systemctl disable --now aetherrv-panel.service aetherrv.target $(rust_units) aetherrv-admind.socket >/dev/null 2>&1 || true
 [ -d /opt/aetherrv/src/aetherrv ] || { echo "no Python tree in /opt/aetherrv (rsync it first)" >&2; exit 4; }
 /opt/aetherrv/deploy/install.sh > /var/tmp/python-install.log 2>&1 || {
   # on this bench `networkctl reload` fails (its networking isn't the van's); finish the installer's last steps
@@ -77,6 +86,8 @@ check "and refused during the after-run too" bash -c "sleep 3; ! $P/heaters-idle
 check "heaters idle after the after-run" wait_for 90 $P/heaters-idle.sh
 
 step "5. rollback.sh (one command)"
+RUSTPANEL='/opt/aetherrv-rs/panel/screen.sh|/opt/aetherrv-rs/bin/aetherrv-screen|/opt/aetherrv-rs/bin/aetherrv-panel-wpe'
+check "the Rust panel up before the rollback (screen loop, helper, WPE launcher)" wait_for 30 bash -c "[ \$(pgrep -u kiosk -f '$RUSTPANEL' | wc -l) -ge 3 ]"
 t0=$(date +%s%N)
 $P/rollback.sh; rc=$?
 echo "  (rollback: $(secs "$t0") s)"
@@ -90,6 +101,9 @@ check "Python admin socket active" systemctl is-active -q aetherrv-admin.socket
 check "the Python system answers on :8080" wait_for 30 python_serving
 check "the Python update unit untouched" bash -c "[ \"\$(systemctl is-enabled aetherrv-update.service 2>/dev/null || echo missing)\" = '$UPD0' ]"
 check "no transmit allowlist left behind" bash -c '[ ! -f /etc/systemd/system/aetherrv-.service.d/tx-allow.conf ]'
+# the panel's session processes live in its login scope: none may outlive it (the helper polls its sway every 2 s)
+check "nothing of the Rust panel left (screen loop, helper, WPE launcher)" wait_for 6 bash -c "! pgrep -u kiosk -f '$RUSTPANEL' >/dev/null"
+check ":8091 not held by the Rust screen helper (free for the Python one)" bash -c '! ss -Hltnp "( sport = :8091 )" | grep -q aetherrv-screen'
 
 step "6. back to the Rust system for the rest of the bench work"
 $P/cutover.sh --read-only && $P/cutover.sh --full

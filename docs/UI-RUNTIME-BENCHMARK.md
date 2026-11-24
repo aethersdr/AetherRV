@@ -27,7 +27,7 @@ numbers, and its Weather frame rate was not shown to reach 30 fps. Recommendatio
 | Session | a transient unit with a PAM session on VT 8 (`harness/uibench/session.sh`), like `aetherrv-panel.service` on tty1: logind gives sway its seat (libinput for the injected touchscreen) |
 | Output | sway's headless output (`WLR_BACKENDS=headless,libinput`), 1920×1200 @ 60 Hz |
 | Backend | the whole Rust system under systemd against simulators (`harness/bench/bench-up.sh`), gateway on 127.0.0.1:8080 |
-| UI | **Final pass (§5.1):** the bundle built from commit f9968b1, deployed to the bench and served by the gateway on 127.0.0.1:8080; the bundle id is its `index.html` sha256, `a78d994cf492`; the runtimes open `http://127.0.0.1:8080/?bench=1`. **The five-runtime pass (§5.2) and §3–§4:** the production bundle (`vite build`, hash `0bb37c08214f`, in every result). The gateway's installed bundle (`/opt/aetherrv-rs/ui`) was left as deployed: `harness/uibench/serve_bundle.py` served the final bundle from the bench user's directory on 127.0.0.1:18082 and passed `/api` and `/ws` through to the gateway. The runtimes opened `http://127.0.0.1:18082/?bench=1`. The source tree differs from that bundle only by the per-scene `?keepgl=` list, added for one attribution run (bundle `9c4426ea0987`, §4.1); the default behaviour is the same. The power-on runs (§8) used the gateway's installed bundle |
+| UI | **Final pass (§5.1):** the bundle built from commit 01aa558 (the UI as of a192ca8: the radar freed on hide), deployed to the bench (cross-compiled, `harness/bench/cross-push.sh`) and served by the gateway on 127.0.0.1:8080; the runtimes open `http://127.0.0.1:8080/?bench=1`. **The f9968b1 pass (§5.1a):** the same way from f9968b1, bundle `index.html` sha256 `a78d994cf492`. **The five-runtime pass (§5.2) and §3–§4:** the production bundle (`vite build`, hash `0bb37c08214f`, in every result). The gateway's installed bundle (`/opt/aetherrv-rs/ui`) was left as deployed: `harness/uibench/serve_bundle.py` served the final bundle from the bench user's directory on 127.0.0.1:18082 and passed `/api` and `/ws` through to the gateway. The runtimes opened `http://127.0.0.1:18082/?bench=1`. The source tree differs from that bundle only by the per-scene `?keepgl=` list, added for one attribution run (bundle `9c4426ea0987`, §4.1); the default behaviour is the same. The power-on runs (§8) used the gateway's installed bundle |
 | Batteries | **From the 2026-11-24 07:16 pass on (§5.1):** four simulated EPOCH batteries (`harness/uibench/batteries.sh`: `sims/batteries-sim`, the real batteries-ble core with a stand-in for BlueZ; SoC 84–87 %, the bank discharging at 24.8 A), so the Energy page shows its 3D battery bank (owner Q-U6) with its current flowing. **Every earlier run had no battery data** (the bench has no Bluetooth batteries): the Energy page said "No per-battery data" where the bank goes, so no earlier figure includes the bank: not Energy's scene, switch or press figures, and not the memory figures |
 | Fonts | `noto-fonts` installed on the bench for this. The van has it; without it the UI fell back to FreeSans, which has a different layout and raster cost |
 | (a) WPE | wpewebkit 2.54.3: in the final pass, the panel's own kiosk launcher (`panel/wpe`, §9); before it, `MiniBrowser --fullscreen` with `WPE_PLATFORM=wayland` (WPE Platform API) |
@@ -443,8 +443,8 @@ harness, as `full.sh 1920x1200 python wpe-launcher` with `UIBENCH_KEEP_BUNDLE=1`
   120 / 139 with the bank). The owner judges switches warm (Q-U13). First visits after boot: Weather 647 ms,
   Network 492, Energy 436, the others 91–160.
 - **Scenes:** Energy's bank 62 fps with its current flowing, at 53 % of a core; Network 60. The radar loop played,
-  but there was no rain on the map this morning, so its frames didn't change and the method (screen changes) could
-  not count them. The loop's figure is from the f9968b1 pass below: ≥ 32 fps, a lower bound, the same loop code.
+  but its frames didn't change in the sampled patch (most likely no rain in view that morning; not checked by eye),
+  so the method (screen changes) could not count them. The loop's figure is from the f9968b1 pass below: ≥ 32 fps, a lower bound, the same loop code.
 - **Memory:** 392 MB after every page (WPEWebProcess 324, WPENetworkProcess 40, the launcher 26), under 400. In
   this pattern of heavy use it ranges 381–421 MB between runs (§4.6). The owner accepted that, with the launcher's
   safety net (Q-U11).
@@ -636,7 +636,7 @@ separately (§4.3).
 | tap → visible response ≤ 50 ms (a loose target: each under 100 ms, Q-U12) | **met**: 35 / 47 ms p50 / p95 over 436 presses, every one under 100 ms (the slowest 94); 13 over 50 ms. Per page p95 ≤ 48 ms but Switches 53 | **not met**: 64 ms. Home 56 / 63, Network 62 / 72; Switches 54 / 58, 34 / 36 after the fix | **not met**: 97 ms. Home 97 / 143 (partly the instrument, §3), Network 63 / 77; the other six pages pass at 13–30 ms p50 |
 | page switch ≤ 150 ms (warm p95, Q-U13) | **met**: 139 ms over all pages; every page ≤ 141 ms (Weather, its radar rebuilt on return). First visits after boot up to 647 ms | **met**: 125 ms; every page ≤ 136 | **not met**: 384 ms. Energy 383 / 438, Alerts 144 / 266, Weather 178 / 225 |
 | 60 fps Home / Climate / Switches | **met**: 62 / 62 / 62 fps, the page's rAF at refresh; at most one frame over 33 ms in a 5 s sample | **met**: Home 59 fps, none over 33 ms; one on Switches | **met**: none over 33 ms |
-| ≥ 30 fps Energy / Network / Weather scenes | **met**: Energy's bank 62, Network 60; Weather ≥ 32 (a lower bound, the f9968b1 pass: no rain on the map for the final one) | **met**: 56, ≥ 39 | Network 60; **Weather not shown**: the lower bound is 29 fps, so it may or may not reach 30 |
+| ≥ 30 fps Energy / Network / Weather scenes | **met**: Energy's bank 62, Network 60; Weather ≥ 32 (a lower bound, the f9968b1 pass: in the final one the loop's frames didn't change in the sampled patch, most likely no rain in view) | **met**: 56, ≥ 39 | Network 60; **Weather not shown**: the lower bound is 29 fps, so it may or may not reach 30 |
 | memory ≤ 400 MB (PSS) | **met** in the final pass: 392 MB after every page; 381–421 MB under the same heavy use in other runs (499 once, before the safety net), accepted by the owner with the launcher's safety net (Q-U11, §4.6). PSS doesn't count the GPU's buffers (687 MB whole system, the radar freed on hide) | **not met**: 457 MB | **not met**: 586 MB (410 with the scenes disposed) |
 | power-on ≤ 15 s (bench reboot, §8) | **not met on every boot, accepted by the owner as measured** (Q-U10): median 14.74 s, max 15.16 s, 1 of 10 boots over 15.0 s; the Python system 16.96 s median on the same procedure | **not met**: 15.6 s (old runner, earlier panel unit) | **not met**: 15.9 s (old runner, earlier panel unit) |
 
@@ -866,7 +866,7 @@ it. It also has no guard against navigating off the UI.
 
 **The launcher against MiniBrowser** (the same session and bundle; Home, Climate, Switches and Network; 3 warm rounds,
 12 presses per page). *The simulators were down*, so Home had no energy flow, Network no sky and Switches no tiles:
-the pages were light, the same for both. The full figures come from the final pass (§5.1).
+the pages were light, the same for both. The full figures come from the final passes (§5.1, §5.1a).
 
 | | MiniBrowser | launcher |
 |---|---|---|
@@ -902,7 +902,12 @@ These go into `docs/CUTOVER.md` as checks on the van.
 ## 11. Reproducing
 
 ```sh
-# the final pass (§5): the bundle a deploy put on the bench's gateway, the WPE launcher and the Python UI baseline
+# the final pass (§5.1): deploy a committed build to the bench (cross-compiled, about a minute; or packaging/push.sh,
+# native on the Pi, about 13), the system on simulators with the four simulated batteries, then the WPE launcher and
+# the Python UI baseline against the bundle that deploy put on the gateway
+harness/bench/cross-push.sh sysroot <bench>              # once, and after a pacman -Syu on the bench
+harness/bench/cross-push.sh push <rev> <bench>
+ssh <bench> 'sudo /opt/aetherrv-rs/src/harness/bench/bench-up.sh <n2k capture> && /opt/aetherrv-rs/src/harness/uibench/batteries.sh on'
 UIBENCH_HOST=<bench> UIBENCH_KEEP_BUNDLE=1 \
   UIBENCH_ARGS="--warm-rounds 3 --press-reps 48 --press-reps-for network=100 --null-reps 3 --fps-secs 5" \
   harness/uibench/full.sh 1920x1200 python wpe-launcher
@@ -933,6 +938,8 @@ diagnostics. URL switches for experiments: `?keepgl=0` or `?keepgl=sky,radar,ban
 the first press experiments were driven by a scratch script outside the repo, which called `run.sh` and `perturb.sh`
 with the overrides above against `serve_bundle.py`. So were the 2026-11-24 press-variant runs, the adoption run and
 the memory A/B for the switch-tile fix, the scoped run (§4.3) and the launcher-against-MiniBrowser comparison (§9).
-`presscost.sh`, `screen-check.sh`, `launcher-check.sh`, `light-session.sh`, `audio-gst-check.sh`, `boot-time.sh`
-(the power-on runs) and the final pass (`full.sh`, `poweron.sh`) ran as committed. `calibrate.sh` has not run as
+So were the memory runs of §4.6: a PSS sampler around `run.sh` (one page at a time with `--pages`, or the §5.1
+options), with `UIBENCH_WPE_BIN` pointing at a launcher built with the limit under test, or `JSC_forceRAMSize` in the
+environment. `presscost.sh`, `screen-check.sh`, `launcher-check.sh`, `light-session.sh`, `audio-gst-check.sh`,
+`boot-time.sh` (the power-on runs) and the final passes (`full.sh`, `poweron.sh`) ran as committed. `calibrate.sh` has not run as
 written (the calibration used the same commands), and the 2560×1440 size was not run.

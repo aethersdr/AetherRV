@@ -414,9 +414,15 @@ enforcement points follow that one switch.
 
 ## 13. Build and deploy
 
-- Cargo workspace at the repo root (`crates/`, `services/`, `sim/`, `tools/`), `ui/` (React + TypeScript + Vite,
+- Cargo workspace at the repo root (`crates/`, `services/`, `sims/`, `utils/`), `ui/` (React + TypeScript + Vite,
   every dependency vendored through the lockfile and bundled; no CDN). Native build on the Pi (`cargo build
   --release`), the UI bundle built with Node on the workstation or the Pi.
+- **Bench deploys may be cross-compiled** (owner, 2026-11-24, to save the Pi's 13-minute build):
+  `harness/bench/cross-push.sh` builds a committed revision on the workstation in about a minute (rustup's
+  `aarch64-unknown-linux-gnu` target, clang and lld, linked against a sysroot copied from the bench, so glibc, libgcc
+  and libdbus are the bench's own; no containers), then syncs the source and the binaries and runs `install.sh` as
+  `push.sh` does. It refuses a host with `hat0`/`hat1`: **the van's deploys stay native**, through `push.sh` and the
+  cutover runbook.
 - `packaging/`: systemd units, `aetherrv.target`, the Mosquitto config, `install.sh`, and `push.sh`, which has **no
   default host** (it never reads `deploy/local.env`, whose host is the van). Python's `deploy/` stays as it is for
   the rollback. Until the cutover, `push.sh` and `install.sh` **refuse a host that has `hat0` or `hat1`**, i.e. the
@@ -540,3 +546,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-24 | Power-on to a usable UI accepted as measured on the bench (median 14.74 s, 1 of 10 boots at 15.16 s) | owner (Q-U10) |
 | 2026-11-24 | UI memory accepted: ≤ 400 MB in normal use, up to ~420 MB under heavy tapping; the WPE launcher sets WebKit's memory limit to 1000 MB (frees caches past 450 MB, never kills the web process) as a safety net | owner (Q-U11) |
 | 2026-11-24 | §8 judged as: every tap under 100 ms (50 ms is a loose target); page switches warm (a page already visited since boot) | owner (Q-U12, Q-U13) |
+| 2026-11-24 | Bench deploys may be cross-compiled on the workstation (`harness/bench/cross-push.sh`); the van's deploys stay native (`packaging/push.sh`) | owner |
