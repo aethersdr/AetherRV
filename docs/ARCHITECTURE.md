@@ -424,6 +424,11 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | D8 | The Espar resumes a run after its own restart (owner, §3 / Q-E1, Q-E2); Python always came back OFF | Owner |
 | D9 | The command reply carries `result` (ok / refused / unverified) and `detail`; the Python outcome string stays in `command_log`, not in the reply | §4.6 |
 | D11 | On/off command values must be JSON booleans and numbers JSON numbers (CLMD16 `set`/`hold`, MCS7 sources and modes, Victron); anything else is refused with "bad request". Python's `bool("false")` is True, so a string "false" would have switched a device ON | Safe direction; the UI always sends real booleans |
+| D12 | The alert engine reads a down module's keys at their last known values; the outage is the new "<module> down" alert (serious for espar, n2k, power-guard, rixens). Without this, every alert of a restarting module would clear and come back un-acked | Python had one process: its alerts never saw a module go away |
+| D13 | Radar motion fields: a pure-Rust coarse-to-fine patch Lucas–Kanade instead of OpenCV DIS (owner, Q-R1). On synthetic radar the median shift matches DIS within 0.1 px; on growing echoes and rotation it differs more (numbers in the weather service's tests). `flow.json` is written atomically | Owner decision; the real side-by-side is for the owner |
+| D14 | Settings prefs and Victron command values must have the right JSON type (like D11): Python's `bool()`/`int()` coercion would, for example, have sent MultiPlus mode 1 (charger only) for `true` | Safe direction |
+| D15 | Weather HTTP: no Range requests, every TomTom failure is a 502 (Python: 500 for unexpected errors); the van's last GPS position is kept while the GPS module is down | Only the UI's own fetches use these |
+| D16 | Bluetooth batteries: the reconnect backoff never resets after a good session (Python's reset was unreachable code; ported as is) | Parity; the owner may prefer a reset |
 | D10 | The gateway waits up to 15 s for an Espar reply (one verify window is 6 s, and a queued command waits for the one before it) | Avoids reporting "unverified" for a command that is still being verified |
 
 ## 14. Open questions for the owner
@@ -440,7 +445,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-D1 | Demo mode: port or drop? | answered 2026-11-23: drop it |
 | Q-T1 | Should a late heater OFF (older than the 3 s TTL) still run, as the safe direction? (D4) | answered 2026-11-23: yes |
 | Q-D2 | Accept the differences D1–D10 in §13a | answered 2026-11-23: all accepted |
-| Q-D3 | Accept D11 (non-boolean on/off values refused) | open: next batch |
+| Q-D3 | Accept D11–D16 | open: next batch |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
