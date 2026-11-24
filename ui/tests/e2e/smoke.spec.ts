@@ -114,3 +114,41 @@ test("heat start asks first (Espar), and the confirm sends", async ({ page }) =>
   await page.click("#modal-yes");
   await expect.poll(() => controls(gw.sent).map(m => [m.device, m.cmd, (m.value as { mode: string }).mode])).toEqual([["espar", "set", "heat"]]);
 });
+
+test("energy flow: the edges' dots run on the canvas while an edge carries power, and stop when none does", async ({ page }) => {
+  const s = await stubGateway(page);
+  await page.goto("/#home");
+  await expect(page.locator("#hub-soc")).toHaveText("72%");
+  await expect(page.locator("#e-solar")).toHaveClass(/\bon\b/);                 // the edges' state stays on the paths
+  await expect(page.locator("#e-dc")).toHaveClass(/\bon\b/);
+  await expect(page.locator("#e-shore")).not.toHaveClass(/\bon\b/);
+  const snap = () => page.locator("#flow .f-canvas").evaluate(c => {
+    const cv = c as HTMLCanvasElement, d = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i]! + d[i + 1]! * 3 + d[i + 2]! * 7 + d[i + 3]! * 11) >>> 0;
+    return h;
+  });
+  const a = await snap();
+  await page.waitForTimeout(250);
+  expect(await snap()).not.toBe(a);                                             // dots moving
+  // back to Home: the running edges are drawn at once, not faded in again (the CSS version showed them at once)
+  const lit = () => page.locator("#flow .f-canvas").evaluate(c => {
+    const cv = c as HTMLCanvasElement, d = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i]! > 150 && d[i + 2]! < 80) n++;   // the solar edge's amber dots
+    return n;
+  });
+  await page.waitForTimeout(700);                                               // the first snapshot's edges have faded in
+  const full = await lit();
+  expect(full).toBeGreaterThan(20);
+  await page.click(".rail button[data-v=energy]");
+  await page.click(".rail button[data-v=home]");
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  expect(await lit()).toBeGreaterThan(full * 0.8);
+  s.send({ type: "delta", data: { "victron.pv.power": 0, "energy.dc.load": 0 } });
+  await expect(page.locator("#e-solar")).not.toHaveClass(/\bon\b/);
+  await page.waitForTimeout(800);                                               // the 0.5 s fade-out
+  const b = await snap();
+  await page.waitForTimeout(300);
+  expect(await snap()).toBe(b);                                                 // nothing runs: nothing redrawn
+});

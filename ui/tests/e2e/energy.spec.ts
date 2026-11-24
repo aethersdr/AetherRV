@@ -360,11 +360,43 @@ test("reduced motion: the flow shows but doesn't run", async ({ page }) => {
   expect((await bench(page))!.frames).toBe(f0);
 });
 
-test("hiding the page disposes the renderer and everything it holds; showing it builds a fresh one", async ({ page }) => {
+test("hiding the page pauses the scene and keeps it; showing it draws at once, with no new context", async ({ page }) => {
   const warnings: string[] = [];
   page.on("console", m => { if (/too many active webgl contexts|context lost/i.test(m.text())) warnings.push(m.text()); });
   await stubGateway(page);
   await page.goto("/?bench=1#energy");
+  await in3D(page);
+  let b = (await bench(page))!;
+  expect(b.live).toBe(1);
+  const res = b.res;
+  await page.click(".rail button[data-v=home]");
+  await page.waitForTimeout(400);
+  const f0 = (await bench(page))!.frames;
+  await page.waitForTimeout(600);
+  b = (await bench(page))!;
+  expect(b.frames).toBe(f0);                                                  // paused: nothing drawn while hidden
+  expect(b.live).toBe(1);                                                     // the context and the resources kept
+  expect(b.res).toBe(res);
+  await expect(page.locator(".bank3d canvas")).toHaveCount(1);
+  await page.click(".rail button[data-v=energy]");
+  await expect.poll(async () => (await bench(page))!.frames).toBeGreaterThan(f0);   // drawn again
+  for (let i = 0; i < 20; i++) {                                              // 20 hide / show cycles: still one context
+    await page.click(".rail button[data-v=home]");
+    await page.click(".rail button[data-v=energy]");
+    await expect(page.locator(".bank3d[data-ready] canvas")).toHaveCount(1);
+  }
+  b = (await bench(page))!;
+  expect(b.live).toBe(1);
+  expect(b.created).toBe(1);
+  expect(b.lost).toBe(0);
+  expect(warnings).toEqual([]);
+});
+
+test("?keepgl=0: hiding the page disposes the renderer and everything it holds; showing it builds a fresh one", async ({ page }) => {
+  const warnings: string[] = [];
+  page.on("console", m => { if (/too many active webgl contexts|context lost/i.test(m.text())) warnings.push(m.text()); });
+  await stubGateway(page);
+  await page.goto("/?bench=1&keepgl=0#energy");
   await in3D(page);
   let b = (await bench(page))!;
   expect(b.live).toBe(1);

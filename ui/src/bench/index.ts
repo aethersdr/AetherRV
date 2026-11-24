@@ -4,8 +4,10 @@
 // Passive: it never touches the DOM or the store. After each page change it tells the bench runner (on
 // 127.0.0.1:<bench_port>, by navigator.sendBeacon: no CORS preflight) where the rail, the view area and a few
 // press targets are, plus the page's boot marks, Event Timing and long-task entries where the engine has them, and
-// the WebGL renderer. With &raf=1 it also reports requestAnimationFrame intervals. These are cross-checks and
-// geometry only: every time that counts is measured from the compositor's frames.
+// the WebGL renderer. With &raf=1 it also reports requestAnimationFrame intervals; and the runner can ask for a
+// rAF sample over a long poll (GET /cmd: "raf <ms>"), which is how a page's frame rate is read while nothing at all
+// is captured. These are cross-checks and geometry only: every time that counts is measured from the compositor's
+// frames.
 //
 // Press targets are chosen so that pressing them sends nothing: the runner presses, holds and slides off (no click),
 // so only pointerdown side effects matter, and controls with any (dimmer tiles, dials, sliders, drag grips, React
@@ -16,6 +18,19 @@ import { K, store } from "../state/store";
 
 const qs = new URLSearchParams(location.search);
 const PORT = qs.get("bench_port") || "18099";
+
+// Press-feedback experiments (benchmark only): &press=promote gives every press target its own compositing layer;
+// &press=nofilter drops the brightness filter from the pressed state (keeps the scale).
+const PRESS_EXP: Record<string, string> = {
+  promote: ".sw, .quick-btn, .chip, .btn-soft, .seg button, #nav button, #nav-foot button, .tabs button { will-change: transform; }",
+  nofilter: ".pressed { filter: none !important; }",
+};
+for (const k of (qs.get("press") || "").split(",")) {
+  if (!PRESS_EXP[k]) continue;
+  const st = document.createElement("style");
+  st.textContent = PRESS_EXP[k];
+  document.head.appendChild(st);
+}
 const URL_ = `http://127.0.0.1:${PORT}/report`;
 const RAF = qs.get("raf") === "1";
 
@@ -105,6 +120,14 @@ function scene(view: string) {
   return null;
 }
 
+/** A control the runner presses to start the page's scene (Weather: the radar loop plays only on demand). */
+const STIM: Record<string, string> = { weather: "#wx-play" };
+function stim(view: string) {
+  const sel = STIM[view];
+  const r = sel ? rect(document.querySelector(`section.view[data-view="${view}"] ${sel}`)) : null;
+  return r ? { sel, rect: r } : null;
+}
+
 function marks() {
   const m: Record<string, number> = {};
   for (const e of performance.getEntriesByType("mark")) if (e.name.startsWith("aetherrv:")) m[e.name] = performance.timeOrigin + e.startTime;
@@ -157,7 +180,7 @@ function report(why: string) {
     why, view, viewport: [innerWidth, innerHeight], dpr: devicePixelRatio, ua: navigator.userAgent, webgl: webgl(),
     conn: store.get(K.conn), ready: store.get(K.ready) === true,
     rail, views: rect(document.getElementById("views")), topbar: rect(document.querySelector(".topbar")),
-    targets: targets(view), scene: scene(view), marks: marks(),
+    targets: targets(view), scene: scene(view), stim: stim(view), marks: marks(),
     event_timing: evOk ? events.splice(0) : "unsupported", longtasks: ltOk ? longtasks.splice(0) : "unsupported",
     raf: RAF ? { n: iv.length, iv } : undefined,
   });
@@ -172,5 +195,44 @@ setInterval(() => {
 store.subscribe(K.ready, () => { if (store.get(K.ready) === true) setTimeout(() => report("ready"), 800); });
 if (RAF) setInterval(() => report("raf"), 5000);
 window.addEventListener("hashchange", () => setTimeout(() => report("hash"), 300));
+
+// every pointerdown: when the page's handler ran and the event's own timestamp, reported after the frame (the
+// runner splits a press's latency into delivery, injection → handler, and render, handler → frame)
+document.addEventListener("pointerdown", e => {
+  const handler = performance.timeOrigin + performance.now(), event = performance.timeOrigin + e.timeStamp;
+  setTimeout(() => send("input", { type: "pointerdown", handler_epoch: handler, event_epoch: event, ptype: e.pointerType }), 400);
+}, { capture: true, passive: true });
+
+// Weather's loop state, so the runner knows its Play tap started the radar (it can't with no frames loaded)
+const wxObs = new MutationObserver(() => {
+  const tl = document.getElementById("wx-tl");
+  if (tl) send("stim", { view: "weather", playing: tl.classList.contains("playing"), frames: document.querySelectorAll("#wx-tl-ticks i").length });
+});
+const wxWatch = setInterval(() => {
+  const tl = document.getElementById("wx-tl");
+  if (tl) { wxObs.observe(tl, { attributes: true, attributeFilter: ["class"] }); clearInterval(wxWatch); }
+}, 1000);
+
+// the runner's commands (long poll): "raf <ms>" samples requestAnimationFrame for that long and reports the intervals
+function sampleRaf(ms: number) {
+  const iv: number[] = [];
+  let last = 0;
+  const t0 = performance.now();
+  const tick = (t: number) => {
+    if (last) iv.push(Math.round((t - last) * 100) / 100);
+    last = t;
+    if (t - t0 < ms) requestAnimationFrame(tick);
+    else send("raf", { view: currentView(), ms, n: iv.length, iv });
+  };
+  requestAnimationFrame(tick);
+}
+void (async () => {
+  for (;;) {
+    try {
+      const c = await (await fetch(`http://127.0.0.1:${PORT}/cmd`, { cache: "no-store" })).text();
+      if (c.startsWith("raf ")) sampleRaf(Number(c.slice(4)) || 5000);
+    } catch { await new Promise(r => setTimeout(r, 3000)); }   // runner not there
+  }
+})();
 let rz: ReturnType<typeof setTimeout> | undefined;   // the window going fullscreen after the first report
 window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => report("resize"), 500); });

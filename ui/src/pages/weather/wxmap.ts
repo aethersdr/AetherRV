@@ -2,11 +2,13 @@
 // Leaflet map with an OpenStreetMap / USGS / OpenTopoMap basemap, the BLM public-lands overlay, the radar loop
 // (RadarGL, or tile layers without WebGL2) and TomTom traffic, centred on the van.
 //
-// Lifetime (React <Activity>): the Leaflet map itself is kept while the page is hidden (pan, zoom and the pinned
-// spot survive, and coming back shows the tiles at once); everything that runs or holds GPU memory — the loop,
-// the timers, the radar's WebGL context and textures — is torn down by pause() and rebuilt by resume(). destroy()
-// (a real unmount) removes the map; its view, the pin and the frame list live on in module state (P).
+// Lifetime (React <Activity>): the Leaflet map is kept while the page is hidden (pan, zoom and the pinned spot
+// survive, and coming back shows the tiles at once). pause() stops what runs (the loop, the timers) and keeps the
+// radar's WebGL context and textures, so resume() shows the radar at once (lib/glkeep.ts); with ?keepgl=0, pause()
+// also frees the radar and resume() rebuilds it after the page's first frame (the earlier rule). destroy() (a real
+// unmount) removes the map and frees everything; its view, the pin and the frame list live on in module state (P).
 import * as L from "leaflet";
+import { keepGl } from "../../lib/glkeep";
 import { prefs } from "../../lib/prefs";
 import { buildFrames, frameLabel, frameMs, keepPosition, LIBREWXR_INDEX, nowIndex, RV_SPANS, RV_SPEEDS,
   type Frame, type Recorded, type WeatherMaps, type WxLayer } from "./frames";
@@ -85,6 +87,7 @@ export class WxMap {
   private stats: { t0: number; frames: number; ms: number } | null = null;
   private loadSeq = 0;
   private started = false;                        // the deferred part of resume() ran (GL, frames, layers)
+  private framesDirty = false;                    // a reload replaced the frames while the page was hidden
   private later: (() => void) | null = null;
 
   constructor(private readonly els: WxEls, private readonly ev: WxEvents) {
@@ -116,15 +119,19 @@ export class WxMap {
     if (this.dead || this.active) return;
     this.active = true;
     this.paintTimeline();
-    if (P.frames.length && P.layer === wxPrefs.layer()) this.set(P.pos);
+    const kept = this.started;                                     // the radar kept from the last show: drawn now
+    if (P.frames.length && P.layer === wxPrefs.layer() && !this.framesDirty) this.set(P.pos);
     this.later = afterPaint(() => {
       this.later = null;
       if (!this.active) return;
-      this.started = true;
       this.map.invalidateSize();
-      this.initGL();
-      if (this.gl && wxPrefs.layer() === "off") this.gl.canvas.hidden = true;
-      if (P.frames.length && P.layer === wxPrefs.layer()) {
+      if (!kept) {
+        this.started = true;
+        this.initGL();
+        if (this.gl && wxPrefs.layer() === "off") this.gl.canvas.hidden = true;
+      }
+      if ((!kept || this.framesDirty) && P.frames.length && P.layer === wxPrefs.layer()) {
+        this.framesDirty = false;
         this.attachFrames();
         this.set(P.pos);
       }
@@ -138,16 +145,17 @@ export class WxMap {
     }, 60e3);
   }
 
-  /** The page is hidden: stop everything that runs; free the GPU. The map (DOM) stays. */
+  /** The page is hidden: stop everything that runs. The map (DOM) stays, and the radar with it unless ?keepgl=0. */
   pause(): void {
     if (!this.active) return;
     this.active = false;
     this.later?.(); this.later = null;
-    this.started = false;
     this.stop();
     if (this.minute) clearInterval(this.minute);
     this.minute = null;
     this.endDrag();
+    if (keepGl("radar") && this.started) return;                           // context, textures and layers kept, paused
+    this.started = false;
     if (this.gl) { const g = this.gl; this.gl = null; try { this.map.removeLayer(g); } catch { g.dispose(); } }
     this.tiles.forEach(l => l && this.map.removeLayer(l));
     this.tiles = this.tiles.map(() => null);
@@ -158,6 +166,8 @@ export class WxMap {
   destroy(): void {
     if (this.dead) return;
     this.pause();
+    this.started = false;
+    if (this.gl) { const g = this.gl; this.gl = null; try { this.map.removeLayer(g); } catch { g.dispose(); } }   // kept: free it now
     const c = this.map.getCenter();
     P.view = { c: [c.lat, c.lng], z: this.map.getZoom() };
     this.dead = true;
@@ -279,7 +289,7 @@ export class WxMap {
       const prev = P.frames[Math.round(P.pos)], wasNow = !prev || Math.round(P.pos) === P.now;
       P.frames = frames; P.flows = layer === "ir" ? [] : rec.flows || []; P.now = nowIndex(frames); P.layer = layer;
       P.pos = keepPosition(frames, prev?.time ?? null, wasNow, force);
-      if (!this.active || !this.started) return;
+      if (!this.active || !this.started) { this.framesDirty = true; return; }   // attached on resume
       this.attachFrames();
       this.set(P.pos);
     } catch {

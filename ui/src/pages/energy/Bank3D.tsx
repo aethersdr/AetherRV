@@ -1,11 +1,14 @@
 // The battery bank on the Energy page: the WebGL scene (bank3d.ts, owner Q-U6) where WebGL2 works, else the SVG scene
 // (BankScene.tsx) in the same box. three loads only here, through import(), as its own chunk.
 //
-// Lifecycle (pages stay mounted under <Activity>): the effect creates the scene and its canvas; its cleanup (the page
-// hidden, the battery set changed) stops the loop and disposes the renderer, its context, geometries, materials and
-// textures, and removes the canvas, so a re-shown page builds a fresh one. React owns only the box and the labels.
+// Lifecycle (pages stay mounted under <Activity>): the effect creates the scene and its canvas once. Hiding the page
+// pauses it and keeps its context, shaders and textures, so showing it again draws at once (lib/glkeep.ts; with
+// ?keepgl=0 a hide disposes and a show rebuilds, the earlier rule). A new battery set or a real unmount disposes the
+// renderer, its context, geometries, materials and textures and removes the canvas. React owns only the box and the
+// labels.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { store } from "../../state/store";
+import { disposeWhenDetached, keepGl } from "../../lib/glkeep";
 import { BS, battPct, durSeconds, flowDur, flowOf, headView, pctText, sparkPaths, type Ble } from "./bank";
 import type { BankGL, Labels } from "./bank3d";
 import { BankScene, bankHist } from "./BankScene";
@@ -27,6 +30,8 @@ const SPARK_CX = 78, SPARK_VB = `0 ${BS.h - 34} 112 34`;
 
 const Gl = memo(function Gl({ names, onFail }: { names: readonly string[]; onFail: () => void }) {
   const host = useRef<HTMLDivElement>(null);
+  const kept = useRef<{ gl: BankGL; names: readonly string[] } | null>(null);   // a scene paused while the page is hidden
+  const lost = useRef<() => void>(() => {});                                   // a context loss, shown or hidden
   useEffect(() => {
     const box = host.current!, n = names.length;
     const q = <E extends Element>(sel: string) => [...box.querySelectorAll<E>(sel)];
@@ -54,13 +59,14 @@ const Gl = memo(function Gl({ names, onFail }: { names: readonly string[]; onFai
       text(headA, a == null ? "" : `${a > 0 ? "+" : ""}${(+a).toFixed(1)} A`);
     };
     const fail = () => { if (dead) return; dead = true; off(); cancelAnimationFrame(raf); gl?.dispose(); gl = null; glFailed = true; onFail(); };
+    lost.current = fail;
     // build after the page's first frame is on screen: a page switch must not wait for a WebGL context and shaders
     // (React runs a tap's effects before that frame is painted)
     const start = () => load().then(m => {
       if (dead) return;
       try {
         gl = new m.BankGL(box.querySelector<HTMLElement>(".b3-gl")!, n, labels, {
-          onLost: fail, onFirstFrame: () => { box.dataset.ready = "1"; },
+          onLost: () => lost.current(), onFirstFrame: () => { box.dataset.ready = "1"; },
         });
       } catch (e) { console.error("bank3d", e); fail(); return; }
       if (!gl.ok) { fail(); return; }
@@ -68,10 +74,30 @@ const Gl = memo(function Gl({ names, onFail }: { names: readonly string[]; onFai
       // coalesce bursts of deltas into one pass per frame
       off = store.subscribeKeys(KEYS, () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(); }); });
     }, fail);
-    defer = requestAnimationFrame(() => { deferT = setTimeout(() => { if (!dead) void start(); }, 0); });
+    const k = kept.current;
+    if (k && k.names.join("\0") !== names.join("\0")) { k.gl.dispose(); kept.current = null; }   // a different battery set
+    if (kept.current) {                    // shown again: the kept scene, resumed after the page's first frame (its
+      gl = kept.current.gl;                // canvas still shows the last image), so the switch frame carries no GL
+      defer = requestAnimationFrame(() => { deferT = setTimeout(() => {
+        if (dead || !gl) return;
+        gl.resume();
+        update();
+        off = store.subscribeKeys(KEYS, () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(); }); });
+      }, 0); });
+    } else {
+      // build after the page's first frame is on screen
+      defer = requestAnimationFrame(() => { deferT = setTimeout(() => { if (!dead) void start(); }, 0); });
+    }
     return () => {
       dead = true; off(); cancelAnimationFrame(raf); cancelAnimationFrame(defer); clearTimeout(deferT);
-      gl?.dispose(); gl = null; delete box.dataset.ready;
+      const g = gl;
+      gl = null;
+      if (!g) return;
+      if (!keepGl("bank") || glFailed) { g.dispose(); kept.current = null; delete box.dataset.ready; return; }
+      g.pause();
+      kept.current = { gl: g, names };
+      lost.current = () => { glFailed = true; g.dispose(); if (kept.current?.gl === g) kept.current = null; onFail(); };
+      disposeWhenDetached(box, () => { if (kept.current?.gl === g) { g.dispose(); kept.current = null; } });
     };
   }, [names, onFail]);
   return (

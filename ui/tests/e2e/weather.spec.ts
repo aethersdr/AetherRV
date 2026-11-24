@@ -237,8 +237,32 @@ test("radar opacity: the slider sets it in 5 % steps and remembers it", async ({
   await noLeaks(s);
 });
 
-test("hidden page: the radar's WebGL context is freed and rebuilt on return; the map and its pin stay", async ({ page }) => {
+test("hidden page: the radar keeps its WebGL context, paused, and shows at once on return; the map and its pin stay", async ({ page }) => {
   const s = await stub(page);
+  await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
+  await page.locator(".wx-radar-gl").evaluate(c => {
+    const w = window as unknown as { __wxLost?: boolean };
+    c.addEventListener("webglcontextlost", () => { w.__wxLost = true; });
+    (c as HTMLCanvasElement).dataset.mark = "kept";
+  });
+  const m = (await page.locator("#wx-map").boundingBox())!;
+  await page.mouse.click(m.x + m.width * 0.6, m.y + m.height * 0.6);
+  await expect(page.locator(".wx-pin")).toHaveCount(1);
+  await page.click("#wx-play");
+  await expect(page.locator("#wx-tl")).toHaveClass(/\bplaying\b/);
+  await page.click(".rail button[data-v=network]");
+  await expect(page.locator("#wx-tl")).not.toHaveClass(/\bplaying\b/);      // the loop stopped
+  await expect(page.locator(".wx-radar-gl")).toHaveCount(1);                 // the canvas (and its context) kept
+  await page.click(".rail button[data-v=weather]");
+  await expect(page.locator(".wx-radar-gl.on[data-mark=kept]")).toHaveCount(1);   // the same canvas, not a new one
+  await expect(page.locator(".wx-pin")).toHaveCount(1);
+  await expect(page.locator("#wx-tl-ticks i")).toHaveCount(19);
+  expect(await page.evaluate(() => (window as unknown as { __wxLost?: boolean }).__wxLost)).toBeUndefined();
+  await noLeaks(s);
+});
+
+test("?keepgl=0: hiding the page frees the radar's WebGL context and showing it rebuilds it; the map and its pin stay", async ({ page }) => {
+  const s = await stub(page, { query: "?keepgl=0" });
   await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
   const m = (await page.locator("#wx-map").boundingBox())!;
   await page.mouse.click(m.x + m.width * 0.6, m.y + m.height * 0.6);
@@ -270,10 +294,11 @@ test("?keep=0 (a real unmount): leaving removes the map; coming back rebuilds it
   await noLeaks(s);
 });
 
-test("many page switches don't pile up WebGL contexts (each hide frees its context)", async ({ page }) => {
-  const sky = { "starlink.reachable": true, "starlink.online": true, "starlink.azimuth": 90, "starlink.elevation": 70,
-    "starlink.obstruction_map": { rows: 3, cols: 3, max_theta: 80, frame: "dish", data: btoa("\xfe".repeat(9)) } };
-  const s = await stub(page, { state: { ...STATE, ...sky } });
+const SKY = { "starlink.reachable": true, "starlink.online": true, "starlink.azimuth": 90, "starlink.elevation": 70,
+  "starlink.obstruction_map": { rows: 3, cols: 3, max_theta: 80, frame: "dish", data: btoa("\xfe".repeat(9)) } };
+
+test("many page switches don't pile up WebGL contexts (one per scene, kept)", async ({ page }) => {
+  const s = await stub(page, { state: { ...STATE, ...SKY } });
   for (let i = 0; i < 12; i++) {
     await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
     await page.click(".rail button[data-v=network]");
@@ -281,7 +306,20 @@ test("many page switches don't pile up WebGL contexts (each hide frees its conte
     await page.click(".rail button[data-v=weather]");
   }
   await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
-  await expect(page.locator("canvas")).toHaveCount(1);                    // only the radar's (the sky's was disposed)
+  await expect(page.locator("canvas:not(.f-canvas)")).toHaveCount(2);    // WebGL: the radar's and the sky's, nothing more
+  await noLeaks(s);
+});
+
+test("?keepgl=0: many page switches don't pile up WebGL contexts (each hide frees its context)", async ({ page }) => {
+  const s = await stub(page, { state: { ...STATE, ...SKY }, query: "?keepgl=0" });
+  for (let i = 0; i < 12; i++) {
+    await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
+    await page.click(".rail button[data-v=network]");
+    await expect(page.locator("#sl-card .sky3d canvas")).toHaveCount(1);
+    await page.click(".rail button[data-v=weather]");
+  }
+  await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
+  await expect(page.locator("canvas:not(.f-canvas)")).toHaveCount(1);    // WebGL: only the radar's (the sky's was disposed)
   await noLeaks(s);
 });
 

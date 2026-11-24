@@ -14,8 +14,9 @@ decisions are marked with their question number (docs/ARCHITECTURE.md §14).
   pulse while the command is verified. They roll back with a message: "X failed: …" when refused, "X not
   confirmed: …" when unverified. Dimmers and triggers get the pressed state only.
 - **Values tween** instead of jumping: flow watts, battery %, temperatures, Starlink speeds, stat tiles.
-- **Page transitions:** a 180 ms ease-in that never blocks input. Pages stay mounted and hidden pages cost
-  nothing.
+- **Page transitions:** a 180 ms ease-in that never blocks input. Pages stay mounted and hidden pages cost no
+  CPU; the WebGL scenes (Network sky, Weather radar, Energy bank) keep their paused context while hidden, so a
+  page shows its scene at once on return (`ui/src/lib/glkeep.ts`, measured in docs/UI-RUNTIME-BENCHMARK.md).
 - **Skeletons until the first snapshot.** No false "not connected" or "no data" before the first state arrives.
   The Live chip says "Connecting…" (app.js said "Offline").
 - **Busy taps:** a tap during another command now says "Wait: <label> is still being confirmed". app.js ignored

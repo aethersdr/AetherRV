@@ -3,9 +3,9 @@
 // auto-rotates when idle; double-tap resets the view. three.js comes from node_modules (its own lazy chunk).
 //
 // Changes from sky3d.js (deliberate):
-//  • it renders into a host element React owns, and dispose() frees everything: the rAF loop, the
-//    ResizeObserver, the listeners, every geometry / material / texture, and the WebGL context itself — the
-//    Network page calls it when it is hidden, so a hidden page holds no GPU memory;
+//  • it renders into a host element React owns; pause() / resume() stop and restart it while its page is hidden
+//    (the context, shaders and textures stay: lib/glkeep.ts), and dispose() frees everything: the rAF loop, the
+//    ResizeObserver, the listeners, every geometry / material / texture, and the WebGL context itself;
 //  • it draws on every display frame (sky3d.js capped at ~30 fps); a hidden browser tab stops the loop and a
 //    visible one restarts it;
 //  • the camera eases toward the drag / pinch target instead of jumping with the pointer.
@@ -204,8 +204,12 @@ function sprinter(): THREE.Group {
   return van;
 }
 
-/** Display-rate cap (sky3d.js: 30). 60 = every frame on the van's 60 Hz panel. */
-export const SKY_MAX_FPS = 60;
+/** Display-rate cap (sky3d.js: 30). 60 = every frame on the van's 60 Hz panel. ?skyfps=30 overrides it (the
+ *  runtime benchmark measures what the sky's frame rate costs the rest of the page). */
+export const SKY_MAX_FPS = (() => {
+  const v = typeof location === "undefined" ? NaN : Number(new URLSearchParams(location.search).get("skyfps"));
+  return v >= 10 && v <= 60 ? v : 60;
+})();
 
 export class Sky3D {
   readonly ok: boolean = false;
@@ -231,6 +235,7 @@ export class Sky3D {
   private ro: ResizeObserver | null = null;
   private offs: (() => void)[] = [];
   private dead = false;
+  private held = false;
 
   constructor(private readonly host: HTMLElement) {
     try {
@@ -245,7 +250,7 @@ export class Sky3D {
     this.hint.className = "sky3d-hint"; host.appendChild(this.hint);
     this.build(); this.controls();
     this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(host);
-    const vis = () => { if (!document.hidden) this.start(); };
+    const vis = () => { if (!document.hidden && !this.held) this.start(); };
     document.addEventListener("visibilitychange", vis);
     this.offs.push(() => document.removeEventListener("visibilitychange", vis));
   }
@@ -421,6 +426,11 @@ export class Sky3D {
   }
 
   stop(): void { this.running = false; if (this.raf) cancelAnimationFrame(this.raf); this.raf = 0; }
+
+  /** The page is hidden: no frames until resume(); everything stays allocated. */
+  pause(): void { this.held = true; this.stop(); }
+  /** The page is shown again: the loop restarts and draws at the next frame. */
+  resume(): void { this.held = false; this.start(); }
 
   /** Free the GPU: every geometry, material and texture, then the context. Safe to call twice. */
   dispose(): void {

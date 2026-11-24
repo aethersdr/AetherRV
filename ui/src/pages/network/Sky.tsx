@@ -3,6 +3,7 @@
 // quality 0–254). On mobile / roam plans the grid is in the dish's frame (bottom edge = the way the dish faces),
 // so it is rotated by the dish azimuth to put north up; the rings and compass stay fixed.
 import { memo, useEffect, useRef, useState } from "react";
+import { disposeWhenDetached, keepGl } from "../../lib/glkeep";
 import type { ObstructionMap, Sky3D } from "./sky3d";
 
 
@@ -94,29 +95,49 @@ export const SkyMap2D = memo(function SkyMap2D({ map, az, size = 300 }: { map: O
 });
 
 // ── 3D view ──
-/** The scene lives while this is mounted and visible: the page being hidden (<Activity>) runs the cleanup,
- *  which disposes the renderer, its textures and its context. */
+/** The scene is built once, after the page's first frame is on screen. Hiding the page (<Activity>) pauses it and
+ *  keeps its context, so showing the page again draws the sky at the next frame (lib/glkeep.ts); a real unmount, or
+ *  any hide with ?keepgl=0, disposes the renderer, its textures and its context. */
 const Sky3DView = memo(function Sky3DView({ map, az, el, onFail }: { map: ObstructionMap; az: number | null; el: number | null; onFail: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const sky = useRef<Sky3D | null>(null);
   const latest = useRef({ map, az, el });
   latest.current = { map, az, el };
   useEffect(() => {
-    // built after the page's first frame is on screen: a tap's effects run before the browser paints, and the
-    // context, the scene and its shaders would otherwise hold the page switch
-    let dead = false, s: Sky3D | null = null, cancel = () => {};
-    void loadSky3d().then(m => {
-      cancel = afterPaint(() => {
-        if (dead || !host.current) return;
-        s = new m.Sky3D(host.current);
-        if (!s.ok) { s.dispose(); s = null; onFail(); return; }
-        sky.current = s;
+    const box = host.current!;
+    let dead = false, cancel = () => {};
+    if (sky.current) {                                              // shown again: the kept scene, resumed after the
+      const s = sky.current;                                        // page's first frame (its canvas still shows the
+      cancel = afterPaint(() => {                                   // last image), so the switch frame carries no GL
+        if (dead) return;
         const v = latest.current;
         s.setMap(v.map, v.az, v.el);
-        s.start();
+        s.resume();
       });
-    }, onFail);
-    return () => { dead = true; cancel(); s?.dispose(); sky.current = null; };
+    } else {
+      // built after the page's first frame is on screen: a tap's effects run before the browser paints, and the
+      // context, the scene and its shaders would otherwise hold the page switch
+      void loadSky3d().then(m => {
+        cancel = afterPaint(() => {
+          if (dead || !host.current) return;
+          const s = new m.Sky3D(host.current);
+          if (!s.ok) { s.dispose(); onFail(); return; }
+          sky.current = s;
+          const v = latest.current;
+          s.setMap(v.map, v.az, v.el);
+          s.start();
+        });
+      }, onFail);
+    }
+    return () => {
+      dead = true; cancel();
+      const s = sky.current;
+      if (!s) return;
+      const free = () => { s.dispose(); if (sky.current === s) sky.current = null; };
+      if (!keepGl("sky")) { free(); return; }
+      s.pause();
+      disposeWhenDetached(box, free);
+    };
   }, [onFail]);
   useEffect(() => { sky.current?.setMap(map, az, el); }, [map, az, el]);
   return <div className="sky3d" ref={host} />;

@@ -7,7 +7,9 @@
 //    charging or discharging, a drag or the ease home) or after a change; otherwise nothing is drawn;
 //  • pixel ratio ≤ 1.5, low-poly geometry, one shared material per colour, no shadows (a glow decal under each block);
 //  • a reading changes materials, scales and one texture offset, never the scene; nothing is allocated per frame;
-//  • dispose() stops the loop and frees the renderer, its context, every geometry, material and texture.
+//  • pause() (its page hidden) stops the loop and keeps everything, resume() draws again at the next frame
+//    (lib/glkeep.ts); dispose() stops the loop and frees the renderer, its context, every geometry, material and
+//    texture.
 // Loaded only through Bank3D.tsx's dynamic import(), so three is its own chunk.
 import * as THREE from "three";
 import { easeOutCubic } from "../../lib/tween";
@@ -67,6 +69,7 @@ export class BankGL {
   private raf = 0;
   private last = 0;
   private dead = false;
+  private paused = false;
   private dragging: { id: number; x: number; y: number } | null = null;
   private touchedAt = -1e9;
   private homeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -292,7 +295,21 @@ export class BankGL {
 
   // ── the loop: runs only while something moves ──
   private request(): void {
-    if (!this.raf && !this.dead) this.raf = requestAnimationFrame(this.frame);
+    if (!this.raf && !this.dead && !this.paused) this.raf = requestAnimationFrame(this.frame);
+  }
+
+  /** The page is hidden: no frames (a change while hidden is drawn on resume). Everything stays allocated. */
+  pause(): void {
+    this.paused = true;
+    cancelAnimationFrame(this.raf); this.raf = 0; this.last = 0;
+    clearTimeout(this.homeTimer);
+    this.dragging = null;
+  }
+  /** The page is shown again: one frame now (and the loop while something moves). */
+  resume(): void {
+    if (!this.paused || this.dead) return;
+    this.paused = false;
+    this.request();
   }
 
   private readonly frame = (now: number): void => {

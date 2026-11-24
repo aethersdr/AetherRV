@@ -265,8 +265,24 @@ test("not enabled: Starlink and Peplink absent say so; no update ready: no insta
   expect(s.outside).toEqual([]);
 });
 
-test("hidden page: the 3D sky's WebGL context is freed, and rebuilt on return", async ({ page }) => {
+test("hidden page: the 3D sky keeps its WebGL context, paused, and is drawn at once on return", async ({ page }) => {
   const s = await stub(page);
+  await expect(page.locator("#sl-card .sky3d canvas")).toHaveCount(1);
+  await page.locator("#sl-card .sky3d canvas").evaluate(c => {
+    const w = window as unknown as { __lost?: boolean };
+    c.addEventListener("webglcontextlost", () => { w.__lost = true; });
+    (c as HTMLCanvasElement).dataset.mark = "kept";
+  });
+  await page.click(".rail button[data-v=home]");
+  await expect(page.locator("#sl-card .sky3d canvas")).toHaveCount(1);        // kept while hidden
+  await page.click(".rail button[data-v=network]");
+  await expect(page.locator("#sl-card .sky3d canvas[data-mark=kept]")).toHaveCount(1);   // the same canvas
+  expect(await page.evaluate(() => (window as unknown as { __lost?: boolean }).__lost)).toBeUndefined();
+  expect(s.outside).toEqual([]);
+});
+
+test("?keepgl=0: hiding the page frees the 3D sky's WebGL context; showing it rebuilds it", async ({ page }) => {
+  const s = await stub(page, { query: "?keepgl=0" });
   await expect(page.locator("#sl-card .sky3d canvas")).toHaveCount(1);
   const lost = await page.locator("#sl-card .sky3d canvas").evaluate(c => {
     const w = window as unknown as { __lost?: boolean };

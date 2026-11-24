@@ -80,17 +80,16 @@ main { position: relative; overflow: hidden; }
 .home-grid .flow-card { grid-column: 1; } .home-grid .climate-card { grid-column: 2 / 5; grid-row: 1; }
 .home-grid .tanks-card { grid-column: 2; grid-row: 2; }
 .flow-card { grid-row: 1 / 4; display: flex; flex-direction: column; }
-#flow { flex: 1; min-height: 0; }
-#flow svg { width: 100%; height: 100%; }
+#flow { flex: 1; min-height: 0; position: relative; }
+#flow svg { position: relative; width: 100%; height: 100%; }
+/* the edges' tracks and running dots, under the SVG (Flow.tsx draws them; the SVG keeps the size in flow) */
+#flow .f-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .soc-card { grid-column: 1; grid-row: 4; display: flex; flex-direction: column; }
 .soc-card .chart { flex: 1; }
 
 /* Flow diagram */
 .f-edge-track { fill: none; stroke: var(--track); stroke-width: 6; stroke-linecap: round; }
-.f-edge { fill: none; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 0.1 22; opacity: 0; transition: opacity .5s; }
-.f-edge.on { opacity: 1; animation: flow linear infinite; }
-.f-edge.on.rev { animation-direction: reverse; }
-@keyframes flow { to { stroke-dashoffset: -22.1; } }
+.f-edge { display: none; }      /* state only: the canvas under the SVG draws the edges (Flow.tsx FlowCanvas) */
 .f-node circle.bg { fill: var(--surface-2); stroke-width: 3; transition: stroke .4s; }
 .f-node.idle circle.bg { stroke: var(--line) !important; }
 .f-node.idle .f-ic { color: var(--muted) !important; }
