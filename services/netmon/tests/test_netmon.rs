@@ -87,7 +87,23 @@ async fn test_tcp_check_real_socket() {
     assert!(tcp_ok("127.0.0.1", port, 1.0).await);
     acc.abort();
     let _ = acc.await; // the listener is dropped with the task
-    assert!(!tcp_ok("127.0.0.1", port, 1.0).await);
+    // Hold the closed port bound but not listening, so a parallel test can't be handed it meanwhile (that made this
+    // flaky under `cargo test --workspace`). If another process got it first, check against a fresh bound port.
+    let bound = |p: u16| {
+        let s = tokio::net::TcpSocket::new_v4().unwrap();
+        s.set_reuseaddr(true).unwrap();
+        s.bind(std::net::SocketAddr::from(([127, 0, 0, 1], p))).map(|_| s)
+    };
+    let (hold, port) = match bound(port) {
+        Ok(s) => (s, port),
+        Err(_) => {
+            let s = bound(0).unwrap();
+            let p = s.local_addr().unwrap().port();
+            (s, p)
+        }
+    };
+    assert!(!tcp_ok("127.0.0.1", port, 1.0).await, "nothing listens on {port}");
+    drop(hold);
 }
 
 fn icmp_allowed() -> bool {

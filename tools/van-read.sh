@@ -12,6 +12,8 @@
 #   tools/van-read.sh secrets-shape            the secrets file's KEY NAMES only: values are replaced ON THE VAN
 #   tools/van-read.sh history-copy <local-dir> pull history.sqlite3 with its -wal/-shm, and settings.json (nothing
 #                                              is written on the van; the copy is as consistent as a live WAL pull)
+#   tools/van-read.sh audit [since]            the van's own record (boot, unit start times, packages, ssh logins,
+#                                              command sources) to show nothing was installed, restarted or sent
 #
 # There is deliberately no generic "run" subcommand. The host comes from deploy/local.env (AETHERRV_HOST).
 set -euo pipefail
@@ -72,6 +74,23 @@ case "$cmd" in
     say "rsync (pull) $HOST:/var/lib/aetherrv/{history.sqlite3*,settings.json} -> $dest"
     rsync -a --rsync-path="sudo -n -u aetherrv rsync" "$HOST:/var/lib/aetherrv/history.sqlite3*" "$HOST:/var/lib/aetherrv/settings.json" "$dest/"
     ;;
+  audit)
+    # The van's own record, for "nothing was installed, restarted or transmitted": boot time, the Python units'
+    # start times and restart counts, no Rust tree or units, package changes, ssh logins and command sources since
+    # the conversion began. Reads only.
+    since=${2:-2026-11-23 21:00}   # UTC (the conversion began 2026-11-23 21:58 UTC)
+    [[ $since =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}( [0-9]{2}:[0-9]{2})?$ ]] || { echo "refused: since must be YYYY-MM-DD[ HH:MM]" >&2; exit 2; }
+    remote "TZ=UTC; export TZ; echo \"van boot: \$(uptime -s) (\$(date +%Z))\";
+      systemctl show -p Id -p ActiveEnterTimestamp -p NRestarts aetherrv.service aetherrv-kiosk.service aetherrv-admin.socket;
+      test -e /opt/aetherrv-rs && echo '/opt/aetherrv-rs: EXISTS' || echo '/opt/aetherrv-rs: absent';
+      echo \"aetherrv unit files: \$(systemctl list-unit-files --no-legend 'aetherrv*' | awk '{print \$1}' | tr '\n' ' ')\";
+      grep -E '^\[2026-11-(2[3-9]|30)' /var/log/pacman.log | grep -E '\] (installed|upgraded|removed|reinstalled|downgraded) ' || echo 'pacman: no package changes since 2026-11-23';
+      echo 'ssh logins since $since UTC:';
+      sudo -n journalctl --since '$since' -o short-iso --no-pager SYSLOG_IDENTIFIER=sshd SYSLOG_IDENTIFIER=sshd-session | grep 'Accepted ' | sed -E 's/^([^ ]+) .* from ([^ ]+) port .*/\1 \2/';
+      echo 'commands and settings actions since $since UTC (count, source; none = no lines):';
+      sudo -n journalctl -u aetherrv --since '$since' --no-pager | sed -nE 's/.* ([a-z0-9]+ command [a-z_]+=.*|settings action) from ([^ ]+): .*/\2/p' | sort | uniq -c;
+      echo \"journal lines since $since UTC: \$(sudo -n journalctl -u aetherrv --since '$since' --no-pager -q | wc -l)\""
+    ;;
   *)
-    sed -n '2,19p' "$0"; exit 2 ;;
+    sed -n '2,21p' "$0"; exit 2 ;;
 esac
