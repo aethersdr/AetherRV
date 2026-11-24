@@ -353,6 +353,18 @@ enforcement points follow that one switch.
 - `aetherrv-panel`: sway (as today, for output power) plus the UI runtime chosen by the benchmark (WPE `cog`,
   Tauri v2 or Chromium; prompt §7), and `aetherrv-screen` (Rust, sway IPC; replaces `screen_helper.py`, same HTTP
   API on 127.0.0.1:8091). The Plymouth hand-off (`plymouth quit --retain-splash` at kiosk start) stays.
+  - The runtime is set in `/etc/aetherrv/panel.env` (`AETHERRV_PANEL_RUNTIME`, read by `packaging/panel/launch.sh`).
+    WPE runs through the panel's own launcher, `panel/wpe/aetherrv-panel-wpe` (WPE Platform API, built by
+    `install.sh`; owner Q-U1): one full-screen view, no navigation off the UI's origin, and it exits when its web
+    process dies or hangs or sway goes away, so the unit restarts the whole session. MiniBrowser is only a fallback
+    (it keeps a blank page after a web-process crash).
+  - The session has its own PAM stack, `packaging/pam/aetherrv-panel`: `pam_systemd class=user-light`, a logind
+    session with the seat and device ACLs (DRM, input, sound) but no user service manager and no session bus,
+    which nothing in the panel needs. The Python kiosk's `aetherrv-kiosk` stack is untouched. The gateway and the
+    panel are not ordered after `network.target` (the panel talks to the gateway on loopback); logind still orders
+    the session after `systemd-user-sessions.service` (`docs/UI-RUNTIME-BENCHMARK.md` §8).
+  - Sound: the alert chime is WebAudio. With no sound server (as in the van), Chromium plays to ALSA itself; WebKit
+    (WPE, Tauri) needs `gst-plugins-base` and `gst-plugins-good` (`docs/CUTOVER.md` §3).
 - No Python on the Pi at runtime: the admin helper, the screen helper, the update script's helpers and the tools
   that run on the Pi (pairing, Peplink user setup, boot-splash install) are ported to Rust or shell.
 
