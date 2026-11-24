@@ -1,0 +1,13 @@
+/* Systems page additions on top of the ported stylesheet (app.css styles every id and class of the reference). */
+
+/* Modules card (Rust gateway only): one chip per service, down ones first and in red */
+.sys-mods { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.sys-mod { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sys-mod i { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none; }
+.sys-mod.down { color: var(--critical); font-weight: 700; }
+.sys-mod.down i { background: var(--critical); }
+
+@media (max-width: 760px) {
+  .sys-grid { grid-template-columns: minmax(0, 1fr); }
+  .sys h3 { font-size: 21px; overflow-wrap: anywhere; }
+}

@@ -65,7 +65,12 @@ export function espStartHeat(): void {
   const run = espRun();
   askConfirm(`Start the Espar heating to ${fmtT(sp)}?`,
     `Run time: ${run == null ? "until you turn it off" : espRunLabel(run)}. The heater runs its own 4-minute cool-down after heating.`,
-    () => espSend("heat", `Espar heat ${fmtT(sp)}`, sp));
+    () => {
+      // the battery can cross the lockout while the dialog is open: check again at the moment it is confirmed
+      // (the Espar service refuses a start under lockout anyway; this keeps the message honest)
+      if (heatLockout()) { toast("Espar not started: heat is locked out (battery low)", "bad"); return; }
+      espSend("heat", `Espar heat ${fmtT(sp)}`, sp);
+    });
 }
 /** Fan only (Climate page), after a confirm. */
 export function espStartFan(): void {

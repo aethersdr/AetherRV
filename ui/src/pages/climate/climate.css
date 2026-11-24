@@ -1,0 +1,41 @@
+/* Climate page additions on top of the ported stylesheet (app.css). Nothing here applies to the 1920×1200 kiosk
+   layout except the lock mark on a locked-out source button. */
+
+/* A heat source locked out by the low-battery guard shows a lock, as the Home heat buttons do */
+.src-btn { position: relative; }
+.src-btn .src-lock { position: absolute; top: 8px; right: 10px; color: var(--warning); display: grid; }
+.src-btn .src-lock .ic { width: 18px; height: 18px; }
+.heater .badge.tap-b.sending, .src-btn.sending { opacity: 1; }
+
+/* ── Phones and small laptops (prompt §5): the kiosk grid becomes one scrolling column ── */
+@media (max-width: 1100px) {
+  .climate-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: auto; height: auto; }
+  .climate-grid > * { grid-column: auto !important; grid-row: auto !important; }
+  .climate-grid > .dial-card { height: 520px; }
+  .climate-grid > .heaters { grid-template-rows: none; }
+  .climate-grid > .wide { height: 340px; }
+  .heater { padding: 18px 20px; grid-template-columns: 96px minmax(0, 1fr); gap: 18px; }
+  .heater .badge { width: 88px; height: 88px; border-radius: 24px; }
+  .heater .badge.mode { height: 72px; }
+  .heater .badge .ic { width: 52px; height: 52px; }
+  .heater .badge.esp-timer { width: 88px; }
+  .heater-main .burner { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .heater-main .burner.grid4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .climate-grid > .dial-card { height: 430px; grid-template-columns: minmax(0, 1fr) 76px; column-gap: 8px; padding: 14px; }
+  .fan-col .fan-read b { font-size: 24px; }
+  .vs-track { width: 40px; }
+  .heater { grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .heater .badge-col { grid-auto-flow: column; justify-content: start; justify-items: start; }
+  .heater .badge, .heater .badge.mode, .heater .badge.esp-timer { width: 72px; height: 72px; border-radius: 20px; }
+  .heater .badge .ic, .heater .badge.mode .ic { width: 40px; height: 40px; }
+  .heater .badge.esp-timer .ic { width: 28px; height: 28px; }
+  .heater h3 { font-size: 24px; }
+  .heater-main .burner, .heater-main .burner.grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .heater-main .burner b { font-size: 22px; }
+  .src-btns { grid-template-columns: minmax(0, 1fr); }
+  .cold-row { grid-template-columns: minmax(0, 1fr); }
+  .climate-grid > .card.wide .card-h { flex-wrap: wrap; }
+}

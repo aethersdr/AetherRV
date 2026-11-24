@@ -1,0 +1,22 @@
+/* Energy page additions on top of the ported stylesheet (app.css styles every id and class at kiosk size).
+   Only phone / small-laptop widths are new here: the reference grid is fixed to the 1920×1200 kiosk. */
+
+@media (max-width: 1100px) {
+  .energy-grid { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: auto; }
+  .energy-grid > .card { grid-column: auto !important; grid-row: auto !important; }
+  .energy-grid > .wide .chart { flex: none; height: 300px; }
+  .bc-head { flex-wrap: wrap; row-gap: 6px; }
+  .bc-table { display: block; overflow-x: auto; }
+}
+
+@media (max-width: 760px) {
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; }
+  .stat-v { font-size: 38px; }
+  .pwr-ctl .pwr-row { grid-template-columns: minmax(0, 1fr); }
+  .pwr-ctl { padding: 16px; }
+  .seg.mode-seg button { padding: 10px 6px; }
+  .bc-soc { font-size: 64px; }
+  .bc-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pwr-chart .card-h { flex-wrap: wrap; row-gap: 8px; }
+  .pwr-chart .card-h .seg.range { margin-left: 0; }
+}

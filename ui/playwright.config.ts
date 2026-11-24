@@ -3,6 +3,9 @@
 // as a second guard. Never point these tests at a live AetherRV (prompt §5).
 import { defineConfig } from "@playwright/test";
 
+// the one Node global this file reads (the UI tsconfig carries browser types only)
+declare const process: { env: Record<string, string | undefined> };
+
 // UI_TEST_PORT lets parallel runs (one per page agent) use their own dev server and output folder
 const PORT = Number(process.env.UI_TEST_PORT || 4317);
 export default defineConfig({
