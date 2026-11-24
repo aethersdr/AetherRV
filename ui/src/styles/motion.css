@@ -8,6 +8,11 @@
 svg g.pressed { transform-box: fill-box; transform-origin: center; }     /* the battery ring / inverter: scale in place */
 .hq-btn.pressed:not(:disabled), .quick-btn.pressed:not(:disabled) { transform: scale(.94); }
 .sw.pressed:not(:disabled) { transform: scale(.98); }
+/* In WebKit (html.wk-press, lib/press.ts) switch tiles carry an identity transform and filter at rest, so a press only
+   changes values the tile already has. Without them WPE built a new layer for the pressed tile and needed a third
+   frame on the Switches board (tap → pressed 52 / 59 ms p50 / p95; with them 32 / 36, docs/UI-RUNTIME-BENCHMARK.md
+   §4.3). Same look. Not in Chromium, which got slower with them (22 / 24 → 38 / 61 ms). Zero specificity: any state wins. */
+:where(html.wk-press .sw:not(:disabled)) { transform: scale(1); filter: brightness(1); }
 #nav button.pressed, #nav-foot button.pressed { background: var(--surface-2); color: var(--ink); filter: none; transform: scale(.97); }
 .chip.pressed, .btn-soft.pressed:not(:disabled) { filter: brightness(1.3); }
 .clock:active { opacity: .7; }

@@ -31,6 +31,7 @@ const PORT = qs.get("bench_port") || "18099";
 //             transform the element already has instead of giving it a new one (in WebKit a new transform makes
 //             a new render layer, which needs layout)
 //   restfx    the same with an identity filter too
+//   tint      the switch tile only: an inset tint instead of the scale and the filter
 const PRESSABLE = "button, [role=button], .pressable";
 const PRESS_EXP: Record<string, string> = {
   promote: ".sw, .quick-btn, .chip, .btn-soft, .seg button, #nav button, #nav-foot button, .tabs button { will-change: transform; }",
@@ -39,6 +40,9 @@ const PRESS_EXP: Record<string, string> = {
   bg: ".pressed { transform: none !important; filter: none !important; background-color: rgba(255, 255, 255, .14) !important; }",
   rest: `:where(${PRESSABLE}) { transform: scale(1); }`,
   restfx: `:where(${PRESSABLE}) { transform: scale(1); filter: brightness(1); }`,
+  // the switch tile only: no transform, no filter; a light inset tint over its background instead (WebKit
+  // re-renders a tile that gains a transform + filter in more than a frame on the Switches board)
+  tint: ".sw.pressed:not(:disabled) { transform: none; filter: none; box-shadow: inset 0 0 0 999px rgba(255, 255, 255, .09); }",
 };
 for (const k of (qs.get("press") || "").split(",")) {
   if (!PRESS_EXP[k]) continue;

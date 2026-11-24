@@ -5,6 +5,11 @@ const SEL = "button, [role=button], .pressable";
 const MIN_MS = 120;
 
 export function installPressFeedback(): void {
+  // WebKit (WPE, WebKitGTK) builds a new render layer when a control gains a transform or filter, and on the Switches
+  // board that costs it a frame; there, switch tiles carry identity values at rest (styles/motion.css, html.wk-press).
+  // Chromium is slower with them (more layers to raster), so only WebKit gets them.
+  const ua = navigator.userAgent;
+  if (/AppleWebKit/.test(ua) && !/Chrome\//.test(ua)) document.documentElement.classList.add("wk-press");
   const down = new Map<number, { el: Element; t: number }>();
   document.addEventListener("pointerdown", e => {
     const el = (e.target as Element | null)?.closest?.(SEL);
