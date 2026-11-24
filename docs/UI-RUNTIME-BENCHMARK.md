@@ -249,9 +249,10 @@ down further) and saves only 25–35 ms
 on the Weather switch, which is 140–150 ms without it. That is under the 150 ms limit, but only just. The sky
 holds about 5 MB (the bank was not on the page: §1), and it saves about 300 ms on every switch to Network. Chromium's figures
 don't add up per scene in a single round: its extra ~190 MB appears only with all three kept. The default stays
-"all three kept", as measured in both passes of §5. Releasing the radar's frames on hide is the owner's choice: about
-800 MB of GPU memory against a Weather switch at the limit. A middle way for later is to keep the radar's context
-and shaders, drop its frame textures on hide, and reload them on show.
+"all three kept", as measured in both passes of §5 up to f9968b1. **The owner chose to release the radar on hide**
+(Q-U9, 2026-11-24): about 800 MB of GPU memory freed, for a Weather switch at 140–150 ms; the sky and the bank stay
+kept. The final pass (§5.1) measures that default. A middle way for later is to keep the radar's context and
+shaders, drop its frame textures on hide, and reload them on show.
 
 - **WPE stays under 400 MB PSS both ways** (352–362 kept). Keeping costs it ~10 MB of PSS but ~825 MB of GPU
   buffers, almost all of it the radar's, which PSS doesn't count. WPE passes the 400 MB number only because §8
@@ -385,9 +386,87 @@ change where the radar shows no echo.
 frame before the UI is lighter than 12 of 255, and the cold start is the same as before (usable at 903 ms; 904
 before).
 
+### 4.6 Memory under use (WPE, with the battery bank)
+
+The runner reads the runtime's PSS once, at the end of a run. In WebKit's web process that figure moves with
+WebKit's caches and uncollected garbage, so one reading can mislead. The final pass on f9968b1 reported 375 MB, but
+its per-page readings had reached 397 MB. From 2026-11-24 07:16 on, with the battery bank on the page (§1), a
+sampler also read the web process every 5–15 s.
+
+- **What sets it is tapping, not time or page visits.** With few taps the web process levels off:
+
+  | run | WPEWebProcess (sampled) | UI total at the end |
+  |---|---|---|
+  | 1 warm round, 6 taps per page, all scenes kept | – | 382 MB |
+  | the same, the bank freed on hide | – | 381 MB |
+  | the same, every scene freed on hide | – | 361 MB |
+  | 8 warm rounds through every page, 6 taps per page | levels off at about 300 MB | 367 MB |
+
+  The stress pattern of §5.1 (48 taps on every page, 100 on Network, 3 warm rounds, about 13 minutes) grows the web
+  process steadily. Three runs ended at 499, 421 and 412 MB for the whole UI, with the web process peaking at
+  360–374 MB. On one page alone: 60 taps on Alerts or Climate add about 20 MB, and 100 on Network add 45 MB.
+- **It is WebKit's own memory, not the UI's data.** The growth is anonymous memory: WebKit's JavaScript heap,
+  allocator and caches. The UI's own caches are bounded: the history cache holds one entry per chart and span.
+- **A smaller JavaScript heap target changes nothing.** `JSC_forceRAMSize` at 1 GB and at 512 MB reached the web
+  process (checked in its environment). The web process still peaked at 362 and 359 MB, and the UI ended at 381 and
+  412 MB, on the same curve as without it.
+- **WebKit's memory pressure handling holds it down, but slows page switches.** A 600 MB limit (frees caches past
+  270 MB, checked every 5 s) kept the web process at or under 294 MB, with the UI at 341 MB at the end, and taps
+  unchanged (47 ms p95). But warm page switches went to 118 / 207 ms p50 / p95: Home 158 ms p50, Energy 206,
+  Network 242 p95. The caches it frees are what makes switching fast.
+- **The owner's decision (Q-U11, 2026-11-24): accept, with a safety net.** The launcher sets WebKit's memory limit
+  to 1000 MB: past 450 MB WebKit frees caches, past 600 MB everything it can, and it never kills the web process.
+  Normal and heavy use stay under 450 MB, so it acts only on runaway growth. `docs/CUTOVER.md` §8 checks the panel's
+  memory over days in the van.
+
 ## 5. Final results (headless 1920×1200)
 
-### 5.1 Final pass (2026-11-24, commit f9968b1)
+### 5.1 Final pass (2026-11-24, commit 01aa558, the battery bank on the page)
+
+The deployed build: commit 01aa558 on the bench (cross-compiled on the workstation, `harness/bench/cross-push.sh`;
+same Rust 1.100.0 as the Pi; no Rust source changed after f9944f1), its UI bundle served by the gateway (bundle id
+`52cec2bc33e8` in the results), the WPE launcher with its memory safety net (§4.6), and the owner's 2026-11-24
+defaults: the radar freed on hide (Q-U9), the sky and the bank kept. The simulators were up, with four simulated
+batteries (§1), so the Energy page showed its 3D bank with its current flowing. The run used the committed
+harness, as `full.sh 1920x1200 python wpe-launcher` with `UIBENCH_KEEP_BUNDLE=1` and the §11 options, 2026-11-24
+08:22–08:55 bench time. Results: `harness/out/uibench/20261124-0822-headless-1920x1200/` (gitignored).
+
+| runtime | tap → pressed p50 / p95 ms | switch → content p50 / p95 ms (warm, all pages) | first visit, worst ms | page rAF fps, nothing captured: Home / Climate / Switches | scene fps: Energy / Network / Weather | cold start → usable ms | PSS after boot / after every page MB | processes |
+|---|---|---|---|---|---|---|---|---|
+| WPE (launcher) | **35 / 47** (436 presses; 13 over 50 ms, the slowest 94) | **93 / 139** | 647 (Weather) | 62 / 62 / 62 | 62 / 60 / – | 741 | 247 / **392** | 8 |
+| Python UI, live (Chromium) | 182 / 253 (341 of 484 not seen) | 312 / 450 | 2216 (Network) | 62 / 60 / 60 | – / 34 / – | 1663 | 315 / 667 | 11 |
+
+- **Tap:** 13 of 436 presses took over 50 ms and the slowest took 94 ms. Per page, p95 is at most 48 ms except
+  Switches, at 53 ms (3 of 48). The owner judges taps as under 100 ms each, with 50 ms a loose target (Q-U12):
+  **every press was under 100 ms**.
+- **Page switch:** warm, every page ≤ 141 ms p95 (Weather 128 / 141 with its radar rebuilt on return, Energy
+  120 / 139 with the bank). The owner judges switches warm (Q-U13). First visits after boot: Weather 647 ms,
+  Network 492, Energy 436, the others 91–160.
+- **Scenes:** Energy's bank 62 fps with its current flowing, at 53 % of a core; Network 60. The radar loop played,
+  but there was no rain on the map this morning, so its frames didn't change and the method (screen changes) could
+  not count them. The loop's figure is from the f9968b1 pass below: ≥ 32 fps, a lower bound, the same loop code.
+- **Memory:** 392 MB after every page (WPEWebProcess 324, WPENetworkProcess 40, the launcher 26), under 400. In
+  this pattern of heavy use it ranges 381–421 MB between runs (§4.6). The owner accepted that, with the launcher's
+  safety net (Q-U11).
+- **Cold start** 741 ms; no light frame before the UI. Screen power off 6 s, then on: the first frame 58 ms after.
+
+**Warm page switches** (p50 / p95 ms over 3 rounds) **and presses** (p50 / p95 ms, *n* in brackets):
+
+| page | switch, WPE | switch, Python UI | press, WPE | press, Python UI | target |
+|---|---|---|---|---|---|
+| Home | 59 / 64 | 269 / 284 | 45 / 47 (48) | 226 / 264 (48, 1 not seen) | `.quick-btn[data-i]` |
+| Energy | 120 / 139 | 450 / 493 | 45 / 47 (48) | not seen (48) | `.seg button` |
+| Climate | 66 / 82 | 372 / 392 | 32 / 40 (48) | not seen (48) | `#range-temp button` |
+| Weather | 128 / 141 | 367 / 387 | 36 / 42 (48) | 175 / 201 (48) | `.wx-zoom button` |
+| Switches | 78 / 87 | 383 / 388 | 32 / 53 (48) | 175 / 213 (48) | `.sw[data-sw]` |
+| Network | 106 / 107 | 294 / 373 | 43 / 48 (100) | not seen (100) | `.seg button` |
+| Alerts | 93 / 95 | 221 / 252 | 28 / 31 (48) | not seen (48) | `#btn-sound` |
+| Systems | 97 / 99 | 220 / 240 | – | – | (none safe) |
+| Settings | 69 / 94 | 312 / 330 | 35 / 39 (48) | not seen (48) | `.seg button` |
+
+### 5.1a The pass on f9968b1 (2026-11-24, before the bench had battery data)
+
+The Energy page had no bank in this pass (§1); everything else as above, with the radar kept on hide.
 
 The deployed build: commit f9968b1 on the bench, its UI bundle served by the gateway on :8080 (bundle id:
 `index.html` sha256 `a78d994cf492`; the whole-bundle hashes in the logs, `038ef4170074` from `prepare.sh` and
@@ -547,17 +626,19 @@ late (170–220 ms). On 73 of 108 trials the control had no `:active` style at a
 
 Headless, by owner decision (above). *Pass* means the figure meets the number on this output; scanout on the real
 panel adds up to one refresh to the tap and switch figures (§2). WPE's column is the final pass (§5.1: the kiosk
-launcher, commit f9968b1); Tauri's and Chromium's are the five-runtime pass (§5.2), with the switch-tile fix measured
+launcher, commit 01aa558, the battery bank on the page, judged as the owner set on 2026-11-24: taps each under
+100 ms, Q-U12; switches warm, Q-U13). Tauri's and Chromium's are the five-runtime pass (§5.2), before the bank was
+on the page, with the switch-tile fix measured
 separately (§4.3).
 
 | §8 number | WPE (launcher) | Tauri | Chromium |
 |---|---|---|---|
-| tap → visible response ≤ 50 ms (p95) | **met** at p95 on every page (the highest, Home and Weather, 48 ms). Network: 47 ms over 100 presses, none over 50. Overall 4 of 436 presses were over 50 ms, the slowest 89 ms on Weather. Before the switch-tile fix (§4.3): 55 ms, Switches 56 | **not met**: 64 ms. Home 56 / 63, Network 62 / 72; Switches 54 / 58, 34 / 36 after the fix | **not met**: 97 ms. Home 97 / 143 (partly the instrument, §3), Network 63 / 77; the other six pages pass at 13–30 ms p50 |
-| page switch ≤ 150 ms (warm p95) | **met**: 109 ms over all pages; every page ≤ 114 ms (Weather) | **met**: 125 ms; every page ≤ 136 | **not met**: 384 ms. Energy 383 / 438, Alerts 144 / 266, Weather 178 / 225 |
-| 60 fps Home / Climate / Switches | **met**: the page's rAF at refresh; at most one frame over 33 ms in a 5 s sample (Switches) | **met**: Home 59 fps, none over 33 ms; one on Switches | **met**: none over 33 ms |
-| ≥ 30 fps Energy / Network / Weather scenes | **met**: Network 61, Weather ≥ 32 (a lower bound); Energy has no idle animation | **met**: 56, ≥ 39 | Network 60; **Weather not shown**: the lower bound is 29 fps, so it may or may not reach 30 |
-| memory ≤ 400 MB (PSS) | **met**: 375 MB PSS after every page. PSS doesn't count the GPU's buffers: 1382 MB of them, whole system, most for the kept radar loop (§4.1) | **not met**: 457 MB | **not met**: 586 MB (410 with the scenes disposed) |
-| power-on ≤ 15 s (bench reboot, §8) | **not met on every boot**: median 14.74 s, max 15.16 s, 1 of 10 boots over 15.0 s; the Python system 16.96 s median on the same procedure | **not met**: 15.6 s (old runner, earlier panel unit) | **not met**: 15.9 s (old runner, earlier panel unit) |
+| tap → visible response ≤ 50 ms (a loose target: each under 100 ms, Q-U12) | **met**: 35 / 47 ms p50 / p95 over 436 presses, every one under 100 ms (the slowest 94); 13 over 50 ms. Per page p95 ≤ 48 ms but Switches 53 | **not met**: 64 ms. Home 56 / 63, Network 62 / 72; Switches 54 / 58, 34 / 36 after the fix | **not met**: 97 ms. Home 97 / 143 (partly the instrument, §3), Network 63 / 77; the other six pages pass at 13–30 ms p50 |
+| page switch ≤ 150 ms (warm p95, Q-U13) | **met**: 139 ms over all pages; every page ≤ 141 ms (Weather, its radar rebuilt on return). First visits after boot up to 647 ms | **met**: 125 ms; every page ≤ 136 | **not met**: 384 ms. Energy 383 / 438, Alerts 144 / 266, Weather 178 / 225 |
+| 60 fps Home / Climate / Switches | **met**: 62 / 62 / 62 fps, the page's rAF at refresh; at most one frame over 33 ms in a 5 s sample | **met**: Home 59 fps, none over 33 ms; one on Switches | **met**: none over 33 ms |
+| ≥ 30 fps Energy / Network / Weather scenes | **met**: Energy's bank 62, Network 60; Weather ≥ 32 (a lower bound, the f9968b1 pass: no rain on the map for the final one) | **met**: 56, ≥ 39 | Network 60; **Weather not shown**: the lower bound is 29 fps, so it may or may not reach 30 |
+| memory ≤ 400 MB (PSS) | **met** in the final pass: 392 MB after every page; 381–421 MB under the same heavy use in other runs (499 once, before the safety net), accepted by the owner with the launcher's safety net (Q-U11, §4.6). PSS doesn't count the GPU's buffers (687 MB whole system, the radar freed on hide) | **not met**: 457 MB | **not met**: 586 MB (410 with the scenes disposed) |
+| power-on ≤ 15 s (bench reboot, §8) | **not met on every boot, accepted by the owner as measured** (Q-U10): median 14.74 s, max 15.16 s, 1 of 10 boots over 15.0 s; the Python system 16.96 s median on the same procedure | **not met**: 15.6 s (old runner, earlier panel unit) | **not met**: 15.9 s (old runner, earlier panel unit) |
 
 Not measurable headless: the panel's scanout and response, and real touch feel (§10).
 
@@ -711,21 +792,22 @@ user-light session of the committed panel unit (`packaging/pam/aetherrv-panel`, 
 that build; its power-on figures come from a stand-in ordered like the panel unit (§8). For the alert chime the van
 needs `gst-plugins-base` and `gst-plugins-good` (§9, below; CUTOVER §3).
 
-**Owner's choice:** pending.
+**Owner's choice (Q-U8, 2026-11-24): the WPE launcher.** `packaging/panel/launch.sh` uses it by default.
 
-- **It is the only runtime that meets the tap, switch, frame-rate and memory numbers together.** Taps at p95 on
-  every page: 47 ms over 436 presses, 4 of them over 50 ms; Network 47 ms over 100 presses, none over 50. Warm
-  switches 109 ms p95 over all pages, the page's rAF at refresh on Home, Climate and Switches, the Network sky at 61
-  fps and the Weather loop at ≥ 32. 375 MB PSS after every page. Power-on is not met on every boot: median 14.74 s,
-  max 15.16 s, 1 of 10 boots over 15.0 s, about 2.2 s faster than the Python system on the same procedure; the Pi's
-  firmware is 8.2–8.9 s of it (§8).
+- **It is the only runtime that meets the tap, switch, frame-rate and memory numbers together.** In the final pass
+  (§5.1, the battery bank on the page): taps 35 / 47 ms p50 / p95 over 436 presses, every one under 100 ms (the
+  owner's measure, Q-U12); warm switches 139 ms p95 over all pages; the page's rAF at refresh on Home, Climate and
+  Switches; the bank at 62 fps, the Network sky at 60 and the Weather loop at ≥ 32 (§5.1a); 392 MB PSS after every
+  page (381–421 MB under heavy use in other runs, accepted: §4.6). Power-on is not met on every boot: median
+  14.74 s, max 15.16 s, 1 of 10 boots over 15.0 s, about 2.2 s faster than the Python system on the same procedure;
+  the Pi's firmware is 8.2–8.9 s of it (§8). The owner accepted it as measured (Q-U10).
 - **It is the lightest.** It uses 22 % of a core on Home and at most 13 % on the static pages (Tauri 37 %, Chromium
   34 %, the Python UI 81 % on Home). It has the fastest cold start: 0.72 s from launch to a usable Home (0.68 s through
   MiniBrowser), against 0.90 s for Tauri, 1.58 s for Chromium and 1.70 s for the Python UI.
 - **Its numbers should hold best on the real panel.** One capture patch does not disturb it, and it had the least
   GPU work pending behind each frame (§3; an inference until scanout is measured).
-- **What it costs.** The kept radar loop holds about 800 MB of GPU buffers (§4.1), outside the PSS figure.
-  Releasing it on hide puts the Weather switch at 140–150 ms; that choice is the owner's. It needs its own small
+- **What it costs.** A kept radar loop would hold about 800 MB of GPU buffers (§4.1); the owner chose to release it
+  on hide (Q-U9), which puts the Weather switch at 128 / 141 ms. It needs its own small
   kiosk launcher (below) and two GStreamer packages for the alert chime (gst-plugins-base and gst-plugins-good).
   After a crash of its web process the panel takes about 11 s to come back, most of it systemd-coredump writing the
   core, which is kept on purpose as the crash's evidence.
@@ -743,9 +825,8 @@ scenes on hide (`?keepgl=0`) brings its memory back to 410 MB, but its Network a
 ms. In this benchmark it did not meet the memory and switch numbers at once, though the bands do stall it by 100–300
 ms at times (§3).
 
-**Open whichever runtime is chosen:** the tap budget on the real panel, where scanout adds up to a refresh to
-every figure (WPE's highest page p95 is 48 ms headless; §5.1), the van checks (§10), and a soak of the
-chosen runtime for memory growth.
+**Still open, in the van:** the figures on the real panel, where scanout adds up to a refresh to every tap and switch
+(§10, `docs/CUTOVER.md` §8), and the panel's memory over days.
 
 ### The WPE kiosk launcher
 

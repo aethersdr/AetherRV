@@ -115,15 +115,16 @@ Then `sudo packaging/cutover.sh --full` (the config's `tx_enabled` decides, as i
 - The Cerbo socketcand failover path (hat0 ↔ Cerbo) under a real wiring fault: only if the owner wants to pull hat0.
 - The real Espar controller-loss tolerance (§7).
 - **The §8 UI numbers on the real panel** (owner, Q-U7: the bench ran headless only): tap to visible response
-  ≤ 50 ms, page switch ≤ 150 ms, 60 fps on Home/Climate/Switches and ≥ 30 fps for the Energy/Network/Weather scenes,
+  under 100 ms each (50 ms the target; owner, 2026-11-24), page switch ≤ 150 ms (warm), 60 fps on Home/Climate/Switches and ≥ 30 fps for the Energy/Network/Weather scenes,
   UI memory ≤ 400 MB, and **power-on to a usable UI ≤ 15 s** (time a cold power-up with a stopwatch from power
   applied to the first touch that works). `harness/uibench` can measure the panel in the van only with every
   transmit gate off (the read-only period, §6): it injects touches.
 - **The boot splash hand-off**, watched (the bench has no Plymouth): splash, then black for under a second, then the
   UI, with no white frame; and the shutdown splash.
-- **The runtime's memory over days**: the bench measured one pass of about eight minutes. Check the panel's PSS
-  (`smem -P WPEWebProcess` or `/proc/<pid>/smaps_rollup`) after a day and again after several days. It should stay
-  under 400 MB, and free memory should stay high with the kept radar loop's GPU buffers (~800 MB on the 16 GB Pi).
+- **The runtime's memory over days**: the bench measured passes of about 13 minutes (`docs/UI-RUNTIME-BENCHMARK.md`
+  §4.6). Check the panel's PSS (`smem -P WPEWebProcess` or `/proc/<pid>/smaps_rollup` as root) after a day and again
+  after several days. It should stay around 400 MB or under; the launcher's safety net makes WebKit free its caches
+  past 450 MB. The radar is freed when Weather is hidden (owner, 2026-11-24), so the GPU's buffers stay modest.
 - **Screen off from the page** (Settings, the screen-off control) and touch-to-wake under the chosen runtime, on
   the real HDMI panel.
 - **The alert chime, heard** under the chosen runtime: on Alerts, Sound off, then Sound on plays the serious chime

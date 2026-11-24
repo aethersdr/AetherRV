@@ -489,6 +489,8 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-U9 | The kept radar loop holds ~800 MB of GPU memory for a ~110 ms switch back to Weather (140–150 ms without): keep or release on hide? | answered 2026-11-24: release on hide |
 | Q-U10 | Power-on to a usable UI: 1 of 10 bench boots over 15 s (median 14.74 s, max 15.16 s; 8.2–8.9 s of each is the Pi's firmware): what to do? | answered 2026-11-24: accept as measured (the stopwatch check in the van stays, `docs/CUTOVER.md` §8) |
 | Q-U11 | UI memory: 361–382 MB in normal use, 381–421 MB (once 499) after a 48-taps-per-page stress pass; capping it with WebKit's memory pressure handling slows page switches past 150 ms: accept, enforce or investigate? | answered 2026-11-24: accept, with a safety net (WebKit frees its caches past 450 MB, never kills) |
+| Q-U12 | §8 "tap to visible response ≤ 50 ms" names no statistic: p95 over all taps (47 ms), p95 per page (Switches 53 ms) or every tap (13 of 436 over 50, slowest 94 ms)? | answered 2026-11-24: "The 50 ms is a loose target. Anything under 100 ms is acceptable." |
+| Q-U13 | §8 "page switch ≤ 150 ms": warm switches (139 ms p95) or first visits after boot too (Weather 647 ms)? | answered 2026-11-24: warm switches |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -537,3 +539,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-24 | The Weather radar is freed when its page is hidden and rebuilt on return; the Network sky and the Energy bank stay kept | owner (Q-U9) |
 | 2026-11-24 | Power-on to a usable UI accepted as measured on the bench (median 14.74 s, 1 of 10 boots at 15.16 s) | owner (Q-U10) |
 | 2026-11-24 | UI memory accepted: ≤ 400 MB in normal use, up to ~420 MB under heavy tapping; the WPE launcher sets WebKit's memory limit to 1000 MB (frees caches past 450 MB, never kills the web process) as a safety net | owner (Q-U11) |
+| 2026-11-24 | §8 judged as: every tap under 100 ms (50 ms is a loose target); page switches warm (a page already visited since boot) | owner (Q-U12, Q-U13) |
