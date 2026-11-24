@@ -81,6 +81,7 @@ case "$cmd" in
     since=${2:-2026-11-23 21:00}   # UTC (the conversion began 2026-11-23 21:58 UTC)
     [[ $since =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}( [0-9]{2}:[0-9]{2})?$ ]] || { echo "refused: since must be YYYY-MM-DD[ HH:MM]" >&2; exit 2; }
     remote "TZ=UTC; export TZ; echo \"van boot: \$(uptime -s) (\$(date +%Z))\";
+      echo \"model: \$(tr -d '\\0' < /proc/device-tree/model)\"; free -m | head -2;
       systemctl show -p Id -p ActiveEnterTimestamp -p NRestarts aetherrv.service aetherrv-kiosk.service aetherrv-admin.socket;
       test -e /opt/aetherrv-rs && echo '/opt/aetherrv-rs: EXISTS' || echo '/opt/aetherrv-rs: absent';
       echo \"aetherrv unit files: \$(systemctl list-unit-files --no-legend 'aetherrv*' | awk '{print \$1}' | tr '\n' ' ')\";
