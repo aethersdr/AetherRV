@@ -136,9 +136,30 @@ test("network: forget asks first; a known network joins without a password", asy
   await expect.poll(() => s.actions.length).toBe(2);
   expect(s.actions[1]).toEqual({ verb: "wifi_connect", args: { ssid: "TestNet-Open" } });
   await expect(page.locator("#osk")).toHaveCount(0);
-  await page.click('[data-wpow="0"]');                                         // Wi-Fi off: no confirm (as app.js)
-  await expect.poll(() => s.actions.length).toBe(3);
-  expect(s.actions[2]).toEqual({ verb: "wifi_power", args: { on: false } });
+});
+
+test("network: Wi-Fi off asks first (Cancel sends nothing, Confirm sends one request); on is one tap", async ({ page }) => {
+  const s = await stub(page);
+  await page.goto("/#settings");
+  await tab(page, "network");
+  await page.click('[data-wpow="0"]');
+  await expect(page.locator("#modal-t")).toHaveText("Turn Wi-Fi off?");
+  await expect(page.locator("#modal-d")).toHaveText("Remote access over Wi-Fi (Tailscale) will drop until Wi-Fi is turned back on from this screen.");
+  await page.waitForTimeout(200);
+  expect(s.actions).toHaveLength(0);
+  await page.click("#modal-no");
+  await expect(page.locator("#modal")).toBeHidden();
+  await page.waitForTimeout(300);
+  expect(s.actions).toHaveLength(0);
+  await page.click('[data-wpow="0"]');
+  await page.click("#modal-yes");
+  await expect.poll(() => s.actions).toEqual([{ verb: "wifi_power", args: { on: false } }]);
+  await page.waitForTimeout(300);
+  expect(s.actions).toHaveLength(1);
+  await page.click('[data-wpow="1"]');                                         // Wi-Fi on: one tap
+  await expect(page.locator("#modal")).toBeHidden();
+  await expect.poll(() => s.actions.length).toBe(2);
+  expect(s.actions[1]).toEqual({ verb: "wifi_power", args: { on: true } });
 });
 
 test("network: a new secured network asks for its password; it goes ONLY into that one request", async ({ page }) => {

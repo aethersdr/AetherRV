@@ -2,8 +2,8 @@
 // Network (wired + Wi-Fi), Tailscale, System updates. Ported from app.js renderSettings and its #set-body handlers.
 //
 // Confirmations kept exactly as app.js: Restart display, Reboot, Shut down, Forget a Wi-Fi network, Install Tailscale,
-// Tailscale sign-out, Install updates. No confirm (as app.js): rename, screen auto-off, Wi-Fi on/off, scan and join,
-// Tailscale sign-in, update check. Every change is refused in view-only mode (buttons disabled, and settingsAction
+// Tailscale sign-out, Install updates; plus Wi-Fi OFF (owner, Q-U5: remote access over Wi-Fi drops). No confirm (as
+// app.js): rename, screen auto-off, Wi-Fi on, scan and join, Tailscale sign-in, update check. Every change is refused in view-only mode (buttons disabled, and settingsAction
 // itself refuses). The units and night mode are this screen's own preferences and work in view-only mode too.
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../../components/Icon";
@@ -86,6 +86,11 @@ const Bars = ({ dbm }: { dbm: number | undefined }) => {
   const q = dbm == null ? 1 : dbm >= -55 ? 4 : dbm >= -65 ? 3 : dbm >= -75 ? 2 : 1;
   return <span className="wbars">{[1, 2, 3, 4].map(i => <i key={i} className={i <= q ? "on" : ""} style={{ height: `${i * 25}%` }} />)}</span>;
 };
+/** Wi-Fi off asks first (owner, Q-U5); turning it on stays one tap. */
+export function wifiOff(): void {
+  askConfirm("Turn Wi-Fi off?", "Remote access over Wi-Fi (Tailscale) will drop until Wi-Fi is turned back on from this screen.",
+    () => void settingsAction("wifi_power", { on: false }, "Wi-Fi off"));
+}
 export function wifiForget(ssid: string): void {
   askConfirm(`Forget ${ssid}?`, "Its saved password is removed; the console won't join it again on its own.",
     () => void settingsAction("wifi_forget", { ssid }, "Forget"));
@@ -126,7 +131,7 @@ export const NetworkTab = memo(function NetworkTab({ info }: { info: SettingsInf
             {w.scanning ? "Scanning…" : "Scan"}</button>
           <div className="seg">
             <button className={w.powered ? "on" : ""} data-wpow="1" disabled={!ctl} onClick={() => void settingsAction("wifi_power", { on: true }, "Wi-Fi on")}>On</button>
-            <button className={w.powered ? "" : "on"} data-wpow="0" disabled={!ctl} onClick={() => void settingsAction("wifi_power", { on: false }, "Wi-Fi off")}>Off</button>
+            <button className={w.powered ? "" : "on"} data-wpow="0" disabled={!ctl} onClick={wifiOff}>Off</button>
           </div></>}</div></div>
     </div>
     {w.present && w.powered && (
