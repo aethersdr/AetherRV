@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 fn sh(args: &[&str]) -> String {
-    std::process::Command::new(args[0]).args(&args[1..]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default()
+    std::process::Command::new(args[0]).args(&args[1..]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
 }
 
 fn read_json(p: &str) -> Value {
@@ -25,6 +25,13 @@ fn read_json(p: &str) -> Value {
 
 fn lines(p: &str) -> usize {
     std::fs::read_to_string(p).map(|s| s.lines().count()).unwrap_or(0)
+}
+
+/// A heartbeat published after `t_ms` (heartbeats carry the publisher's own time): proof the process that sent it
+/// was alive and connected after the kill.
+fn hb_after(bus: &Bus, owner: &str, t_ms: i64) -> bool {
+    let now = aetherrv_core::clock::now_ms();
+    bus.remote().owners().into_iter().any(|(n, _, age)| n == owner && age.is_some_and(|a| now - (a * 1000.0) as i64 > t_ms))
 }
 
 /// Keys the service owns, and whether one of them was published after `t_ms` (a new process restamps every key).
@@ -70,6 +77,7 @@ async fn main() -> anyhow::Result<()> {
         let m0 = lines(&mcs7);
         let gap0 = h0["max_054_gap_running"].as_f64().unwrap_or(0.0);
         let unit = format!("aetherrv-{victim}.service");
+        let pid0 = sh(&["systemctl", "show", "-p", "MainPID", "--value", &unit]);
         let t_kill = aetherrv_core::clock::now_ms();
         let (keys_before, _) = owned(&bus, &victim, t_kill);
         if how == "kill" {
@@ -100,7 +108,14 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            let up = if victim == "bus" { bus.connected() && services.iter().all(|s| bus.remote().owner_ok(s)) } else { bus.remote().owner_ok(&victim) };
+            // back = a new process (systemd's MainPID changed) that is on the bus again (a heartbeat stamped after
+            // the kill); for the broker: every service has published a heartbeat since it came back
+            let up = if victim == "bus" {
+                bus.connected() && services.iter().all(|s| hb_after(&bus, s, t_kill))
+            } else {
+                let pid = sh(&["systemctl", "show", "-p", "MainPID", "--value", &unit]);
+                pid != pid0 && pid != "0" && hb_after(&bus, &victim, t_kill) && bus.remote().owner_ok(&victim)
+            };
             if up && back_at.is_none() {
                 back_at = Some(start.elapsed().as_secs_f64());
             }
