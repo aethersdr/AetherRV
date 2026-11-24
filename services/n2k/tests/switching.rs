@@ -453,6 +453,26 @@ async fn test_claim_poll_reply_is_sent_but_logged_quietly() {
     assert_eq!(*q.0.lock().unwrap(), vec![false, true], "still answered, but quietly");
 }
 
+/// D21 (found by the bench soak): answering the Cerbo's poll keeps the address ready. switching.py restarted the
+/// 250 ms claim wait on every reply, so a tap within 250 ms after a poll was refused as "not claimed yet".
+#[tokio::test]
+async fn test_answering_a_claim_poll_keeps_the_address_ready() {
+    let r = ready();
+    assert!(r.node.ready());
+    let req = CanFrame::ext(can_id(6, 59904, 228, 150), &60928u32.to_le_bytes()[..3]);
+    r.node.on_frame(&req); // the Cerbo's 10-s poll, answered
+    assert_eq!(r.bus.sent().len(), 1, "the poll is still answered");
+    assert!(r.node.ready(), "a poll reply is not a new claim");
+    r.bus.clear();
+    let rep = cmd(&r, "set", json!({"channel": 7, "on": true})).await;
+    assert!(!rep.detail.contains("not claimed"), "{rep:?}");
+    assert_eq!(first10(&r.bus.payloads()), vec![press(9, true), press(9, false)], "sent at once");
+    // a contest by a lower-priority NAME still restarts the wait
+    let theirs = r.node.name + 1;
+    r.node.on_frame(&CanFrame::ext(can_id(6, 60928, 150, 255), &theirs.to_le_bytes()));
+    assert!(!r.node.ready(), "a re-assert after a contest waits 250 ms again");
+}
+
 /// py: tests/test_switching.py::test_hold_puts_the_virtual_switch_on_until_release
 #[tokio::test]
 async fn test_hold_puts_the_virtual_switch_on_until_release() {

@@ -435,6 +435,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | D18 | Starlink and Peplink command values need the right JSON type (like D11/D14) | Safe direction |
 | D19 | An alert still active when the alerts service restarts (same boot) carries on with its start time and acknowledgement and is not raised again; one that cleared meanwhile is closed in the log; a reboot re-raises as Python did (owner, Q-A2) | Python restarted as a whole; a single module restarting must not re-chime acknowledged alerts |
 | D20 | Starlink "check for update": a failed check request whose update state moved anyway answers **unverified** with the dish's state (Python: ok) (owner, Q-S1) | The request itself failed |
+| D21 | NMEA 2000 node: answering a peer's request for address claims (the Cerbo polls every 10 s) repeats the claim already held and does not restart the 250 ms claim wait. A first claim, a contest and a path change still wait (owner, Q-N1) | switching.py restarted the wait on every reply, so a switch command within 250 ms after a poll was refused as "not claimed yet" (about 1 tap in 40; found by the bench soak) |
 | D10 | The gateway waits up to 15 s for an Espar reply (one verify window is 6 s, and a queued command waits for the one before it) | Avoids reporting "unverified" for a command that is still being verified |
 
 ## 14. Open questions for the owner
@@ -462,6 +463,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-U6 | Energy "3D battery bank": today an SVG scene; keep it or build a WebGL bank? | answered 2026-11-23: build a real WebGL (three.js) bank; it must hold ≥ 30 fps on the Pi |
 | Q-U7 | The bench monitor is not detected; how to measure the UI runtimes? | answered 2026-11-23: "skip the monitor bench tests". So the §8 numbers are judged on headless 1920×1200 runs on the bench Pi's GPU (including power-on to a usable UI, measured with a reboot); the real-panel numbers are repeated in the van (CUTOVER.md §8) |
 | Q-H1 | The bench Pi's hostname was committed in two `rust` commits (fixed in the files): rewrite history? | answered 2026-11-23: leave the history; keep it out from now on |
+| Q-N1 | The bench soak found the reference refusing switch commands within 250 ms after each Cerbo address-claim poll: fix or keep? | answered 2026-11-23: fix it (D21) |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -504,3 +506,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Soak: at most 1 hour on the bench (replaces the prompt's 12 hours, goal item 5) | owner |
 | 2026-11-23 | UI runtime benchmark: no real-screen runs on the bench (owner, Q-U7); every §8 number, power-on included, is measured headless at 1920×1200 on the bench Pi. Repeating them on the real panel in the van is the assistant's addition to CUTOVER.md §8 | owner (Q-U7) |
 | 2026-11-23 | The bench hostname stays in the `rust` history (no force-push); scripts take the bench host from the environment | owner (Q-H1) |
+| 2026-11-23 | A reply to an address-claim poll does not restart the N2K claim wait (D21) | owner (Q-N1) |

@@ -90,7 +90,11 @@ impl N2kNode {
         } else {
             tracing::debug!("n2k: address claim {addr} re-sent (answering a request)");
         }
-        self.inner.lock().unwrap().claimed_at = Some(Instant::now());
+        // Answering a poll repeats the claim we already hold: it does not start a new 250 ms wait. (switching.py
+        // restarted it, so a command within 250 ms after the Cerbo's 10-s poll was refused as "not claimed"; D21.)
+        if !poll || first {
+            self.inner.lock().unwrap().claimed_at = Some(Instant::now());
+        }
         Ok(())
     }
 
