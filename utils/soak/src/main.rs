@@ -224,7 +224,12 @@ async fn main() -> anyhow::Result<()> {
         writeln!(samples, "{row}")?;
         samples.flush()?;
         if n.is_multiple_of(30) {
-            println!("soak: {:.1} h, {} commands, {} failed", el / 3600.0, cmds.lock().unwrap().sent, cmds.lock().unwrap().failed.len());
+            // one lock per statement: a std Mutex is not re-entrant (taking it twice in one expression deadlocked here)
+            let (sent, failed) = {
+                let c = cmds.lock().unwrap();
+                (c.sent, c.failed.len())
+            };
+            println!("soak: {:.1} h, {sent} commands, {failed} failed", el / 3600.0);
         }
     }
 
