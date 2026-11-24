@@ -1,8 +1,8 @@
-//! `aetherrv-screen -c /etc/aetherrv/aetherrv.toml`
+//! `aetherrv-screen` (started by the kiosk's sway config)
 
 fn main() -> anyhow::Result<()> {
-    let args = aetherrv_core::config::Args::parse();
-    aetherrv_core::logging::init("aetherrv-screen", args.verbose);
-    let _cfg = aetherrv_core::config::Cfg::load(&args.config)?;
-    anyhow::bail!("aetherrv-screen is not implemented yet")
+    aetherrv_screen::exit_with_sway();
+    aetherrv_screen::wake_on_touch();
+    aetherrv_screen::serve("127.0.0.1:8091")?;
+    Ok(())
 }
