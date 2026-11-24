@@ -8,6 +8,9 @@ CAP=${1:?usage: isolation.sh <n2k capture> [services]}; shift
 SERVICES=${*:-"espar n2k rixens victron starlink peplink weather derive settings alerts history power-guard gateway netmon gps batteries-ble"}
 $SRC/harness/dev-setup.sh >/dev/null
 cmp -s $SRC/harness/bench/bench-config.toml /etc/aetherrv/aetherrv.toml || install -m 644 $SRC/harness/bench/bench-config.toml /etc/aetherrv/aetherrv.toml
+if [ -f /etc/aetherrv/secrets.toml ] && ! cmp -s $SRC/harness/bench/bench-secrets.toml /etc/aetherrv/secrets.toml; then
+  cp -n /etc/aetherrv/secrets.toml /etc/aetherrv/secrets.toml.pre-bench
+fi
 install -m 640 -g aetherrv $SRC/harness/bench/bench-secrets.toml /etc/aetherrv/secrets.toml
 for u in aetherrv-sim-espar aetherrv-sim-mcs7 aetherrv-sim-replay aetherrv-sim-cerbo aetherrv-sim-starlink aetherrv-sim-peplink; do systemctl stop $u 2>/dev/null || true; systemctl reset-failed $u 2>/dev/null || true; done
 systemctl stop aetherrv.target 2>/dev/null || true

@@ -3,7 +3,8 @@
 //!
 //! 1. Starts an Espar HEAT run and MCS7 furnace heat through the bus (as the touchscreen would).
 //! 2. For every service, then for the broker: `kill -9` (and for the broker also a clean restart) under systemd and
-//!    watch at 4 Hz that every OTHER service stays up the whole time, that the victim comes back with fresh state,
+//!    watch at 4 Hz that every OTHER service stays up the whole time, that the victim comes back and republishes its
+//!    state (any key it owns restamped after the kill; for the broker: every service up and connected again),
 //!    that the heater simulator never loses its controller (054 gap, controller-loss faults) and that the MCS7
 //!    simulator was sent nothing.
 //! 3. Writes a JSON report; exit code 1 if anything failed.
@@ -26,19 +27,11 @@ fn lines(p: &str) -> usize {
     std::fs::read_to_string(p).map(|s| s.lines().count()).unwrap_or(0)
 }
 
-/// A key each service keeps fresh (its "state recovered" check), when it publishes one in the bench setup.
-fn sentinel(s: &str) -> Option<&'static str> {
-    Some(match s {
-        "espar" => "climate.espar.ctl.mode",
-        "n2k" => "n2k.pgns",
-        "rixens" => "climate.rixens.reachable",
-        "victron" => "victron.connected",
-        "weather" => "radar.recorded",
-        "derive" => "energy.dc.load",
-        "settings" => "settings.screen_off_min",
-        "alerts" => "alerts.active",
-        _ => return None,
-    })
+/// Keys the service owns, and whether one of them was published after `t_ms` (a new process restamps every key).
+fn owned(bus: &Bus, owner: &str, t_ms: i64) -> (usize, bool) {
+    let mine: Vec<_> = bus.remote().all().into_iter().filter(|(_, o, _)| o == owner).collect();
+    let fresh = mine.iter().any(|(_, _, s)| s.t > t_ms);
+    (mine.len(), fresh)
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -78,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
         let gap0 = h0["max_054_gap_running"].as_f64().unwrap_or(0.0);
         let unit = format!("aetherrv-{victim}.service");
         let t_kill = aetherrv_core::clock::now_ms();
+        let (keys_before, _) = owned(&bus, &victim, t_kill);
         if how == "kill" {
             sh(&["systemctl", "kill", "-s", "KILL", &unit]);
         } else {
@@ -100,14 +94,13 @@ async fn main() -> anyhow::Result<()> {
             if up && back_at.is_none() {
                 back_at = Some(start.elapsed().as_secs_f64());
             }
-            if let Some(k) = sentinel(&victim) {
-                if bus.remote().stamped(k, false).is_some_and(|(_, s)| s.t > t_kill) && fresh_at.is_none() {
+            let needs_fresh = victim != "bus" && keys_before > 0;
+            if fresh_at.is_none() && up {
+                if !needs_fresh || owned(&bus, &victim, t_kill).1 {
                     fresh_at = Some(start.elapsed().as_secs_f64());
                 }
-            } else if victim == "bus" && up && fresh_at.is_none() {
-                fresh_at = back_at;
             }
-            if back_at.is_some() && (fresh_at.is_some() || sentinel(&victim).is_none()) && start.elapsed() > Duration::from_secs(6) {
+            if back_at.is_some() && fresh_at.is_some() && start.elapsed() > Duration::from_secs(6) {
                 break;
             }
         }
@@ -116,11 +109,10 @@ async fn main() -> anyhow::Result<()> {
         let mcs7_new = lines(&mcs7).saturating_sub(m0);
         let heater_ok = h1["state"] == "heating" && h1["controller_loss_faults"] == h0["controller_loss_faults"];
         let furnace = bus.remote().list("climate.rixens.sources").iter().any(|v| v == "furnace");
-        let pass = others_down.is_empty() && back_at.is_some() && (fresh_at.is_some() || sentinel(&victim).is_none())
-            && heater_ok && mcs7_new == 0 && furnace;
+        let pass = others_down.is_empty() && back_at.is_some() && fresh_at.is_some() && heater_ok && mcs7_new == 0 && furnace;
         ok_all &= pass;
         let row = json!({"victim": victim, "how": how, "pass": pass, "back_s": back_at, "fresh_state_s": fresh_at,
-                         "others_down": others_down, "heater_state": h1["state"], "max_054_gap_s": gap.max(gap0),
+                         "others_down": others_down, "keys_owned": keys_before, "heater_state": h1["state"], "max_054_gap_s": gap.max(gap0),
                          "controller_loss_faults": h1["controller_loss_faults"], "mcs7_commands_sent": mcs7_new,
                          "mcs7_furnace_on": furnace});
         println!("{row}");
