@@ -7,11 +7,16 @@ python_or_jq() { jq -r "$1" <<<"$S" 2>/dev/null; }
 esp_active=$(python_or_jq '."climate.espar.ctl.active" // false')
 esp_mode=$(python_or_jq '."climate.espar.ctl.mode" // "off"')
 esp_state=$(python_or_jq '."climate.espar.state" // "off"')
+esp_cool=$(python_or_jq '."climate.espar.cooldown_left_s" // 0')
+esp_run=$(python_or_jq '."climate.espar.run_s" // "null"')
 mcs_state=$(python_or_jq '."climate.rixens.state" // ""')
 mcs_code=$(python_or_jq '."climate.rixens.heater_state_code" // 0')
 busy=""
 [ "$esp_active" = "true" ] && [ "$esp_mode" != "off" ] && busy+=" espar:$esp_mode"
 case "$esp_state" in heating|starting|cooldown|fan) busy+=" espar:$esp_state";; esac
+# belt and braces, whatever the state name says: an after-run still counting down, or a heat run timer running
+[ "${esp_cool%.*}" -gt 0 ] 2>/dev/null && busy+=" espar:cooldown_left_${esp_cool}s"
+[ "$esp_run" != "null" ] && busy+=" espar:running_${esp_run}s"
 [ "$mcs_state" = "heating" ] && busy+=" mcs7:heating"
 case "$mcs_code" in 10|12|13|15|20|30|31) busy+=" mcs7:code$mcs_code";; esac
 if [ -n "$busy" ]; then echo "heaters not idle:$busy" >&2; exit 1; fi
