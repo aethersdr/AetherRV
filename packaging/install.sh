@@ -31,6 +31,17 @@ install -m 644 "$SRC"/packaging/etc/mosquitto.conf "$SRC"/packaging/etc/mosquitt
 install -d -m 755 "$DEST/panel"
 install -m 644 "$SRC"/packaging/panel/sway.conf "$DEST/panel/"
 install -m 755 "$SRC"/packaging/panel/launch.sh "$DEST/panel/"
+# the WPE kiosk launcher (panel/wpe), built here where WPE's headers are; launch.sh falls back to MiniBrowser without it
+if pkg-config --exists wpe-webkit-2.0 2>/dev/null && command -v cc >/dev/null; then
+  # built beside the running one and renamed over it, so a panel running the old launcher is not disturbed
+  # shellcheck disable=SC2046  # pkg-config's flags are words
+  if cc -O2 -Wall -o "$DEST/bin/aetherrv-panel-wpe.new" "$SRC"/panel/wpe/aetherrv-panel-wpe.c $(pkg-config --cflags --libs wpe-webkit-2.0); then
+    mv -f "$DEST/bin/aetherrv-panel-wpe.new" "$DEST/bin/aetherrv-panel-wpe"
+  else
+    rm -f "$DEST/bin/aetherrv-panel-wpe.new"
+    echo "aetherrv-panel-wpe did not build: the panel's wpe runtime uses MiniBrowser" >&2
+  fi
+fi
 if [ -d "$SRC/ui/dist" ]; then
   rm -rf "$DEST/ui.new" && cp -a "$SRC/ui/dist" "$DEST/ui.new" && rm -rf "$DEST/ui" && mv "$DEST/ui.new" "$DEST/ui"
 fi
