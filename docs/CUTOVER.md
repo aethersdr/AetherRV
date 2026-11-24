@@ -34,8 +34,18 @@ systemctl list-unit-files 'aetherrv*' > /root/aetherrv-units-pre-rust-$ts.txt
 
 From the workstation: `packaging/push.sh <van-host> --cutover`. It syncs the source to `/opt/aetherrv-rs/src`, builds
 natively (about 6 minutes on a Pi 5), installs the binaries, units and Mosquitto config, and **starts nothing**.
-The Python system keeps running. Install the packages the Rust system needs if missing: `mosquitto` (and the chosen
-UI runtime).
+The Python system keeps running. Install the packages the Rust system needs if missing, before the push (the build
+and the panel need them):
+
+- `mosquitto` (the bus);
+- the chosen UI runtime (`docs/UI-RUNTIME-BENCHMARK.md` §9, `/etc/aetherrv/panel.env`):
+  - **WPE**: `wpewebkit` (it brings `bubblewrap` and `xdg-dbus-proxy`) and `noto-fonts` (the bench had to add the
+    fonts: WPE has no bundled fallback font);
+  - Tauri: `webkit2gtk-4.1`;
+  - Chromium: already there (today's kiosk).
+
+`pacman -S --needed <packages>` on an up-to-date system only (Arch does not support partial upgrades). If
+`pacman -Syu` is due, do it on another day, not on the cutover day.
 
 ## 4. Check the data
 
