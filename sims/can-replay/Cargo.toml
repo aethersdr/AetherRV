@@ -1,0 +1,18 @@
+[package]
+name = "aetherrv-sim-replay"
+description = "Replays a CAN capture onto a vcan interface"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-sim-replay"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-can.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

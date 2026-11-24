@@ -370,12 +370,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-sim-mcs7"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "tokio",
+]
+
+[[package]]
 name = "aetherrv-sim-peplink"
 version = "0.1.0"
 dependencies = [
  "aetherrv-sim",
  "anyhow",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "aetherrv-sim-replay"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-can",
+ "anyhow",
  "tokio",
 ]
 

@@ -1,0 +1,18 @@
+[package]
+name = "aetherrv-sim-mcs7"
+description = "Simulated Rixens MCS7 local HTTP API (loopback only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-sim-mcs7"
+path = "src/main.rs"
+
+[dependencies]
+axum.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true
