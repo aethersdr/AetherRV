@@ -194,6 +194,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-isolation"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-core",
+ "anyhow",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "aetherrv-migrate"
 version = "0.1.0"
 dependencies = [
@@ -403,6 +413,7 @@ version = "0.1.0"
 dependencies = [
  "aetherrv-sim",
  "anyhow",
+ "prost-reflect",
  "serde_json",
  "tokio",
 ]

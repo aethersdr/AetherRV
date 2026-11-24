@@ -34,3 +34,39 @@ tx_enabled = false
 
 [power]
 auto_shutdown = false
+
+[device.rixens_http]
+kind = "rixens_http"
+enabled = true
+host = "127.0.0.1:18111"
+interval = 5
+tx_enabled = true
+
+[device.victron]
+kind = "victron"
+host = "127.0.0.1"
+port = 18883
+tls = false
+cabin_temp = "IAT"
+outside_temp = "OAT"
+fridge_temp = "FRG"
+freezer_temp = "FRZ"
+
+[climate]
+cabin_source = "victron"
+
+[gps]
+enabled = true
+port = 10110
+bind = "127.0.0.1"
+
+[netmon]
+interval = 30
+
+[[netmon.targets]]
+name = "loopback"
+host = "127.0.0.1"
+fail_after = 2
+
+[radar]
+dir = "/var/lib/aetherrv/radar"

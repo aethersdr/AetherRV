@@ -1,0 +1,19 @@
+[package]
+name = "aetherrv-isolation"
+description = "Isolation tests: kill and restart each service and the broker under systemd; the others and the heaters must not notice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-isolation"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true
