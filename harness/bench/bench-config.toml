@@ -1,0 +1,36 @@
+# AetherRV bench configuration: every bus is a vcan, every device a simulator. NEVER used in the van.
+capture = true
+capture_dir = "/var/lib/aetherrv/captures"
+capture_keep_days = 1
+
+[history]
+path = "/var/lib/aetherrv/history.sqlite3"
+
+[web]
+host = "0.0.0.0"
+port = 8080
+static_dir = "/opt/aetherrv-rs/ui"
+admin_socket = "/run/aetherrv-admin.sock"
+
+[bus.hat0]
+interface = "socketcan"
+channel = "vcan0"
+
+[bus.hat1]
+interface = "socketcan"
+channel = "vcan1"
+
+[device.espar]
+kind = "espar"
+bus = "hat1"
+tx_enabled = true
+diag_tx = true
+diag_interval_s = 1
+
+[device.n2k]
+kind = "n2k"
+bus = "hat0"
+tx_enabled = false
+
+[power]
+auto_shutdown = false
