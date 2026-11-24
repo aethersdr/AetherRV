@@ -130,3 +130,30 @@ async fn stale_retained_keys_of_a_previous_process_are_cleared() {
         && g.remote().num("energy.dc.load") == Some(6.0)).await);
     let _ = state_topic("derive", "x");
 }
+
+/// The production ACL (packaging/etc/mosquitto.acl): a service may publish only its own state (bug containment).
+#[tokio::test(flavor = "multi_thread")]
+async fn acl_keeps_each_service_in_its_own_namespace() {
+    let acl = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging/etc/mosquitto.acl");
+    let b = Broker::with_acl(&acl);
+    let g = bus(&b, "gateway");
+    g.subscribe_all_state().await;
+    let v = bus(&b, "victron");
+    v.state().set("victron.battery.soc", json!(50));
+    assert!(eventually(S, || g.remote().num("victron.battery.soc") == Some(50.0)).await, "own namespace works");
+    // a buggy victron publishing into espar's namespace: dropped by the broker
+    let mut o = rumqttc::v5::MqttOptions::new("victron2", b.socket.to_string_lossy(), 0);
+    o.set_transport(rumqttc::Transport::unix());
+    let (c, mut ev) = rumqttc::v5::AsyncClient::new(o, 10);
+    tokio::spawn(async move { loop { if ev.poll().await.is_err() { tokio::time::sleep(Duration::from_millis(50)).await; } } });
+    c.publish("aetherrv/v1/state/espar/climate.espar.state", rumqttc::v5::mqttbytes::QoS::AtLeastOnce, true,
+              serde_json::to_vec(&json!({"v": "heating", "t": 1})).unwrap()).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(g.remote().stamped("climate.espar.state", true).is_none(), "another service's namespace is refused");
+    // commands and replies still flow
+    let srv = bus(&b, "espar");
+    srv.serve("espar", Arc::new(Counter(AtomicU32::new(0))), None).await;
+    assert!(eventually(S, || g.remote().owner_ok("espar")).await);
+    let r = g.request("espar", "set", json!({}), "kiosk", 3000, S).await;
+    assert_eq!(r.result, ResultKind::Ok, "{r:?}");
+}

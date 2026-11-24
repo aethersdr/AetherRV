@@ -9,6 +9,7 @@ pub struct Broker {
     pub socket: PathBuf,
     child: Option<Child>,
     persistence: bool,
+    acl: Option<PathBuf>,
 }
 
 impl Broker {
@@ -16,7 +17,16 @@ impl Broker {
     pub fn start(persistence: bool) -> Broker {
         let dir = tempfile::tempdir().expect("tempdir");
         let socket = dir.path().join("mqtt.sock");
-        let mut b = Broker { dir, socket, child: None, persistence };
+        let mut b = Broker { dir, socket, child: None, persistence, acl: None };
+        b.spawn();
+        b
+    }
+
+    /// A broker with an ACL file (e.g. packaging/etc/mosquitto.acl).
+    pub fn with_acl(acl: &Path) -> Broker {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("mqtt.sock");
+        let mut b = Broker { dir, socket, child: None, persistence: false, acl: Some(acl.to_path_buf()) };
         b.spawn();
         b
     }
@@ -27,6 +37,9 @@ impl Broker {
             "listener 0 {}\nallow_anonymous true\nlog_dest none\n",
             self.socket.display()
         );
+        if let Some(a) = &self.acl {
+            text += &format!("acl_file {}\n", a.display());
+        }
         if self.persistence {
             text += &format!("persistence true\npersistence_location {}/\nautosave_interval 1\n", self.dir.path().display());
         } else {
