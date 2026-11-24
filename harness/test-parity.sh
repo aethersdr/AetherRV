@@ -10,7 +10,7 @@ out=docs/TEST-PARITY.md
 tags=$(mktemp)
 trap 'rm -f "$tags"' EXIT
 # one line per tag: "<py id><TAB><file>:<line> <rust fn>"
-find crates services sims harness -name '*.rs' -not -path '*/target/*' -print0 2>/dev/null |
+find crates services sims harness -name '*.rs' -not -path '*/target/*' -not -path 'harness/out/*' -print0 2>/dev/null |
   xargs -0 awk '
     FNR == 1 { want = 0 }
     /\/\/\/ py: / {
