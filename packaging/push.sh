@@ -13,6 +13,7 @@ if [ "$MODE" != "--cutover" ] && [ "$MODE" != "--system" ] && ssh -o BatchMode=y
 fi
 if [ -f ui/package.json ] && [ -d ui/node_modules ]; then (cd ui && npm run build --silent); fi
 git describe --always --dirty 2>/dev/null > packaging/VERSION || true
+ssh "$HOST" "sudo mkdir -p /opt/aetherrv-rs/src"   # (rsync makes only the last level; a first install has no /opt/aetherrv-rs)
 rsync -a --delete --exclude target --exclude .git --exclude ui/node_modules --exclude harness/out --exclude deploy/local.env \
   --exclude packaging/local.env --exclude '.venv' --exclude __pycache__ --exclude docs/private \
   --rsync-path="sudo rsync" ./ "$HOST":/opt/aetherrv-rs/src/
