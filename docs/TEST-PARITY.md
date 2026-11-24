@@ -35,7 +35,7 @@ hand. The reference ids are `pytest --collect-only -q` on `main` (`docs/test-par
 | `tests/test_connectivity.py::test_starlink_install_sends_once_and_verifies_uptime_reset` | ported | `services/starlink/tests/connectivity.rs:226 test_starlink_install_sends_once_and_verifies_uptime_reset` |
 | `tests/test_connectivity.py::test_starlink_install_send_error_is_not_retried` | ported | `services/starlink/tests/connectivity.rs:240 test_starlink_install_send_error_is_not_retried` |
 | `tests/test_connectivity.py::test_starlink_install_unverified_when_dish_never_restarts` | ported | `services/starlink/tests/connectivity.rs:251 test_starlink_install_unverified_when_dish_never_restarts` |
-| `tests/test_connectivity.py::test_starlink_alerts_quiet_after_requested_restart` | ported | `services/starlink/tests/connectivity.rs:389 starlink_side_of_alerts_quiet_after_requested_restart` `services/alerts/tests/test_alerts.rs:408 test_starlink_alerts_quiet_after_requested_restart` |
+| `tests/test_connectivity.py::test_starlink_alerts_quiet_after_requested_restart` | ported | `services/starlink/tests/connectivity.rs:421 starlink_side_of_alerts_quiet_after_requested_restart` `services/alerts/tests/test_alerts.rs:408 test_starlink_alerts_quiet_after_requested_restart` |
 | `tests/test_connectivity.py::test_peplink_bandwidth_per_wan` | ported | `services/peplink/tests/connectivity.rs:84 test_peplink_bandwidth_per_wan` |
 | `tests/test_connectivity.py::test_starlink_signal_quality_to_snr` | ported | `services/starlink/tests/connectivity.rs:73 test_starlink_signal_quality_to_snr` |
 | `tests/test_connectivity.py::test_peplink_priority_payload_strict` | ported | `services/peplink/tests/connectivity.rs:119 test_peplink_priority_payload_strict` |
@@ -186,13 +186,13 @@ hand. The reference ids are `pytest --collect-only -q` on `main` (`docs/test-par
 | `tests/test_switching.py::test_trigger_safety_net_switches_output_off_if_controller_does_not` | ported | `services/n2k/tests/switching.rs:401 test_trigger_safety_net_switches_output_off_if_controller_does_not` |
 | `tests/test_switching.py::test_plain_on_to_trigger_channel_stays_blocked` | ported | `services/n2k/tests/switching.rs:426 test_plain_on_to_trigger_channel_stays_blocked` |
 | `tests/test_switching.py::test_claim_poll_reply_is_sent_but_logged_quietly` | ported | `services/n2k/tests/switching.rs:437 test_claim_poll_reply_is_sent_but_logged_quietly` |
-| `tests/test_switching.py::test_hold_puts_the_virtual_switch_on_until_release` | ported | `services/n2k/tests/switching.rs:456 test_hold_puts_the_virtual_switch_on_until_release` |
-| `tests/test_switching.py::test_hold_is_released_after_max_hold` | ported | `services/n2k/tests/switching.rs:472 test_hold_is_released_after_max_hold` |
-| `tests/test_switching.py::test_hold_only_on_dimmers_and_never_to_the_breaker_bank` | ported | `services/n2k/tests/switching.rs:483 test_hold_only_on_dimmers_and_never_to_the_breaker_bank` |
-| `tests/test_switching.py::test_hold_needs_fresh_status_and_a_released_switch` | ported | `services/n2k/tests/switching.rs:498 test_hold_needs_fresh_status_and_a_released_switch` |
-| `tests/test_switching.py::test_hold_blocked_when_tx_disabled` | ported | `services/n2k/tests/switching.rs:511 test_hold_blocked_when_tx_disabled` |
-| `tests/test_switching.py::test_a_quick_hold_still_makes_a_full_length_press` | ported | `services/n2k/tests/switching.rs:521 test_a_quick_hold_still_makes_a_full_length_press` |
-| `tests/test_switching.py::test_off_refused_while_the_input_holds_it_on` | ported | `services/n2k/tests/switching.rs:533 test_off_refused_while_the_input_holds_it_on` |
+| `tests/test_switching.py::test_hold_puts_the_virtual_switch_on_until_release` | ported | `services/n2k/tests/switching.rs:476 test_hold_puts_the_virtual_switch_on_until_release` |
+| `tests/test_switching.py::test_hold_is_released_after_max_hold` | ported | `services/n2k/tests/switching.rs:492 test_hold_is_released_after_max_hold` |
+| `tests/test_switching.py::test_hold_only_on_dimmers_and_never_to_the_breaker_bank` | ported | `services/n2k/tests/switching.rs:503 test_hold_only_on_dimmers_and_never_to_the_breaker_bank` |
+| `tests/test_switching.py::test_hold_needs_fresh_status_and_a_released_switch` | ported | `services/n2k/tests/switching.rs:518 test_hold_needs_fresh_status_and_a_released_switch` |
+| `tests/test_switching.py::test_hold_blocked_when_tx_disabled` | ported | `services/n2k/tests/switching.rs:531 test_hold_blocked_when_tx_disabled` |
+| `tests/test_switching.py::test_a_quick_hold_still_makes_a_full_length_press` | ported | `services/n2k/tests/switching.rs:541 test_a_quick_hold_still_makes_a_full_length_press` |
+| `tests/test_switching.py::test_off_refused_while_the_input_holds_it_on` | ported | `services/n2k/tests/switching.rs:553 test_off_refused_while_the_input_holds_it_on` |
 | `tests/test_victron.py::test_temps_auto_pick_by_type` | ported | `services/victron/tests/victron.rs:34 test_temps_auto_pick_by_type` |
 | `tests/test_victron.py::test_temps_explicit_by_name_or_instance` | ported | `services/victron/tests/victron.rs:52 test_temps_explicit_by_name_or_instance` |
 | `tests/test_victron.py::test_four_ruuvi_tags_by_name` | ported | `services/victron/tests/victron.rs:63 test_four_ruuvi_tags_by_name` |
