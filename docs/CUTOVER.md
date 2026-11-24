@@ -100,6 +100,13 @@ Then `sudo packaging/cutover.sh --full` (the config's `tx_enabled` decides, as i
   UI memory ≤ 400 MB, and **power-on to a usable UI ≤ 15 s** (time a cold power-up with a stopwatch from power
   applied to the first touch that works). `harness/uibench` can measure the panel in the van only with every
   transmit gate off (the read-only period, §6): it injects touches.
+- **The boot splash hand-off**, watched (the bench has no Plymouth): splash, then black for under a second, then the
+  UI, with no white frame; and the shutdown splash.
+- **The runtime's memory over days**: the bench measured one pass of about eight minutes. Check the panel's PSS
+  (`smem -P WPEWebProcess` or `/proc/<pid>/smaps_rollup`) after a day and again after several days. It should stay
+  under 400 MB, and free memory should stay high with the kept radar loop's GPU buffers (~800 MB on the 16 GB Pi).
+- **Screen off from the page** (Settings, the screen-off control) and touch-to-wake under the chosen runtime, on
+  the real HDMI panel.
 
 ## 9. Rollback (one command)
 
