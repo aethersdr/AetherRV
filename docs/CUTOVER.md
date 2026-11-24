@@ -95,8 +95,8 @@ For each line: `sudo packaging/cutover.sh --allow <device>`, do the test, watch 
 
 | Device | Test | Expect |
 |---|---|---|
-| `n2k` | tap the spare ch8 tile on, then off; hold the cabin-lights tile to dim | ch8 follows, verified; dimming ramps while held |
-| `rixens_http` | setpoint +0.5 °C then back; fan to auto | verified by the MCS7 |
+| `n2k` | tap a harmless tile on, then off (e.g. Passenger scene lights, ch6); hold the Cabin lights tile (ch12, a dimmer) to dim, from the touchscreen and from a browser | each `set` and `hold` verified in `command_log` (`virtual switch 33.N pressed`/`held`/`released`); dimming ramps while held. The "Spare (ch 14)" tile has no virtual switch and is refused, nothing sent (as in Python) |
+| `rixens_http` | setpoint one step up then back with Home's + and − (one display degree each, sent 1.5 s after the last tap), not the Climate dial: the dial sends the whole display degree where you let go, and on 2026-11-24 a drag sent 10 °C and started the furnace; fan to auto | each `setpoint` verified by the MCS7 (`act=1 … verified`); the MCS7 stays in standby |
 | `victron` | shore limit to its current value (a no-op), then MPPT on (already on) | "already set" both times |
 | `espar_diag` | wait 30 s with the heater idle | nothing sent (diagnostics only ask while the heater is awake) |
 | `espar` | (heater cold) attach OFF; FAN 30 s → OFF; HEAT 5 min at a low setpoint → OFF; let the 240 s after-run finish | each verified on 2C4; no stored fault |
