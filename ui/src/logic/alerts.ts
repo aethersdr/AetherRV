@@ -28,6 +28,7 @@ export const topSeverity = (unacked: Alert[]) =>
 // ── Two-tone chime (WebAudio, no asset). New serious/critical always; warnings only in day mode.
 // Unacknowledged criticals repeat every 60 s. ──
 let audio: AudioContext | undefined;
+export const chimeState = () => audio?.state ?? "none";
 const heard = new Set<string>();
 let lastRepeat = 0;
 function tone(f: number, t0: number, d: number, ctx: AudioContext) {

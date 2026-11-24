@@ -2,8 +2,8 @@
 // has ?bench=1 (a dynamic import in main.tsx, so it is its own chunk and the production page never runs it).
 //
 // Passive unless the runner asks: it never touches the DOM or the store on its own. The runner's long-poll commands
-// ("raf", "presscost", "screen off|on", below) are the only exceptions, and none sends a device command. After each
-// page change it tells the bench runner (on
+// ("raf", "presscost", "screen off|on", "chime", "report", below) are the only exceptions; none sends a device
+// command. After each page change it tells the bench runner (on
 // 127.0.0.1:<bench_port>, by navigator.sendBeacon: no CORS preflight) where the rail, the view area and a few
 // press targets are, plus the page's boot marks, Event Timing and long-task entries where the engine has them, and
 // the WebGL renderer. With &raf=1 it also reports requestAnimationFrame intervals; and the runner can ask for a
@@ -14,6 +14,7 @@
 // Press targets are chosen so that pressing them sends nothing: the runner presses, holds and slides off (no click),
 // so only pointerdown side effects matter, and controls with any (dimmer tiles, dials, sliders, drag grips, React
 // onPointerDown handlers) are skipped.
+import { chimeState, playChime } from "../logic/alerts";
 import { kioskWake, SCREEN_AVAIL, SHIELD, screenOff } from "../logic/kiosk";
 import { heldTile } from "../logic/switches";
 import { currentView } from "../state/route";
@@ -201,7 +202,7 @@ function report(why: string) {
   send("page", {
     why, view, viewport: [innerWidth, innerHeight], dpr: devicePixelRatio, ua: navigator.userAgent, webgl: webgl(),
     conn: store.get(K.conn), ready: store.get(K.ready) === true,
-    screen: { available: store.get(SCREEN_AVAIL) === true, shield: store.get(SHIELD) === true },
+    screen: { available: store.get(SCREEN_AVAIL) === true, shield: store.get(SHIELD) === true }, audio: chimeState(),
     rail, views: rect(document.getElementById("views")), topbar: rect(document.querySelector(".topbar")),
     targets: targets(view), scene: scene(view), stim: stim(view), marks: marks(),
     event_timing: evOk ? events.splice(0) : "unsupported", longtasks: ltOk ? longtasks.splice(0) : "unsupported",
@@ -295,6 +296,7 @@ void (async () => {
       else if (c === "screen off") { screenOff(); setTimeout(() => report("screen-off"), 2500); }
       else if (c === "screen on") { kioskWake(); setTimeout(() => report("screen-on"), 2500); }
       else if (c === "report") report("asked");
+      else if (c === "chime") { playChime("serious"); setTimeout(() => report("chime"), 1500); }   // the UI's own chime
     } catch { await new Promise(r => setTimeout(r, 3000)); }   // runner not there
   }
 })();

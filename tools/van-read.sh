@@ -98,7 +98,7 @@ case "$cmd" in
     # For the power-on budget (docs/UI-RUNTIME-BENCHMARK.md §8) and the panel's session: when the firewall,
     # network.target, user sessions and the kiosk started on this boot (CLOCK_MONOTONIC us, i.e. since the kernel
     # started), the bootloader's configuration, and whether a sound server plays the UI's alert chime. Reads only.
-    remote "systemd-analyze 2>&1 | head -2;
+    remote "systemctl --version | head -1; systemd-analyze 2>&1 | head -2;
       for u in nftables.service network-pre.target systemd-networkd.service network.target systemd-user-sessions.service user@\$(id -u kiosk 2>/dev/null || echo 0).service aetherrv.service aetherrv-kiosk.service; do
         systemctl show -p Id -p UnitFileState -p ActiveState -p ExecMainStartTimestampMonotonic -p ExecMainExitTimestampMonotonic -p ActiveEnterTimestampMonotonic \$u | tr '\n' ' '; echo; done;
       systemd-analyze blame --no-pager 2>/dev/null | head -12;

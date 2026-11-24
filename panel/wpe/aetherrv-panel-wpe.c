@@ -10,7 +10,9 @@
  * Exit status: 0 when the window is closed or on SIGTERM/SIGINT; 2 if the web process crashes or is killed for its
  * memory, 3 if it stops responding for AETHERRV_PANEL_HANG_S seconds (default 30; 0 = never; WebKit notices a hang
  * only when it has something to deliver, e.g. a touch: a frozen page is restarted after the next tap), 1 on a
- * start-up error. launch.sh then ends the sway session and the panel unit (Restart=always) starts everything again.
+ * start-up error, 4 when the compositor goes away (WPEDisplay "disconnected": the Wayland connection was lost, e.g.
+ * sway stopped by a restart of the panel unit; without this the launcher would outlive its session). launch.sh then
+ * ends the sway session and the panel unit (Restart=always) starts everything again.
  * Build: cc -O2 -o aetherrv-panel-wpe aetherrv-panel-wpe.c $(pkg-config --cflags --libs wpe-webkit-2.0)
  */
 #include <glib-unix.h>
@@ -103,6 +105,13 @@ static void on_close(WebKitWebView *view, gpointer data)
     quit(0);
 }
 
+static void on_display_disconnected(WPEDisplay *display, GError *error, gpointer data)
+{
+    (void)display; (void)data;
+    g_printerr("aetherrv-panel-wpe: the compositor went away (%s): exiting\n", error ? error->message : "disconnected");
+    quit(4);
+}
+
 static gboolean on_signal(gpointer data)
 {
     (void)data;
@@ -137,6 +146,7 @@ int main(int argc, char **argv)
         g_printerr("aetherrv-panel-wpe: no display\n");
         return 1;
     }
+    g_signal_connect(display, "disconnected", G_CALLBACK(on_display_disconnected), NULL);
     g_autoptr(WebKitNetworkSession) session = webkit_network_session_new(data_dir, cache_dir);
     g_autoptr(WebKitWebsitePolicies) policies = webkit_website_policies_new_with_policies("autoplay", WEBKIT_AUTOPLAY_ALLOW, NULL);
     g_autoptr(WebKitSettings) settings = webkit_settings_new();

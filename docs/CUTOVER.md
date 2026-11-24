@@ -39,10 +39,16 @@ and the panel need them):
 
 - `mosquitto` (the bus);
 - the chosen UI runtime (`docs/UI-RUNTIME-BENCHMARK.md` §9, `/etc/aetherrv/panel.env`):
-  - **WPE**: `wpewebkit` (it brings `bubblewrap` and `xdg-dbus-proxy`) and `noto-fonts` (the bench had to add the
-    fonts: WPE has no bundled fallback font);
-  - Tauri: `webkit2gtk-4.1`;
-  - Chromium: already there (today's kiosk).
+  - **WPE**: `wpewebkit` (it brings `bubblewrap` and `xdg-dbus-proxy`), `noto-fonts` (the bench had to add the
+    fonts: WPE has no bundled fallback font), and **`gst-plugins-base gst-plugins-good`** for the alert chime.
+    WebKit plays WebAudio through GStreamer's `autoaudiosink` (gst-plugins-good), which picks `alsasink`
+    (gst-plugins-base) when there is no sound server, as in the van. `wpewebkit` depends on neither: without them the
+    page is silent and its AudioContext stays suspended (`harness/uibench/audio-gst-check.sh`);
+  - Tauri: `webkit2gtk-4.1`, and the same two GStreamer packages for the chime;
+  - Chromium: already there (today's kiosk; it plays to ALSA itself).
+
+The panel's PAM stack (`packaging/pam/aetherrv-panel`, installed by `install.sh`) uses `pam_systemd class=user-light`,
+which needs systemd 256 or later: check `systemctl --version` (the van ran 262 on 2026-11-24).
 
 `pacman -S --needed <packages>` on an up-to-date system only (Arch does not support partial upgrades). If
 `pacman -Syu` is due, do it on another day, not on the cutover day.
@@ -117,6 +123,10 @@ Then `sudo packaging/cutover.sh --full` (the config's `tx_enabled` decides, as i
   under 400 MB, and free memory should stay high with the kept radar loop's GPU buffers (~800 MB on the 16 GB Pi).
 - **Screen off from the page** (Settings, the screen-off control) and touch-to-wake under the chosen runtime, on
   the real HDMI panel.
+- **The alert chime, heard** under the chosen runtime: on Alerts, Sound off, then Sound on plays the serious chime
+  (UI-local, nothing is sent to a device). The van has no sound server: the runtime plays to ALSA on the HDMI audio
+  directly, so check it comes out of the panel's speaker. The bench proved only that samples reach ALSA; the chime
+  has never been confirmed audible in the van on any runtime (`INTEGRATION_PLAN.md` §12).
 
 ## 9. Rollback (one command)
 

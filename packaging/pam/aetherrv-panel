@@ -1,0 +1,9 @@
+# PAM stack for the Rust panel's session (packaging/systemd/aetherrv-panel.service): deploy/pam/aetherrv-kiosk with
+# class=user-light (systemd >= 256), so logind gives sway its seat and the device ACLs (DRM, input, sound) but starts
+# no user service manager: the session doesn't wait for user@.service to start (~0.3 s on the bench at power-on,
+# docs/UI-RUNTIME-BENCHMARK.md §8). Nothing in the panel needs a user manager or a session bus; checked with WPE,
+# Chromium and Tauri (harness/uibench/light-session.sh).
+auth     required pam_permit.so
+account  required pam_unix.so
+session  required pam_unix.so
+session  required pam_systemd.so class=user-light

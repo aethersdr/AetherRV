@@ -1,7 +1,11 @@
 # AetherRV panel: sway + the UI runtime on tty1 (replaces the Python system's aetherrv-kiosk.service).
 [Unit]
 Description=AetherRV touchscreen panel (sway + UI runtime) on tty1
-After=systemd-user-sessions.service aetherrv-gateway.service
+# Not after systemd-user-sessions.service (which waits for network.target): the panel's PAM stack has no
+# pam_nologin, so the panel can log in before /run/nologin is removed. pam_systemd needs logind. (logind still orders
+# every session's scope after systemd-user-sessions, so the session itself waits for network.target; the PAM stack's
+# class=user-light only spares it the user service manager: docs/UI-RUNTIME-BENCHMARK.md §8.)
+After=systemd-logind.service aetherrv-gateway.service
 Wants=aetherrv-gateway.service
 Conflicts=getty@tty1.service aetherrv-kiosk.service
 After=getty@tty1.service
@@ -12,7 +16,7 @@ Conflicts=plymouth-quit.service
 [Service]
 Type=simple
 User=kiosk
-PAMName=aetherrv-kiosk
+PAMName=aetherrv-panel
 TTYPath=/dev/tty1
 TTYReset=yes
 TTYVHangup=yes
@@ -27,8 +31,13 @@ Environment=XCURSOR_PATH=/usr/share/aetherrv/cursors XCURSOR_THEME=default XCURS
 EnvironmentFile=-/etc/aetherrv/panel.env
 # Wait (up to 60 s) for the gateway so the runtime doesn't land on an error page; the UI shows skeletons at once.
 ExecStartPre=/bin/bash -c 'for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && exit 0; sleep 0.25; done; exit 0'
+# Started early now (not after network.target): wait (up to 5 s) for the display driver's connectors, so sway never
+# starts before KMS is there and loses RestartSec to a failed start.
+ExecStartPre=/bin/bash -c 'for i in $(seq 50); do ls /sys/class/drm | grep -qE "^card[0-9]+-" && exit 0; sleep 0.1; done; exit 0'
 ExecStartPre=-+/usr/bin/plymouth quit --retain-splash
 ExecStartPre=-/usr/bin/pkill -u kiosk -x aetherrv-screen
+# and a WPE launcher left from a session that died some other way (comm is cut to 15 characters, so match the path)
+ExecStartPre=-/usr/bin/pkill -u kiosk -f ^/opt/aetherrv-rs/bin/aetherrv-panel-wpe
 ExecStart=/usr/bin/sway --config /opt/aetherrv-rs/panel/sway.conf
 Restart=always
 RestartSec=3

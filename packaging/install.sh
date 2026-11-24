@@ -56,6 +56,8 @@ chown root:aetherrv /etc/aetherrv/secrets.toml && chmod 640 /etc/aetherrv/secret
 install -d -o aetherrv -g aetherrv -m 750 /var/lib/aetherrv
 
 install -m 644 "$SRC"/packaging/systemd/*.service "$SRC"/packaging/systemd/*.socket "$SRC"/packaging/systemd/*.target /etc/systemd/system/
+# the panel unit's PAM stack (PAMName=aetherrv-panel): here too, as the cutover doesn't run system-setup.sh
+install -m 644 "$SRC"/packaging/pam/aetherrv-panel /etc/pam.d/aetherrv-panel
 # the exact list of Rust units: cutover.sh and rollback.sh act on these and nothing else (the Python system's
 # units share the aetherrv- prefix: aetherrv-kiosk, aetherrv-admin, aetherrv-update, aetherrv-splash-hold)
 (cd "$SRC"/packaging/systemd && ls *.service *.socket *.target) > "$DEST/units.txt"

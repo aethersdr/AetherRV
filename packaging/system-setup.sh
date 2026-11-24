@@ -15,6 +15,7 @@ if pacman -Q iwd &>/dev/null; then
   systemctl enable --now iwd.service
 fi
 install -m 644 deploy/pam/aetherrv-kiosk /etc/pam.d/aetherrv-kiosk
+install -m 644 packaging/pam/aetherrv-panel /etc/pam.d/aetherrv-panel     # the Rust panel's own stack (user-light)
 # hold the kernel/boot packages (custom kernel; linux-rpi owns the /boot dtbs/overlays it boots with)
 for pkg in linux-rpi raspberrypi-bootloader firmware-raspberrypi; do
   grep -qE "^IgnorePkg.*\b$pkg\b" /etc/pacman.conf || {
