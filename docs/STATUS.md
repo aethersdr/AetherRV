@@ -6,13 +6,13 @@ state and where its evidence lives. Updated as work lands; the final report is b
 | # | Goal-condition item | State | Evidence |
 |---|---|---|---|
 | 1 | Every §11 deliverable exists on the pushed `rust` branch | in progress | 37 crates: core, CAN, codecs, 16 services + admind, simulators (heater, Cerbo, Starlink, Peplink, MCS7, CAN replay), migrate, ctl, isolation; CUTOVER.md draft; UI foundation in progress |
-| 2 | Full test suite passes; `docs/TEST-PARITY.md` maps all 197 reference tests | in progress | 197 / 197 mapped (`harness/test-parity.sh`); full-workspace run to be repeated at the end |
-| 3 | Golden-parity diffs empty or each difference accepted by the owner | in progress | `harness/parity/parity.py` (van captures replayed into Python and Rust at once): 60 s run and 300 s run, no Python-only keys, Rust-only keys exactly D7, remaining diffs are start-time skew of one alert (Q-P2 for the owner). Per-service diffs vs Python against shared simulators: Victron, Starlink, Peplink 0. D1–D10 accepted; D11–D18 waiting for the owner |
-| 4 | Isolation tests pass for every service and the broker, incl. Espar resume and blind running | in progress | Espar process level (`services/espar/tests/process.rs`). Bench under systemd (`harness/bench/espar-systemd.sh`, c717323): FAN run and HEAT run each kept running through `systemctl restart`, `kill -9`, SIGSTOP→watchdog and a broker restart; HEAT run max 054 gap 3.06 s, 0 controller-loss faults, `resume ok` rows 0.5/1.5/3.1 s. Whole-system run (`harness/bench/isolation.sh`) next |
-| 5 | 12-hour soak clean on the bench Pi | not started | — |
-| 6 | UI runtime benchmark on the bench screen; every §8 number met at the §8 resolution | not started | — |
+| 2 | Full test suite passes; `docs/TEST-PARITY.md` maps all 197 reference tests | in progress | 197 / 197 mapped (`harness/test-parity.sh`). `cargo test --workspace` (2026-11-23, 2ddd5bb+): 389 passed, 0 failed in 126 test binaries. UI: Vitest 102/102, Playwright per page (smoke 6, climate 22, settings 15, energy 13, systems 6); Weather/Network pending. Final run at the end |
+| 3 | Golden-parity diffs empty or each difference accepted by the owner | owner rule set; runs to repeat at the end | `harness/parity/parity.py` (van captures replayed into Python and Rust at once): 60 s and 300 s runs: no Python-only keys, Rust-only keys exactly D7, the remaining diffs fall under the owner's tolerance rule (Q-P2). Victron, Starlink, Peplink per-service diffs 0. D1–D20 all accepted by the owner |
+| 4 | Isolation tests pass for every service and the broker, incl. Espar resume and blind running | passing; blind case on the bench after the soak | Bench under systemd, 87b712d (`harness/bench/isolation.sh`): `kill -9` of each of the 16 services, the broker restarted and killed: ISOLATION: PASS. Each victim back as a new PID with a heartbeat after the kill and its state restamped in 0.26–1.6 s, no other service down, the switching command path working while each victim was down, the Espar heating throughout (max 054 gap 0.58 s, 0 controller-loss faults), 0 commands to the MCS7. Espar alone (c717323): HEAT run through restart / kill -9 / watchdog / broker restart, max gap 3.06 s. Blind running: process test (`services/espar/tests/process.rs`); bench run `harness/bench/espar-blind.sh` after the soak |
+| 5 | 12-hour soak clean on the bench Pi | running | `harness/bench/soak.sh` started 2026-11-23 18:36 (87b712d) as `aetherrv-soak-run`: whole system on simulators, switch toggles over the bus and the WebSocket, MCS7 nudges, hourly Espar FAN → HEAT → OFF, ignition flips; verdicts in /var/tmp/soak/summary.json |
+| 6 | UI runtime benchmark on the bench screen; every §8 number met at the §8 resolution | in progress | harness being built (headless, the monitor is not detected; owner Q-U2). WPE via MiniBrowser (owner Q-U1). Workstation figures from the page agents only, not acceptance numbers |
 | 7 | Nothing installed, restarted or transmitted on the van Pi | holding | every van access goes through `tools/van-read.sh` (read-only subcommands), logged to `harness/out/van-access.log` (gitignored): identity, one /api/state dump, a listing and an rsync pull of the captures |
-| 8 | No open owner question; every answer in `docs/ARCHITECTURE.md` | open | ARCHITECTURE.md §14 |
+| 8 | No open owner question; every answer in `docs/ARCHITECTURE.md` | none open now | ARCHITECTURE.md §14 and Decisions (Q-A1 … Q-U6) |
 
 ## Log
 
@@ -34,3 +34,9 @@ state and where its evidence lives. Updated as work lands; the final report is b
   settings, netmon, gps, gateway, admind, can-aux, screen), 197/197 reference tests mapped. Golden-parity harness
   and first runs. Heater simulator fixed (multi-frame UDS, FAN → HEAT); the bench HEAT run resumed through every
   restart kind. MCS7 simulator, CAN replayer and the isolation orchestrator written; CUTOVER.md drafted.
+- 2026-11-23 (night): CLMD16, GPS simulators; whole-system isolation PASS under systemd with stricter checks;
+  the 12 h soak started. UI: Home, Switches, Alerts, Climate, Settings, Energy, Systems committed; Weather and
+  Network in progress; the WebGL battery bank (owner Q-U6) and the Wi-Fi-off confirm (Q-U5) in progress.
+  Packaging: exact unit lists for cutover/rollback, gateway `ui_dir`, `install.sh --system`, the panel unit,
+  `aetherrv-setup victron-pair`. Docs: README, BUILD-GUIDE, CRATES.md. Owner answers Q-P2, Q-D3, Q-U1…Q-U6,
+  Q-A2, Q-S1 recorded (D19, D20 implemented).
