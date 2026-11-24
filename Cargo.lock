@@ -438,6 +438,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-soak"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-core",
+ "anyhow",
+ "futures",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "aetherrv-starlink"
 version = "0.1.0"
 dependencies = [
