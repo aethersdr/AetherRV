@@ -384,8 +384,9 @@ enforcement points follow that one switch.
 - **A two-socket vcan test** shows that a second socket sees the first one's frames, which is why one service owns
   each port.
 - **Golden parity**: the Python reference (from `main`) and the Rust system are fed the same replayed captures and
-  simulator inputs; `tools/parity` diffs `/api/state` key by key, with time-dependent keys normalised (the list is
-  **[open: Q-P2]**).
+  simulator inputs; `harness/parity/parity.py` diffs `/api/state` key by key. Owner rule (Q-P2): fields that depend
+  on when each system sampled or started (ages, `since`/`t` times within 1.5 s, CAN frame rates, alert raise times
+  skewed by the start-time difference) compare as equal within that tolerance; every other key must match exactly.
 - **Isolation tests** (`tools/isolation`): the full system on simulators; kill and restart each service and the
   broker in turn; assert the others keep working, state recovers, a simulated Espar run and the MCS7 are not
   interrupted (the heater simulator logs every gap and any controller-loss fault).
@@ -444,11 +445,13 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-L1 | No fresh battery reading: may HEAT start? | answered 2026-11-23: yes, as today |
 | Q-R1 | Radar motion fields | answered 2026-11-23: pure-Rust optical flow; the visual difference goes to the owner for acceptance |
 | Q-P1 | Recording API inputs through the van Pi | answered 2026-11-23: yes, read-only requests only, through the logged wrapper |
-| Q-P2 | Parity normalisation of time-dependent keys | open: to be asked with the first real diffs |
+| Q-P2 | Parity normalisation of time-dependent keys | answered 2026-11-23: time/age/rate fields within tolerance, alert raise times may differ by the start skew; all else exact |
 | Q-D1 | Demo mode: port or drop? | answered 2026-11-23: drop it |
 | Q-T1 | Should a late heater OFF (older than the 3 s TTL) still run, as the safe direction? (D4) | answered 2026-11-23: yes |
 | Q-D2 | Accept the differences D1–D10 in §13a | answered 2026-11-23: all accepted |
-| Q-D3 | Accept D11–D18 | open: next batch |
+| Q-D3 | Accept D11–D18 | answered 2026-11-23: all accepted |
+| Q-U1 | WPE candidate: `cog` is not packaged for Arch ARM and targets the legacy libwpe API | answered 2026-11-23: benchmark WPE through its MiniBrowser (wpewebkit 2.52, WPE Platform API); if WPE wins, ship a small WPE Platform kiosk launcher |
+| Q-U2 | Bench monitor not detected on HDMI | answered 2026-11-23: develop the benchmark headless for now; the owner reports when the monitor is back |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -480,3 +483,6 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Late heater OFF commands are exempt from the command TTL (safe direction); late ONs are refused | owner (Q-T1) |
 | 2026-11-23 | Differences D1–D10 (§13a) accepted | owner (Q-D2) |
 | 2026-11-23 | Workstation: sudo allowed to install the build and test dependencies (Rust, Mosquitto, vcan, …) | owner (Q-B1) |
+| 2026-11-23 | Golden-parity rule: sampling-time fields within tolerance, everything else exact | owner (Q-P2) |
+| 2026-11-23 | Differences D11–D18 (§13a) accepted | owner (Q-D3) |
+| 2026-11-23 | WPE is benchmarked through MiniBrowser (WPE Platform API) instead of `cog` | owner (Q-U1) |
