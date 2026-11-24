@@ -20,7 +20,13 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
   weather radar with a 7-day forecast for the van's position.
 - **Settings:** Wi-Fi (iwd), Tailscale, system updates, rename, screen auto-off, reboot. The time zone is set
   automatically from GPS.
-- **Kiosk:** sway + Chromium, screen off with touch-to-wake, and a Plymouth boot/shutdown splash.
+- **Panel:** sway + the UI runtime chosen by benchmark ([`docs/UI-RUNTIME-BENCHMARK.md`](docs/UI-RUNTIME-BENCHMARK.md)),
+  screen off with touch-to-wake, and a Plymouth boot/shutdown splash. The same React app works in Safari, Chrome
+  and Firefox on phones and laptops.
+
+This branch (`rust`) is the Rust rewrite: one small service per device plus a few core services, talking over a
+local MQTT broker, with a React + TypeScript UI. The Python system on `main` is the reference it was tested
+against (197 ported tests, golden-parity replays of real CAN captures). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Safety model
 
@@ -38,17 +44,27 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
   controller yet is `blocked` (it refuses ON).
 - **Root access is minimal.** The only root component is a small, socket-activated helper with a fixed list of
   validated actions. Wi-Fi passwords never appear in logs, the live state or command lines.
+- **Isolation.** Every device has its own process and systemd unit. A crash, restart or upgrade of one module (or
+  of the broker) leaves the others running; this is tested by killing each one in turn under systemd while a
+  simulated heater runs.
+- **The Espar never notices a restart.** The Espar service owns the heater's CAN port and keeps the cyclic frames
+  going itself, with no runtime dependency on the broker, gateway or UI. If it restarts mid-run it re-attaches to
+  the running heater without a new start-up or an OFF; with no bus contact for a grace period it turns the heater
+  off. Heat lockout on a low battery is enforced by a guard and again inside each heater service.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `src/aetherrv/` | Python asyncio backend: adapters, state, history (SQLite), alerts, settings, web/WebSocket |
-| `web/` | The touch UI (vanilla JS modules; Leaflet and qrcode-generator vendored) |
-| `deploy/` | systemd units, kiosk (sway), admin helper, installer, boot splash, networkd/iwd files |
-| `config/aetherrv.example.toml` | **Sample** configuration. Copy it and fill in your devices |
-| `tools/` | Pairing and setup helpers, bench traffic generators, hero renderer |
-| `tests/` | pytest suite |
+| `crates/` | Shared libraries: `core` (bus client, state, commands, TxGate, config), `can` (SocketCAN, socketcand, failover, capture), protocol codecs (`proto-n2k`, `proto-espar`, `proto-roypow`, `proto-nmea`, `proto-mcs7`), `power`, `sim` (device simulators) |
+| `services/` | One binary per device or core function: `espar`, `n2k`, `rixens`, `victron`, `batteries-ble`, `starlink`, `peplink`, `gps`, `weather`, `netmon`, `can-aux`, `power-guard`, `alerts`, `history`, `derive`, `settings`, `gateway` (web + WebSocket), `screen`, and `admind` (the root helper) |
+| `ui/` | The React + TypeScript touch UI (Vite; Leaflet and three.js bundled, no CDN) |
+| `sims/` | Simulator binaries for the bench: heater, CLMD16 + keypads, MCS7, Cerbo, Starlink, Peplink, GPS, CAN capture replay |
+| `utils/` | `aetherrv-ctl` (bus client), `aetherrv-migrate` (checks config, secrets, history and settings), `aetherrv-setup` (Victron pairing), the isolation and soak tools |
+| `packaging/` | systemd units, the panel session, Mosquitto config, installer, `push.sh`, cutover and rollback scripts |
+| `harness/` | Test harnesses: golden parity, the bench scripts, the UI reference screenshots, the runtime benchmark |
+| `config/aetherrv.example.toml` | **Sample** configuration (shared with the Python system). Copy it and fill in your devices |
+| `src/`, `web/`, `deploy/`, `tests/` | The Python reference system and its 197 tests (kept for parity testing and rollback) |
 
 ## Install (on the Pi)
 
@@ -57,21 +73,29 @@ and configuring Arch Linux ARM, wiring the CAN buses, and has prompts for adapti
 when your equipment differs.
 
 ```sh
-cp deploy/local.env.example deploy/local.env     # set AETHERRV_HOST to your Pi's ssh host
-./deploy/push.sh                                 # rsync to /opt/aetherrv and run deploy/install.sh
+packaging/push.sh <your-pi> --system     # rsync, native cargo build on the Pi, install, enable and start
 ```
 
-`install.sh` creates `/etc/aetherrv/aetherrv.toml` from the sample only if it's missing. Edit it on the Pi
-with your devices' addresses. Secrets (Victron MQTT token, Peplink read-only credentials) go in
-`/etc/aetherrv/secrets.toml` (root:aetherrv 0640), written by the tools in `tools/`, never into the repo.
+`push.sh` never has a default host. `--system` is for a console without the Python system; a console that runs
+the Python system switches with the runbook in [`docs/CUTOVER.md`](docs/CUTOVER.md) (read-only first, then one
+device at a time) and can go back with one command (`packaging/rollback.sh`).
 
-The boot splash changes `/boot` and is a separate, one-time step: `sudo /opt/aetherrv/tools/install_boot_splash.sh`.
+The installer creates `/etc/aetherrv/aetherrv.toml` from the sample only if it's missing. Edit it on the Pi with
+your devices' addresses. Secrets (Victron MQTT token, Peplink read-only credentials) go in
+`/etc/aetherrv/secrets.toml` (root:aetherrv 0640), written by `aetherrv-setup` and the tools in `tools/`, never into
+the repo. The boot splash changes `/boot` and is a separate, one-time step: `sudo tools/install_boot_splash.sh`.
 
 ## Development
 
 ```sh
-uv sync --extra dev && uv run pytest -q
+harness/dev-setup.sh                      # once per boot: the virtual CAN interfaces the tests use (sudo)
+cargo test --workspace                    # Rust: unit, integration and process tests (vcan + a private Mosquitto)
+(cd ui && npm ci && npx vitest run && npx playwright test)   # UI: unit tests and smoke tests against a stubbed gateway
 ```
+
+No containers: everything runs as plain processes. The simulators let the whole system run on a Pi with no van
+attached (`harness/bench/bench-up.sh`). [`docs/TEST-PARITY.md`](docs/TEST-PARITY.md) maps each Python test to its Rust
+or UI equivalent, and [`docs/STATUS.md`](docs/STATUS.md) holds the evidence for the conversion.
 
 `INTEGRATION_PLAN.md` is the (sanitized) build log: protocol findings, decisions and verification notes.
 
