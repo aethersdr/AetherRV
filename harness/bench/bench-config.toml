@@ -30,7 +30,7 @@ diag_interval_s = 1
 [device.n2k]
 kind = "n2k"
 bus = "hat0"
-tx_enabled = false
+tx_enabled = true   # vcan0 + the CLMD16 simulator only
 
 [power]
 auto_shutdown = false
@@ -82,3 +82,41 @@ kind = "peplink"
 enabled = true
 host = "127.0.0.1:8443"
 verify_tls = false
+
+# switching against aetherrv-sim-clmd16 on vcan0 (invented layout in the van's shape)
+[device.n2k.switching]
+controller = 0
+bank = 32
+vsw_bank = 33
+press_s = 0.4
+address = 150
+
+[[device.n2k.switch]]
+bank = 32
+channel = 1
+press = 1
+name = "Spot lights"
+requires_input = 2
+
+[[device.n2k.switch]]
+bank = 32
+channel = 7
+press = 7
+name = "Water pump"
+
+[[device.n2k.switch]]
+bank = 32
+channel = 12
+press = 12
+name = "Cabin lights"
+kind = "dimmer"
+
+[[device.n2k.switch]]
+bank = 32
+channel = 15
+press = 8
+name = "Starlink"
+
+[[device.n2k.input]]
+input = 2
+name = "Ignition"

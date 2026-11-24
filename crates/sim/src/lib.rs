@@ -2,6 +2,7 @@
 //! tests. Never pointed at a real device.
 
 pub mod cerbo;
+pub mod clmd16;
 pub mod heater;
 pub mod peplink;
 pub mod starlink;

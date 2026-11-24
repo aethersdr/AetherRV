@@ -270,7 +270,7 @@ impl Model {
         let tw = ((self.room.filter(|_| self.running()).unwrap_or(self.temp) + 50.0) * 10.0).round() as u16;
         let t = tw.to_le_bytes();
         out.push(CanFrame::std(0x625, &[0x25, (n % 2) as u8, (n % 256) as u8, 0xE5, 0xFC, 0x3B, 0x58, 0x06]));
-        if n % 2 == 0 {
+        if n.is_multiple_of(2) {
             out.push(CanFrame::std(0x2C4, &[self.state, self.flags, 0, 0, t[0], t[1], 0, 0]));
         }
         out
@@ -287,7 +287,7 @@ impl Heater {
     /// Start on `cfg.iface` (vcan). Runs until the process ends.
     pub fn start(cfg: HeaterConfig) -> anyhow::Result<Heater> {
         let sock = Arc::new(RawSocket::open(&cfg.iface, false)?);
-        let log = cfg.log.as_ref().map(|p| std::fs::File::create(p)).transpose()?;
+        let log = cfg.log.as_ref().map(std::fs::File::create).transpose()?;
         let now = Instant::now();
         let m = Arc::new(Mutex::new(Model {
             cfg,

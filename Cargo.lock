@@ -219,6 +219,7 @@ version = "0.1.0"
 dependencies = [
  "aetherrv-can",
  "aetherrv-core",
+ "aetherrv-sim",
  "anyhow",
  "proto-n2k",
  "serde",
@@ -346,6 +347,7 @@ dependencies = [
  "prost-reflect",
  "prost-types",
  "proto-espar",
+ "proto-n2k",
  "rumqttc",
  "serde",
  "serde_json",
@@ -369,6 +371,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-sim-clmd16"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-sim",
+ "anyhow",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "aetherrv-sim-espar"
 version = "0.1.0"
 dependencies = [
@@ -377,6 +389,13 @@ dependencies = [
  "anyhow",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "aetherrv-sim-gps"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
 ]
 
 [[package]]

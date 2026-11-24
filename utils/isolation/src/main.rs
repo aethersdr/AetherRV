@@ -77,6 +77,16 @@ async fn main() -> anyhow::Result<()> {
         } else {
             sh(&["systemctl", "restart", &unit]);
         }
+        // while the victim is down, the switching command path must still work end to end (not via the broker
+        // when the broker is the victim)
+        let switch_probe = if victim != "n2k" && victim != "bus" {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let on = !bus.remote().list("switches.list").iter().any(|s| s["channel"] == 7 && s["on"] == true);
+            let r = bus.request("n2k", "set", json!({"channel": 7, "on": on}), "isolation", 3000, Duration::from_secs(15)).await;
+            Some(r.result == aetherrv_core::command::ResultKind::Ok)
+        } else {
+            None
+        };
         let start = Instant::now();
         let mut others_down: Vec<String> = vec![];
         let mut back_at: Option<f64> = None;
@@ -95,10 +105,8 @@ async fn main() -> anyhow::Result<()> {
                 back_at = Some(start.elapsed().as_secs_f64());
             }
             let needs_fresh = victim != "bus" && keys_before > 0;
-            if fresh_at.is_none() && up {
-                if !needs_fresh || owned(&bus, &victim, t_kill).1 {
-                    fresh_at = Some(start.elapsed().as_secs_f64());
-                }
+            if fresh_at.is_none() && up && (!needs_fresh || owned(&bus, &victim, t_kill).1) {
+                fresh_at = Some(start.elapsed().as_secs_f64());
             }
             if back_at.is_some() && fresh_at.is_some() && start.elapsed() > Duration::from_secs(6) {
                 break;
@@ -109,12 +117,13 @@ async fn main() -> anyhow::Result<()> {
         let mcs7_new = lines(&mcs7).saturating_sub(m0);
         let heater_ok = h1["state"] == "heating" && h1["controller_loss_faults"] == h0["controller_loss_faults"];
         let furnace = bus.remote().list("climate.rixens.sources").iter().any(|v| v == "furnace");
-        let pass = others_down.is_empty() && back_at.is_some() && fresh_at.is_some() && heater_ok && mcs7_new == 0 && furnace;
+        let pass = others_down.is_empty() && back_at.is_some() && fresh_at.is_some() && heater_ok && mcs7_new == 0 && furnace
+            && switch_probe != Some(false);
         ok_all &= pass;
         let row = json!({"victim": victim, "how": how, "pass": pass, "back_s": back_at, "fresh_state_s": fresh_at,
                          "others_down": others_down, "keys_owned": keys_before, "heater_state": h1["state"], "max_054_gap_s": gap.max(gap0),
                          "controller_loss_faults": h1["controller_loss_faults"], "mcs7_commands_sent": mcs7_new,
-                         "mcs7_furnace_on": furnace});
+                         "mcs7_furnace_on": furnace, "switch_probe_ok": switch_probe});
         println!("{row}");
         results.push(row);
         tokio::time::sleep(Duration::from_secs(2)).await;

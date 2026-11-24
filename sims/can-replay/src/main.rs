@@ -1,6 +1,7 @@
-//! `aetherrv-sim-replay <capture.log> <vcanN> [--loop] [--speed X]`: replays a candump capture's RECEIVED frames onto a
-//! virtual CAN interface at their recorded pace (e.g. the van's N2K traffic for the isolation runs and the soak).
-//! Refuses anything but a vcan.
+//! `aetherrv-sim-replay <capture.log> <vcanN> [--loop] [--speed X] [--drop-src N]...`: replays a candump capture's
+//! RECEIVED frames onto a virtual CAN interface at their recorded pace (e.g. the van's N2K traffic for the isolation
+//! runs and the soak). `--drop-src N` leaves out the 29-bit frames from source address N (so a simulator can stand in
+//! for that device, e.g. the CLMD16 at 0). Refuses anything but a vcan.
 
 use aetherrv_can::capture::read_file;
 use aetherrv_can::raw::RawSocket;
@@ -15,7 +16,11 @@ async fn main() -> anyhow::Result<()> {
     }
     let looping = a.iter().any(|x| x == "--loop");
     let speed: f64 = a.iter().position(|x| x == "--speed").and_then(|i| a.get(i + 1)).and_then(|s| s.parse().ok()).unwrap_or(1.0);
-    let frames: Vec<_> = read_file(std::path::Path::new(&path))?.into_iter().filter(|f| f.is_rx && !f.error).collect();
+    let drop: Vec<u32> = a.windows(2).filter(|w| w[0] == "--drop-src").filter_map(|w| w[1].parse().ok()).collect();
+    let frames: Vec<_> = read_file(std::path::Path::new(&path))?
+        .into_iter()
+        .filter(|f| f.is_rx && !f.error && !(f.extended && drop.contains(&(f.id & 0xFF))))
+        .collect();
     if frames.is_empty() {
         anyhow::bail!("no frames in {path}");
     }

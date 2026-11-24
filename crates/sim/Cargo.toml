@@ -9,6 +9,7 @@ license.workspace = true
 aetherrv-core.workspace = true
 aetherrv-can.workspace = true
 proto-espar.workspace = true
+proto-n2k.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
