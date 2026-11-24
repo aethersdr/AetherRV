@@ -21,7 +21,10 @@ case "$MODE" in
     systemctl daemon-reload
     systemctl disable --now aetherrv-kiosk.service aetherrv.service aetherrv-admin.socket aetherrv-admin.service 2>/dev/null || true
     systemctl enable --now aetherrv-admind.socket
-    systemctl enable aetherrv.target aetherrv-bus.service $(cd /etc/systemd/system && ls aetherrv-*.service | grep -vE '^aetherrv-(admind|bus|can-aux@|update)\.service$|^aetherrv-panel' || true)
+    UNITS=/opt/aetherrv-rs/units.txt
+    [ -s "$UNITS" ] || { echo "no $UNITS: run install.sh first" >&2; exit 4; }
+    # every Rust service except the socket-activated helper, the can-aux template and the panel (enabled below)
+    systemctl enable aetherrv.target $(grep -E '\.service$' "$UNITS" | grep -vE '^aetherrv-(admind|can-aux@|panel)\.service$')
     for b in $(/opt/aetherrv-rs/bin/aetherrv-can-aux -c /etc/aetherrv/aetherrv.toml --list); do systemctl enable "aetherrv-can-aux@$b.service"; done
     systemctl start aetherrv.target
     [ -f /etc/systemd/system/aetherrv-panel.service ] && systemctl enable --now aetherrv-panel.service

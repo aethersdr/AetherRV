@@ -430,7 +430,9 @@ pub async fn run(cfg: Cfg, bus_socket: Option<PathBuf>) -> anyhow::Result<()> {
         auth: RemoteAuth::new(Box::new(admin_client.clone()), &web.str_list("control_subnets"), &web.str("control_tailnet", "owner")),
         admin: Arc::new(admin_client),
         cmds: Arc::new(bus.clone()),
-        static_dir: web.str("static_dir", "/opt/aetherrv-rs/ui").into(),
+        // `static_dir` in the shared config is the PYTHON UI's directory (/opt/aetherrv/web); the React bundle has
+        // its own key so the two systems can share one aetherrv.toml during the cutover and after a rollback
+        static_dir: web.str("ui_dir", "/opt/aetherrv-rs/ui").into(),
         history_db: cfg.at("history").str("path", "/var/lib/aetherrv/history.sqlite3").into(),
         weather_sock: cfg.at("radar").str("socket", "/run/aetherrv/weather/weather.sock").into(),
         coalesce: Duration::from_millis(web.i64("coalesce_ms", 33).max(5) as u64),

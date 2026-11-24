@@ -7,8 +7,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 2; }
 if [ "${1:-}" != "--force" ]; then ./heaters-idle.sh; fi
-units=$(systemctl list-units --all --plain --no-legend 'aetherrv-*' | awk '{print $1}' | grep -vE '^aetherrv-(kiosk|admin)\.(service|socket)$' || true)
-systemctl disable --now aetherrv.target $units aetherrv-admind.socket 2>/dev/null || true
+# only the Rust units (install.sh lists them); the Python ones share the prefix (kiosk, admin, update, splash-hold)
+UNITS=/opt/aetherrv-rs/units.txt
+[ -s "$UNITS" ] || { echo "no $UNITS: is the Rust system installed?" >&2; exit 4; }
+units=$(grep -v '@\.service$' "$UNITS")
+units="$units $(systemctl list-units --all --plain --no-legend 'aetherrv-can-aux@*' | awk '{print $1}')"
+systemctl disable --now $units 2>/dev/null || true
 rm -f /etc/systemd/system/aetherrv-.service.d/tx-allow.conf
 systemctl daemon-reload
 systemctl enable --now aetherrv-admin.socket

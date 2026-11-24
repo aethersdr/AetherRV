@@ -9,7 +9,7 @@ path = "/var/lib/aetherrv/history.sqlite3"
 [web]
 host = "0.0.0.0"
 port = 8080
-static_dir = "/opt/aetherrv-rs/ui"
+ui_dir = "/opt/aetherrv-rs/ui"   # the React bundle (static_dir is the Python UI's key)
 admin_socket = "/run/aetherrv-admin.sock"
 
 [bus.hat0]
