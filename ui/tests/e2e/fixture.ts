@@ -1,0 +1,30 @@
+// Invented state for UI tests (no real names, networks or positions). Shapes follow the gateway's flat keys.
+export const STATE: Record<string, unknown> = {
+  "victron.connected": true,
+  "victron.battery.soc": 72.4, "victron.battery.voltage": 13.18, "victron.battery.power": -48, "victron.battery.current": -3.6,
+  "victron.battery.ttg": 400000,
+  "victron.pv.power": 120, "energy.alternator.power": 0, "victron.ac.shore": null, "energy.dc.load": 168, "victron.ac.load": 0,
+  "victron.vebus.instance": 276, "victron.vebus.name": "TestInverter", "victron.vebus.state": 0, "victron.vebus.mode": 4,
+  "victron.vebus.dc_w": 0, "victron.controls_ok": true,
+  "victron.tanks": [{ name: "Tank", type: "fresh", level: 40 }, { name: "Grey", type: "grey", level: 12 }],
+  "climate.cabin.temp": 19.5, "climate.outside.temp": 3.2, "climate.cabin.setpoint": 20,
+  "climate.fridge.temp": 3.1, "climate.freezer.temp": -15.2, "ui.fridge_max_c": 5, "ui.freezer_max_c": -10,
+  "climate.rixens.state": "idle", "climate.rixens.live": true, "climate.rixens.controls_ok": true,
+  "climate.rixens.sources": [], "climate.rixens.available": { electric: true, engine: true, preheat: true },
+  "climate.rixens.outlet_c": 35, "climate.espar.state": "off", "espar.controls_ok": true,
+  "power.heat_lockout": false,
+  "n2k.controls_ok": true, "switches.source": "n2k", "switching.automation": false,
+  "switching.triggers": [{ id: "test_lock", name: "Test lock", channel: 9 }],
+  "switching.inputs": [{ input: 1, name: "Key", icon: "engine", on: false, volts: 0.1 }],
+  "switches.list": [
+    { id: "7.1", name: "Alpha light", icon: "light", group: "Lights", on: false, state: "off", channel: 1, kind: "switch", home: true, home_pos: 1 },
+    { id: "7.2", name: "Beta light", icon: "light", group: "Lights", on: true, state: "on", channel: 2, kind: "switch", home: true, home_pos: 2 },
+    { id: "7.3", name: "Gamma dimmer", icon: "light", group: "Lights", on: false, state: "off", channel: 3, kind: "dimmer", level: null, home: true, home_pos: 3 },
+    { id: "7.4", name: "Delta pump", icon: "pump", group: "Water", on: false, state: "off", channel: 4, kind: "switch", home: true, home_pos: 4 },
+    { id: "7.9", name: "Test lock", icon: "lock", group: "Water", on: false, state: "off", channel: 9, kind: "switch" },
+  ],
+  "alerts.active": [
+    { id: "test.warn", severity: "warning", title: "Test warning", detail: "An invented warning", since: Date.now() / 1000 - 600, acked: false, source: "n2k" },
+  ],
+  "alerts.log": [{ t: Date.now() / 1000 - 600, event: "raised", id: "test.warn", severity: "warning", title: "Test warning" }],
+};
