@@ -1,0 +1,33 @@
+/* Network page additions on top of app.css (which carries the reference's network styles verbatim). */
+
+/* The 3D sky fades in once its first frame is drawn (and after the page was hidden: its GPU state was freed). */
+.sky3d canvas { animation: net-fade-in .3s ease-out both; }
+@keyframes net-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Instant pressed state on the WAN controls and the install button (lib/press.ts sets .pressed in the touch's frame) */
+.wans .prio-btn.pressed:not(:disabled), .wans .wan-pick .seg button.pressed { transform: scale(.94); filter: brightness(1.3); }
+#wan-card .wans.can-drag .grip:active { opacity: 1; color: var(--ink); }
+
+/* Phones and small laptops (responsive.css breakpoints; the reference layout is fixed to 1920×1200) */
+@media (max-width: 1100px) {
+  .net-grid { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+  .net-grid > .sl-card, .net-grid > .net-right, .net-grid > .wide { grid-column: 1 !important; grid-row: auto !important; }
+  .sl-sky.has3d .sky3d { min-height: 420px; }
+  .net-grid > .wide { min-height: 320px; }
+}
+@media (max-width: 760px) {
+  .net-right > .net-pair { grid-template-columns: minmax(0, 1fr); }
+  .sl-card .sl-left { grid-template-columns: auto 1fr; row-gap: 12px; }
+  .sl-card .sl-left > .sl-kv { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 8px; }
+  .sl-card .sl-kv b { font-size: 21px; } .sl-card .sl-kv span { font-size: 12px; }
+  .sl-card .sl-left .sl-speeds { gap: 24px; }
+  .sl-card .sl-speeds b { font-size: 38px; }
+  .sl-sky .sky { transform: scale(.85); transform-origin: top center; }
+  .sl-sky.has3d .sky3d { min-height: 340px; }
+  #wan-card .wan > div span { display: none; }
+  .pwr-chart .card-h { flex-wrap: wrap; gap: 10px 20px; }
+  .pwr-chart .card-h .seg.range { margin-left: 0; }
+}
+@media (max-width: 760px) {
+  .sl-sky.has3d .sky-ov.br { bottom: 40px; }
+}

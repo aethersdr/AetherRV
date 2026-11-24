@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
       target: "es2022",
       sourcemap: false,
       assetsInlineLimit: 0,         // keep images as files under /assets/ (no data: URIs in the CSS/JS)
+      chunkSizeWarningLimit: 600,   // three.js is one lazy chunk (~530 kB), loaded only for the 3D sky / bank
     },
     server: {
       host: "127.0.0.1",

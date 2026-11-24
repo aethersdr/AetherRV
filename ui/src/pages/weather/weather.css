@@ -1,0 +1,64 @@
+/* Weather page additions on top of app.css (which carries the reference's weather styles verbatim). Leaflet's own
+   stylesheet is imported from node_modules by WeatherPage.tsx, before this file. */
+
+/* The radar canvas fades in on its first image (and again after the page was hidden: its GPU state was freed). */
+.wx-radar-gl { opacity: 0; transition: opacity .25s ease-out; }
+.wx-radar-gl.on { opacity: 1; }
+.leaflet-zoom-anim .wx-radar-gl.leaflet-zoom-animated { transition: transform .25s cubic-bezier(0, 0, .25, 1), opacity .25s ease-out; }
+
+/* Forecast skeleton until the first forecast arrives (app.js: "Loading forecast…") */
+.fc-row.fc-skel { display: flex; flex-direction: column; justify-content: center; gap: 10px; position: relative; overflow: hidden; }
+.fc-row.fc-skel i { display: block; height: 14px; width: 46%; border-radius: 7px; background: var(--track); opacity: .6; }
+.fc-row.fc-skel i + i { width: 70%; height: 20px; }
+.fc-row.fc-skel::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--ink) 6%, transparent) 50%, transparent 80%);
+  transform: translateX(-100%); animation: wx-shimmer 1.1s linear infinite;
+}
+@keyframes wx-shimmer { to { transform: translateX(100%); } }
+.fc-row:not(.fc-skel) { animation: wx-fc-in .25s ease-out both; }
+@keyframes wx-fc-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Instant feedback on the map's glass buttons (lib/press.ts sets .pressed in the touch's frame) */
+.wx-wrap :is(.wx-menu-btn, .wx-locate, .wx-speed, .wx-zoom button, .wx-tl-play).pressed:not(:disabled) {
+  transform: scale(.94); background: rgba(14, 17, 22, .85); color: var(--c-batt); filter: none;
+}
+.wx-seg button.pressed, .wx-tog.pressed { filter: brightness(1.25); transform: none; }
+
+/* Phones and small laptops (responsive.css breakpoints; the reference layout is fixed to 1920×1200) */
+@media (max-width: 1100px) {
+  .wx-card { height: auto; }
+  .wx-card .card-h { flex-wrap: wrap; row-gap: 26px; }
+  .wx-card .card-h .wx-loc { order: 5; flex-basis: 100%; margin: 6px 0 18px; }
+  .wx-card .card-h .muted { margin-left: auto; }
+  .wx-body { flex-direction: column; }
+  .wx-body .wx-wrap { width: 100%; height: auto; aspect-ratio: 4 / 3; flex: none; }
+  .wx-fc { grid-template-rows: none; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .wx-tl-time { width: auto; min-width: 120px; }
+}
+@media (max-width: 760px) {
+  .wx-card .card-h { row-gap: 22px; column-gap: 12px; }
+  .wx-card .card-h > h2 { flex: 1 1 auto; }
+  .wx-card .card-h .wx-loc { font-size: 12px; gap: 8px; margin: 4px 0 14px; }
+  .wx-card .card-h .wx-loc > b { font-size: 15px; }
+  .wx-card .card-h .wx-loc > b small, .wx-card .card-h .wx-loc .daybar em { font-size: 12px; }
+  #wx-sub { order: 6; flex-basis: 100%; align-items: flex-start; margin: -10px 0 0; }
+  .wx-btn { padding: 6px 14px; font-size: 15px; height: 44px; }
+  .wx-body .wx-wrap { aspect-ratio: auto; height: min(520px, 68vh); }
+  /* glass controls: one column on the right (menu, opacity, zoom), a bottom row (length, speed, re-centre) and
+     the timeline above it */
+  .wx-menu-btn, .wx-locate, .wx-speed, .wx-zoom, .wx-opac { width: 48px; right: 10px; }
+  .wx-menu-btn, .wx-locate, .wx-speed, .wx-zoom button { height: 48px; }
+  .wx-menu-btn { top: 10px; }
+  .wx-opac { top: 68px; bottom: auto; height: 150px; padding-top: 10px; }
+  .wx-opac-ico { margin-bottom: 8px; }
+  .wx-zoom { top: 228px; bottom: auto; }
+  .wx-menu { right: 66px; left: 10px; width: auto; top: 10px; }
+  .wx-locate, .wx-span, #wx-speed { bottom: 26px; }
+  .wx-span { left: 10px; } #wx-speed { left: 66px; }
+  .wx-tl { left: 10px; right: 10px; bottom: 84px; height: 52px; padding-right: 10px; }
+  .wx-tl-play { width: 40px; height: 40px; }
+  .wx-tl-track { flex: 1 1 55%; min-width: 0; }
+  .wx-tl-time { flex: 0 1 auto; min-width: 0; width: auto; max-width: 42%; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wx-hint { display: none; }
+}

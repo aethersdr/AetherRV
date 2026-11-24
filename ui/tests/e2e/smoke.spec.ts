@@ -9,6 +9,9 @@ interface Sent { type: string; device?: string; cmd?: string; value?: unknown; i
 async function stubGateway(page: Page, opts: { control?: boolean; reply?: (m: Sent) => object | null } = {}) {
   const sent: Sent[] = [];
   let sock: WebSocketRoute | null = null;
+  // nothing leaves this machine: map tiles, radar, forecasts and anything else off loopback are aborted (registered
+  // first, so the specific stubs below take precedence)
+  await page.route(u => !/^(https?|wss?):\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(u.href), r => r.abort());
   await page.route("http://127.0.0.1:8091/**", r => r.abort());              // kiosk screen helper: never
   await page.route("**/api/**", r => r.fulfill({ json: {} }));
   await page.routeWebSocket(/\/ws$/, ws => {
