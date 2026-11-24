@@ -352,7 +352,12 @@ enforcement points follow that one switch.
   `aetherrv-panel`. Socket path unchanged (`/run/aetherrv-admin.sock`); the unit conflicts with the Python one.
 - `aetherrv-panel`: sway (as today, for output power) plus the UI runtime chosen by the benchmark (WPE, Tauri v2
   or Chromium; prompt §7; WPE through its own launcher, not `cog`, Q-U1), and `aetherrv-screen` (Rust, sway IPC;
-  replaces `screen_helper.py`, same HTTP API on 127.0.0.1:8091). The Plymouth hand-off (`plymouth quit --retain-splash` at kiosk start) stays.
+  replaces `screen_helper.py`, same HTTP API on 127.0.0.1:8091). The Plymouth hand-off (`plymouth quit
+  --retain-splash` at kiosk start) stays.
+  - The screen helper runs under a restart loop (`packaging/panel/screen.sh`): killed, it is back a second later in
+    the same session, with the runtime untouched. It exits with its sway, also when sway is killed and leaves its
+    socket behind, so a panel restart leaves nothing running. (`screen_helper.py` was started once by sway and
+    stayed dead until the kiosk restarted.)
   - The runtime is set in `/etc/aetherrv/panel.env` (`AETHERRV_PANEL_RUNTIME`, read by `packaging/panel/launch.sh`).
     WPE runs through the panel's own launcher, `panel/wpe/aetherrv-panel-wpe` (WPE Platform API, built by
     `install.sh`; owner Q-U1): one full-screen view, no navigation off the UI's origin, and it exits when its web
@@ -374,7 +379,7 @@ enforcement points follow that one switch.
 |---|---|---|
 | broker | Every device loop continues. Commands stop (the gateway refuses with "bus down"). The UI shows the last values, marked stale after 6 s. The Espar keeps its run; after `blind_off_s` it turns itself off. Alerts and history pause. | services republish on reconnect; history resumes |
 | gateway | The UI reconnects; nothing else notices. | UI snapshot on reconnect |
-| UI / panel | Nothing else notices. | |
+| UI / panel | Nothing else notices. The runtime or sway dying ends the session and systemd restarts the panel (3 s); the screen helper alone restarts within the session | |
 | espar | The run continues if the heater is still running the saved command when the service is back (§7.2); otherwise OFF as today. | |
 | n2k | Switch tiles show "module down"; the CLMD16 and keypads work on their own (dual control). | |
 | victron | Energy values stale; the heater services' own lockout trackers hold their latch; the Espar falls back to its intake sensor after 15 min. | |

@@ -35,6 +35,7 @@ ExecStartPre=/bin/bash -c 'for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/80
 # starts before KMS is there and loses RestartSec to a failed start.
 ExecStartPre=/bin/bash -c 'for i in $(seq 50); do ls /sys/class/drm | grep -qE "^card[0-9]+-" && exit 0; sleep 0.1; done; exit 0'
 ExecStartPre=-+/usr/bin/plymouth quit --retain-splash
+ExecStartPre=-/usr/bin/pkill -u kiosk -f /opt/aetherrv-rs/panel/screen.sh
 ExecStartPre=-/usr/bin/pkill -u kiosk -x aetherrv-screen
 # and a WPE launcher left from a session that died some other way (comm is cut to 15 characters, so match the path)
 ExecStartPre=-/usr/bin/pkill -u kiosk -f ^/opt/aetherrv-rs/bin/aetherrv-panel-wpe

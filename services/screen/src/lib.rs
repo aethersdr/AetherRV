@@ -115,15 +115,46 @@ pub fn wake_on_touch() {
 }
 
 /// sway's children live in the login session scope, so a kiosk restart can orphan this helper: exit as soon as our
-/// sway socket is gone or we are reparented.
+/// sway is gone (its socket removed, or left behind by a killed sway and refusing connections) or we are reparented.
+/// The panel runs the helper under a restart loop (`packaging/panel/screen.sh`), so the parent is that loop, not sway:
+/// the socket check is what ends it with sway.
 pub fn exit_with_sway() {
     let sock = std::env::var("SWAYSOCK").unwrap_or_default();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(2));
-        if unsafe { libc::getppid() } == 1 || (!sock.is_empty() && !std::path::Path::new(&sock).exists()) {
+        if unsafe { libc::getppid() } == 1 || (!sock.is_empty() && sway_gone(&sock)) {
             std::process::exit(0);
         }
     });
+}
+
+/// Nothing listens on sway's IPC socket any more: the file is gone, or connecting is refused (a sway killed with
+/// SIGKILL leaves the file).
+pub fn sway_gone(sock: &str) -> bool {
+    match std::os::unix::net::UnixStream::connect(sock) {
+        Ok(_) => false,
+        Err(e) => matches!(e.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused),
+    }
+}
+
+#[cfg(test)]
+mod sway_gone_tests {
+    use super::sway_gone;
+
+    #[test]
+    fn sway_gone_tells_a_live_socket_from_a_stale_or_missing_one() {
+        let d = std::env::temp_dir().join(format!("aetherrv-screen-test-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("sway-ipc.sock");
+        let s = p.to_str().unwrap();
+        assert!(sway_gone(s), "no file");
+        let l = std::os::unix::net::UnixListener::bind(&p).unwrap();
+        assert!(!sway_gone(s), "listening");
+        drop(l); // the file stays, as after a SIGKILL
+        assert!(p.exists());
+        assert!(sway_gone(s), "stale file");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
 }
 
 /// A minimal HTTP/1.1 server on 127.0.0.1:8091 (one request per connection, like Python's).
