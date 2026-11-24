@@ -1,7 +1,9 @@
 // UI runtime benchmark instrumentation (harness/uibench, docs/UI-RUNTIME-BENCHMARK.md). Loaded only when the URL
 // has ?bench=1 (a dynamic import in main.tsx, so it is its own chunk and the production page never runs it).
 //
-// Passive: it never touches the DOM or the store. After each page change it tells the bench runner (on
+// Passive unless the runner asks: it never touches the DOM or the store on its own. The runner's long-poll commands
+// ("raf", "presscost", "screen off|on", below) are the only exceptions, and none sends a device command. After each
+// page change it tells the bench runner (on
 // 127.0.0.1:<bench_port>, by navigator.sendBeacon: no CORS preflight) where the rail, the view area and a few
 // press targets are, plus the page's boot marks, Event Timing and long-task entries where the engine has them, and
 // the WebGL renderer. With &raf=1 it also reports requestAnimationFrame intervals; and the runner can ask for a
@@ -12,6 +14,7 @@
 // Press targets are chosen so that pressing them sends nothing: the runner presses, holds and slides off (no click),
 // so only pointerdown side effects matter, and controls with any (dimmer tiles, dials, sliders, drag grips, React
 // onPointerDown handlers) are skipped.
+import { kioskWake, SCREEN_AVAIL, SHIELD, screenOff } from "../logic/kiosk";
 import { heldTile } from "../logic/switches";
 import { currentView } from "../state/route";
 import { K, store } from "../state/store";
@@ -19,11 +22,23 @@ import { K, store } from "../state/store";
 const qs = new URLSearchParams(location.search);
 const PORT = qs.get("bench_port") || "18099";
 
-// Press-feedback experiments (benchmark only): &press=promote gives every press target its own compositing layer;
-// &press=nofilter drops the brightness filter from the pressed state (keeps the scale).
+// Press-feedback experiments (benchmark only), any of them comma-separated in &press=:
+//   promote   every press target on its own compositing layer (will-change)
+//   nofilter  the pressed state without its brightness filter (keeps the scale)
+//   noscale   the pressed state without its scale (keeps the filter)
+//   bg        neither: the pressed state is a background tint only (the cheapest repaint of the control)
+//   rest      an identity transform at rest on every pressable control (zero specificity), so a press changes a
+//             transform the element already has instead of giving it a new one (in WebKit a new transform makes
+//             a new render layer, which needs layout)
+//   restfx    the same with an identity filter too
+const PRESSABLE = "button, [role=button], .pressable";
 const PRESS_EXP: Record<string, string> = {
   promote: ".sw, .quick-btn, .chip, .btn-soft, .seg button, #nav button, #nav-foot button, .tabs button { will-change: transform; }",
   nofilter: ".pressed { filter: none !important; }",
+  noscale: ".pressed { transform: none !important; }",
+  bg: ".pressed { transform: none !important; filter: none !important; background-color: rgba(255, 255, 255, .14) !important; }",
+  rest: `:where(${PRESSABLE}) { transform: scale(1); }`,
+  restfx: `:where(${PRESSABLE}) { transform: scale(1); filter: brightness(1); }`,
 };
 for (const k of (qs.get("press") || "").split(",")) {
   if (!PRESS_EXP[k]) continue;
@@ -87,21 +102,24 @@ function safe(el: Element): boolean {
   return r.width >= 24 && r.height >= 24 && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
 }
 
-function targets(view: string) {
+function targetEls(view: string) {
   const sec = document.querySelector(`section.view[data-view="${view}"]`);
   if (!sec) return [];
-  const out: { name: string; sel: string; rect: number[] }[] = [];
+  const out: { el: Element; sel: string; rect: number[] }[] = [];
   const seen = new Set<Element>();
   for (const sel of PREFER[view] ?? []) {          // preferred controls only: no generic fallback
     for (const el of sec.querySelectorAll(sel)) {
       if (seen.has(el) || !safe(el)) continue;
       seen.add(el);
       const r = rect(el);
-      if (r) out.push({ name: (el.id || (el as HTMLElement).dataset?.sw || el.textContent || sel).trim().slice(0, 40), sel, rect: r });
+      if (r) out.push({ el, sel, rect: r });
       if (out.length >= 3) return out;
     }
   }
   return out;
+}
+function targets(view: string) {
+  return targetEls(view).map(({ el, sel, rect }) => ({ name: (el.id || (el as HTMLElement).dataset?.sw || el.textContent || sel).trim().slice(0, 40), sel, rect }));
 }
 
 /** The page's animated scene, if any: its largest visible canvas, else its largest svg (energy flow, dials). */
@@ -179,6 +197,7 @@ function report(why: string) {
   send("page", {
     why, view, viewport: [innerWidth, innerHeight], dpr: devicePixelRatio, ua: navigator.userAgent, webgl: webgl(),
     conn: store.get(K.conn), ready: store.get(K.ready) === true,
+    screen: { available: store.get(SCREEN_AVAIL) === true, shield: store.get(SHIELD) === true },
     rail, views: rect(document.getElementById("views")), topbar: rect(document.querySelector(".topbar")),
     targets: targets(view), scene: scene(view), stim: stim(view), marks: marks(),
     event_timing: evOk ? events.splice(0) : "unsupported", longtasks: ltOk ? longtasks.splice(0) : "unsupported",
@@ -226,11 +245,52 @@ function sampleRaf(ms: number) {
   };
   requestAnimationFrame(tick);
 }
+// "presscost <n>": what toggling .pressed on the page's first press target costs the engine, measured in the page
+// (no input, nothing sent: the same class a press sets). Per trial: the style and the layout of adding the class,
+// each forced synchronously (getComputedStyle, offsetHeight), timed over 10 toggles for the clock's 1 ms grain;
+// and the rAF interval after adding the class inside a rAF callback, against an interval with no change (a
+// rendering update that overruns the frame shows as a doubled interval).
+const raf = () => new Promise<number>(r => requestAnimationFrame(r));
+async function pressCost(n: number) {
+  const view = currentView();
+  const tg = targetEls(view)[0];
+  if (!tg) { send("presscost", { view, target: null }); return; }
+  const el = tg.el as HTMLElement;
+  const root = document.documentElement;
+  const style: number[] = [], layout: number[] = [], frame: number[] = [], ctrl: number[] = [];
+  for (let i = 0; i < n; i++) {
+    await raf();
+    let ts = 0, tl = 0;
+    for (let k = 0; k < 10; k++) {
+      const t0 = performance.now();
+      el.classList.add("pressed"); void getComputedStyle(el).transform;
+      const t1 = performance.now();
+      void root.offsetHeight; void el.getBoundingClientRect();
+      const t2 = performance.now();
+      el.classList.remove("pressed"); void getComputedStyle(el).transform; void root.offsetHeight;
+      ts += t1 - t0; tl += t2 - t1;
+    }
+    style.push(+(ts / 10).toFixed(2)); layout.push(+(tl / 10).toFixed(2));
+    await raf(); await raf();
+    const a = await raf(); el.classList.add("pressed"); const b = await raf(); frame.push(+(b - a).toFixed(1));
+    await raf(); el.classList.remove("pressed"); await raf(); await raf();
+    const c = await raf(); const d = await raf(); ctrl.push(+(d - c).toFixed(1));
+    await new Promise(r => setTimeout(r, 30));
+  }
+  send("presscost", { view, sel: tg.sel, rect: tg.rect, n, style_ms: style, layout_ms: layout, frame_ms: frame, control_ms: ctrl,
+    press: qs.get("press") || "" });
+}
 void (async () => {
   for (;;) {
     try {
       const c = await (await fetch(`http://127.0.0.1:${PORT}/cmd`, { cache: "no-store" })).text();
       if (c.startsWith("raf ")) sampleRaf(Number(c.slice(4)) || 5000);
+      else if (c.startsWith("presscost")) void pressCost(Number(c.slice(10)) || 12);
+      // the screen-off control's own path (logic/kiosk.ts): POST /screen/off on the helper, then the wake an alert
+      // uses (POST /screen/on); the page reports what it sees afterwards
+      else if (c === "screen off") { screenOff(); setTimeout(() => report("screen-off"), 2500); }
+      else if (c === "screen on") { kioskWake(); setTimeout(() => report("screen-on"), 2500); }
+      else if (c === "report") report("asked");
     } catch { await new Promise(r => setTimeout(r, 3000)); }   // runner not there
   }
 })();
