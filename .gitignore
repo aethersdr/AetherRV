@@ -19,3 +19,5 @@ docs/private/
 /packaging/local.env
 /harness/out/
 /packaging/VERSION
+/panel/tauri/target/
+/utils/uibench/target/
