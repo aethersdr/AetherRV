@@ -1,0 +1,20 @@
+[package]
+name = "aetherrv-sim-starlink"
+description = "Simulated Starlink dish (gRPC with reflection) on loopback"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-sim-starlink"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-sim.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+prost-reflect.workspace = true
+
+[lints]
+workspace = true

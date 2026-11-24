@@ -1,0 +1,192 @@
+// Minimal stand-in for the Starlink dish's gRPC messages, written for the AetherRV simulator.
+//
+// Only the messages, fields and enum values AetherRV (and the Python reference's `starlink_grpc`) read or send are
+// here. Both clients find everything BY NAME through server reflection, so names, types, nesting and enum value
+// names are what matter. Facts taken from the AetherRV Python reference: the field/enum names it uses,
+// SnowMeltMode AUTO=0 / ALWAYS_ON=1 / ALWAYS_OFF=2, MapReferenceFrame FRAME_EARTH=1 / FRAME_UT=2, the
+// SoftwareUpdateState names IDLE and REBOOT_REQUIRED, DishOutage.Cause.NO_SCHEDULE.
+//
+// UNVERIFIED: every message field number, the other enum numbers and the EventReason/EventSeverity tables. They were
+// not checked against a dish and nothing in AetherRV depends on them.
+//
+// Regenerate the descriptor set after editing (from crates/sim/proto):
+//   protoc --include_imports --descriptor_set_out=starlink.fds aetherrv_sim/starlink_device.proto
+
+syntax = "proto3";
+
+package SpaceX.API.Device;
+
+enum SoftwareUpdateState {
+  SOFTWARE_UPDATE_STATE_UNKNOWN = 0;
+  IDLE = 1;
+  FETCHING = 2;
+  PRE_CHECK = 3;
+  WRITING = 4;
+  POST_CHECK = 5;
+  REBOOT_REQUIRED = 6;
+  DISABLED = 7;
+  FAULTED = 8;
+}
+
+message DeviceInfo {
+  string id = 1;
+  string hardware_version = 2;
+  string software_version = 3;
+}
+
+message DeviceState {
+  uint64 uptime_s = 1;
+}
+
+// Declared partly out of number order on purpose: clients list alerts in DECLARATION order (Python's
+// DESCRIPTOR.fields), which a test with these two would tell apart from number order.
+message DishAlerts {
+  bool dish_water_detected = 19;
+  bool motors_stuck = 1;
+  bool thermal_throttle = 3;
+  bool thermal_shutdown = 2;
+  bool unexpected_location = 4;
+  bool mast_not_near_vertical = 5;
+  bool slow_ethernet_speeds = 6;
+  bool roaming = 7;
+  bool install_pending = 8;
+  bool is_heating = 9;
+  bool power_supply_thermal_throttle = 10;
+  bool is_power_save_idle = 11;
+}
+
+message DishOutage {
+  enum Cause {
+    UNKNOWN = 0;
+    BOOTING = 1;
+    STOWED = 2;
+    THERMAL_SHUTDOWN = 3;
+    NO_SCHEDULE = 4;
+    NO_SATS = 5;
+    OBSTRUCTED = 6;
+    NO_DOWNLINK = 7;
+    NO_PINGS = 8;
+    ACTUATOR_ACTIVITY = 9;
+    CABLE_TEST = 10;
+    SLEEPING = 11;
+  }
+  Cause cause = 1;
+  uint64 start_timestamp_ns = 2;
+  uint64 duration_ns = 3;
+}
+
+message DishObstructionStats {
+  float fraction_obstructed = 1;
+  float valid_s = 4;
+  bool currently_obstructed = 5;
+  float avg_prolonged_obstruction_duration_s = 6;
+  float avg_prolonged_obstruction_interval_s = 7;
+}
+
+message DishGpsStats {
+  bool gps_valid = 1;
+  uint32 gps_sats = 2;
+  bool inhibit_gps = 4;
+}
+
+message DishGetStatusResponse {
+  DeviceInfo device_info = 1;
+  DeviceState device_state = 2;
+  float seconds_to_first_nonempty_slot = 1002;
+  float pop_ping_drop_rate = 1003;
+  DishObstructionStats obstruction_stats = 1004;
+  DishAlerts alerts = 1005;
+  float downlink_throughput_bps = 1007;
+  float uplink_throughput_bps = 1008;
+  float pop_ping_latency_ms = 1009;
+  float boresight_azimuth_deg = 1011;
+  float boresight_elevation_deg = 1012;
+  DishOutage outage = 1014;
+  DishGpsStats gps_stats = 1015;
+  bool is_snr_above_noise_floor = 1018;
+  SoftwareUpdateState software_update_state = 1019;
+  bool swupdate_reboot_ready = 1020;
+  bool is_snr_persistently_low = 1022;
+  float signal_quality = 1023;
+}
+
+enum EventSeverity {
+  EVENT_SEVERITY_UNKNOWN = 0;
+  EVENT_SEVERITY_WARNING = 1;
+  EVENT_SEVERITY_ERROR = 2;
+}
+
+enum EventReason {
+  EVENT_REASON_UNKNOWN = 0;
+  EVENT_REASON_OUTAGE_OBSTRUCTED = 1;
+  EVENT_REASON_OUTAGE_BOOTING = 2;
+  EVENT_REASON_OUTAGE_NO_DOWNLINK = 8;
+  EVENT_REASON_ROUTER_WAN_DHCP_FAILED = 12;
+  EVENT_REASON_UT_ALERT_RAIN_SNR_PERSISTENTLY_LOW = 22;
+}
+
+message Event {
+  EventSeverity severity = 1;
+  EventReason reason = 2;
+  int64 start_timestamp_ns = 3;
+  int64 duration_ns = 4;
+  string device_id = 5;
+}
+
+message EventLog {
+  repeated Event events = 1;
+  int64 start_timestamp_ns = 2;
+  int64 current_timestamp_ns = 3;
+}
+
+message DishGetHistoryResponse {
+  uint64 current = 1;
+  repeated float power_in = 1010;
+  EventLog event_log = 1011;
+}
+
+message DishGetObstructionMapResponse {
+  enum MapReferenceFrame {
+    FRAME_UNKNOWN = 0;
+    FRAME_EARTH = 1;
+    FRAME_UT = 2;
+  }
+  uint32 num_rows = 1;
+  uint32 num_cols = 2;
+  repeated float snr = 3;
+  float min_elevation_deg = 4;
+  float max_theta_deg = 5;
+  MapReferenceFrame map_reference_frame = 6;
+}
+
+message DishConfig {
+  enum SnowMeltMode {
+    AUTO = 0;
+    ALWAYS_ON = 1;
+    ALWAYS_OFF = 2;
+  }
+  SnowMeltMode snow_melt_mode = 1;
+  uint32 power_save_start_minutes = 4;
+  uint32 power_save_duration_minutes = 5;
+  bool power_save_mode = 6;
+  bool apply_snow_melt_mode = 1001;
+  bool apply_power_save_start_minutes = 1004;
+  bool apply_power_save_duration_minutes = 1005;
+  bool apply_power_save_mode = 1006;
+}
+
+message DishGetConfigRequest {}
+
+message DishGetConfigResponse {
+  DishConfig dish_config = 1;
+}
+
+message DishSetConfigRequest {
+  DishConfig dish_config = 1;
+}
+
+message DishSetConfigResponse {
+  DishConfig updated_dish_config = 1;
+}
+
+message DishGetObstructionMapRequest {}

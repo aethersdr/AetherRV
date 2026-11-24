@@ -14,6 +14,21 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
+# starlink + peplink simulators (gRPC with reflection; HTTPS router API)
+tonic.workspace = true
+tonic-reflection.workspace = true
+prost.workspace = true
+prost-reflect.workspace = true
+prost-types.workspace = true
+axum.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+tower.workspace = true
+http-body-util.workspace = true
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws-lc-rs", "tls12", "logging"] }
+# cerbo simulator (MQTT client on a private Mosquitto in a temp dir)
+rumqttc.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

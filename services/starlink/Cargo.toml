@@ -22,10 +22,13 @@ prost-reflect.workspace = true
 prost-types.workspace = true
 tonic-prost.workspace = true
 tonic-reflection.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 aetherrv-core = { workspace = true, features = ["testutil"] }
+aetherrv-sim.workspace = true
 tempfile.workspace = true
+rusqlite.workspace = true
 
 [lints]
 workspace = true

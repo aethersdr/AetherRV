@@ -67,8 +67,9 @@ pub fn device_timeout(device: &str) -> Duration {
     Duration::from_secs(match device {
         "espar" | "n2k" => 15,
         "rixens" | "victron" => 40,
-        "peplink" => 30,
-        "starlink" => 120,
+        // worst cases: Starlink install/reboot 15 + 20 + 90 + 8 s; Peplink grant + POST + verify ~55 s
+        "peplink" => 70,
+        "starlink" => 150,
         _ => 10,
     })
 }

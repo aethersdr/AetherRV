@@ -1,0 +1,48 @@
+// Minimal stand-in for the Starlink dish's gRPC device service, written for the AetherRV simulator.
+// See starlink_dish.proto for what is a fact and what is unverified (all message field numbers are unverified).
+// The service is split into two files with an import, as the dish's own reflection is, so a client's dependency
+// walk (file_containing_symbol, then file_by_filename for each import) is exercised.
+
+syntax = "proto3";
+
+package SpaceX.API.Device;
+
+import "aetherrv_sim/starlink_dish.proto";
+
+message GetStatusRequest {}
+message GetHistoryRequest {}
+message RebootRequest {}
+message RebootResponse {}
+// The "check for updates" request. AetherRV never sets a reboot schedule on it.
+message UpdateRequest {}
+message UpdateResponse {}
+
+message Request {
+  uint64 id = 1;
+  oneof request {
+    RebootRequest reboot = 1001;
+    GetStatusRequest get_status = 1004;
+    GetHistoryRequest get_history = 1007;
+    UpdateRequest update = 1014;
+    DishGetObstructionMapRequest dish_get_obstruction_map = 2008;
+    DishSetConfigRequest dish_set_config = 2010;
+    DishGetConfigRequest dish_get_config = 2011;
+  }
+}
+
+message Response {
+  uint64 id = 1;
+  oneof response {
+    RebootResponse reboot = 1001;
+    UpdateResponse update = 1014;
+    DishGetStatusResponse dish_get_status = 2004;
+    DishGetHistoryResponse dish_get_history = 2006;
+    DishGetObstructionMapResponse dish_get_obstruction_map = 2008;
+    DishSetConfigResponse dish_set_config = 2010;
+    DishGetConfigResponse dish_get_config = 2011;
+  }
+}
+
+service Device {
+  rpc Handle(Request) returns (Response);
+}

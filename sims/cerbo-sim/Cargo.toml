@@ -1,0 +1,19 @@
+[package]
+name = "aetherrv-sim-cerbo"
+description = "Simulated Victron Cerbo GX (Venus OS MQTT) on a private loopback Mosquitto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-sim-cerbo"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-sim.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
