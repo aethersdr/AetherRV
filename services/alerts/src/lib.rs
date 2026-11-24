@@ -193,6 +193,62 @@ pub struct Alerts {
     /// The modules' health, refreshed by the service before each evaluation.
     pub modules: Vec<Module>,
     db: Option<Connection>,
+    /// Alerts that were active when the previous process stopped (from the alert log), for the first
+    /// [`RESUME_WINDOW_S`] of live evaluation: owner decision Q-A2 (an ack survives a restart of this service).
+    resume: Vec<(String, Resumable)>,
+    first_eval: Option<f64>,
+}
+
+/// How long after the first live evaluation an alert from the previous process may still be resumed.
+pub const RESUME_WINDOW_S: f64 = 60.0;
+
+#[derive(Debug, Clone)]
+struct Resumable {
+    since: f64,
+    acked: bool,
+    severity: String,
+    finding: Finding,
+}
+
+/// Alerts the log shows as active at the end (last event not "cleared"): their raise time, ack and severity.
+fn active_in_log(db: &Option<Connection>) -> Vec<(String, Resumable)> {
+    let Some(db) = db else { return vec![] };
+    let rows: rusqlite::Result<Vec<(f64, String, String, String, String, String)>> = db
+        .prepare("SELECT t, event, id, severity, title, COALESCE(detail, '') FROM alert_log ORDER BY t ASC, rowid ASC")
+        .and_then(|mut st| {
+            st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                                     r.get::<_, Option<String>>(4)?.unwrap_or_default(), r.get(5)?)))?
+                .collect()
+        });
+    let Ok(rows) = rows else { return vec![] };
+    let mut open: Vec<(String, Resumable)> = Vec::new();
+    for (t, event, id, sev, title, detail) in rows {
+        let i = open.iter().position(|(k, _)| *k == id);
+        match event.as_str() {
+            "raised" | "escalated" => {
+                let since = if event == "raised" { t } else { i.map(|i| open[i].1.since).unwrap_or(t) };
+                let Some(severity) = Severity::parse(&sev) else { continue };
+                let finding = Finding { id: id.clone(), severity, title, detail, source: String::new(), keep_ack: false };
+                let r = Resumable { since, acked: false, severity: sev, finding };
+                match i {
+                    Some(i) => open[i].1 = r,
+                    None => open.push((id, r)),
+                }
+            }
+            "acked" => {
+                if let Some(i) = i {
+                    open[i].1.acked = true;
+                }
+            }
+            "cleared" => {
+                if let Some(i) = i {
+                    open.remove(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    open
 }
 
 fn log_event(db: &Option<Connection>, event: &str, f: &Finding, now: f64) {
@@ -232,7 +288,16 @@ impl Alerts {
             tracing::error!("alert log table: {e}");
         }
         let rules = rules.unwrap_or_else(|| default_rules(&cfg));
-        Alerts { state, cfg, rules, active: Vec::new(), modules: Vec::new(), db }
+        let resume = active_in_log(&db);
+        if !resume.is_empty() {
+            tracing::info!("alerts: {} alert(s) were active when the previous process stopped", resume.len());
+        }
+        Alerts { state, cfg, rules, active: Vec::new(), modules: Vec::new(), db, resume, first_eval: None }
+    }
+
+    /// A fresh boot (not a restart of this service): alerts from before are raised afresh, as in Python.
+    pub fn forget_previous(&mut self) {
+        self.resume.clear();
     }
 
     pub fn get(&self, id: &str) -> Option<&Active> {
@@ -241,7 +306,8 @@ impl Alerts {
 
     pub fn evaluate(&mut self, now: f64) {
         let ctx = Ctx { cfg: self.cfg.clone(), now, modules: self.modules.clone() };
-        let Alerts { state, rules, active, db, .. } = self;
+        let first = *self.first_eval.get_or_insert(now);
+        let Alerts { state, rules, active, db, resume, .. } = self;
         for rule in rules.iter_mut() {
             let check = rule.check;
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check(&**state, &ctx)));
@@ -275,6 +341,14 @@ impl Alerts {
                         a.acked = false;
                         log_event(db, "escalated", f, now);
                     }
+                    continue;
+                }
+                // still active from before this process started, same severity: carry on (no new raise, keep the ack)
+                if let Some(i) = resume.iter().position(|(k, r)| *k == f.id && r.severity == f.severity.as_str()) {
+                    let (_, r) = resume.remove(i);
+                    tracing::info!("alert resumed: [{}] {}{}", f.severity.as_str(), f.title, if r.acked { " (acknowledged)" } else { "" });
+                    active.push((f.id.clone(), Active { finding: f.clone(), since: r.since, rule: rule.name.clone(), acked: r.acked, false_since: None }));
+                    rule.pending.retain(|(k, _)| *k != f.id);
                     continue;
                 }
                 let first = match rule.pending.iter().find(|(k, _)| *k == f.id) {
@@ -312,6 +386,15 @@ impl Alerts {
                 if let Some(i) = active.iter().position(|(k, _)| *k == aid) {
                     let (_, a) = active.remove(i);
                     log_event(db, "cleared", &a.finding, now);
+                }
+            }
+        }
+        // what the previous process had active and this one hasn't seen again (or saw with another severity, raised
+        // afresh above) is over: close it in the log so a much later recurrence is a new alert
+        if now - first >= RESUME_WINDOW_S && !resume.is_empty() {
+            for (id, r) in resume.drain(..) {
+                if !active.iter().any(|(k, _)| *k == id) {
+                    log_event(db, "cleared", &r.finding, now);
                 }
             }
         }
@@ -482,6 +565,14 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
     let db = tokio::task::spawn_blocking(move || open_db(path.as_deref())).await?;
     // the engine reads the bus's view once the bus exists (below)
     let engine = Arc::new(Mutex::new(Alerts::new(Arc::new(StateStore::new()), db, acfg.clone(), Some(service_rules(&acfg)))));
+    // resume only across a restart of this service within one boot (owner, Q-A2); after a reboot, as Python
+    if let Some(p) = opts.db_path.as_ref().and_then(|p| p.parent()).map(|d| d.join("alerts-boot-id")) {
+        let boot = aetherrv_core::clock::boot_id();
+        if std::fs::read_to_string(&p).ok().map(|s| s.trim().to_string()) != Some(boot.clone()) {
+            engine.lock().unwrap().forget_previous();
+        }
+        let _ = std::fs::write(&p, boot);
+    }
     let handler = Arc::new(Served(Arc::new(Handler { engine: engine.clone(), state: state.clone() })));
     let mut bo = BusOptions::new(aetherrv_core::names::ALERTS);
     if let Some(s) = opts.bus_socket.clone() {

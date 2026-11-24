@@ -320,6 +320,38 @@ async fn test_starlink_check_update_never_reboots() {
     assert_eq!(a.log.rows()[0].detail, "IDLE → IDLE");
 }
 
+/// The check request fails but the dish's update state moves anyway: "unverified" with what the dish now reports
+/// (owner decision Q-S1, ARCHITECTURE.md §13a D20; Python answered ok here). Not a Python test.
+#[tokio::test]
+async fn check_update_that_errors_while_the_state_moves_is_unverified() {
+    struct FailingCheck(Arc<FakeDish>);
+    impl DishOps for FailingCheck {
+        fn status(&self) -> DishFut<'_, Map<String, Value>> {
+            self.0.status()
+        }
+        fn reboot(&self) -> DishFut<'_, ()> {
+            self.0.reboot()
+        }
+        fn get_config(&self) -> DishFut<'_, Value> {
+            self.0.get_config()
+        }
+        fn set_config(&self, f: Map<String, Value>) -> DishFut<'_, ()> {
+            self.0.set_config(f)
+        }
+        fn check_update(&self) -> DishFut<'_, ()> {
+            self.0.checks.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async { Err(DishError("deadline exceeded".into())) })
+        }
+    }
+    let ops = FakeDish::new(vec![Ok(json!({"software_update_state": "FETCHING", "uptime": 5000}))], None);
+    let a = Starlink::new(Arc::new(StateStore::new()), Arc::new(TxGate::new([(DEVICE.to_string(), true)])), CommandLog::memory(DEVICE), Arc::new(FailingCheck(ops.clone())));
+    let r = a.check_update(&Value::Null, "test", &json!("IDLE"), 0.0, 0.05).await;
+    assert_eq!(r.result, ResultKind::Unverified, "{r:?}");
+    assert!(r.detail.contains("deadline exceeded") && r.detail.contains("fetching"), "{}", r.detail);
+    assert_eq!((ops.checks.load(Ordering::SeqCst), ops.reboots()), (1, 0));
+    assert_eq!(a.log.rows()[0].outcome, "error");
+}
+
 // ── against the gRPC simulator ──────────────────────────────────────────────────────────────────────────────────
 
 mod sim {

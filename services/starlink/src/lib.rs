@@ -490,12 +490,14 @@ impl Starlink {
             d += &format!("; send raised {e}");
         }
         self.log("check_update", value, outcome, &d, client);
-        if let Some(e) = &send_err
-            && seen == *before
-        {
-            return Reply::unverified(format!("the dish didn't accept the check ({e}); {detail}"));
+        if let Some(e) = &send_err {
+            if seen == *before {
+                return Reply::unverified(format!("the dish didn't accept the check ({e}); {detail}"));
+            }
+            // Python answered ok here (the state moved, so the check evidently ran); owner decision Q-S1 (D20):
+            // the request itself failed, so the UI says "not confirmed" and shows what the dish reports now
+            return Reply::unverified(format!("the check request failed ({e}), but the dish reports: {detail}"));
         }
-        // Python answers ok=True here even when the send raised (the state moved, so the check happened)
         Reply::ok(detail)
     }
 

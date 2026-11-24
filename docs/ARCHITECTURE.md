@@ -433,6 +433,8 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | D16 | Bluetooth batteries: the reconnect backoff never resets after a good session (Python's reset was unreachable code; ported as is) | Parity; the owner may prefer a reset |
 | D17 | `location.*`: Python's Peplink adapter and the GPS listener both wrote them; now the GPS service owns them and the Peplink service publishes its position only when `[gps]` is disabled | One owner per key (§4.5) |
 | D18 | Starlink and Peplink command values need the right JSON type (like D11/D14) | Safe direction |
+| D19 | An alert still active when the alerts service restarts (same boot) carries on with its start time and acknowledgement and is not raised again; one that cleared meanwhile is closed in the log; a reboot re-raises as Python did (owner, Q-A2) | Python restarted as a whole; a single module restarting must not re-chime acknowledged alerts |
+| D20 | Starlink "check for update": a failed check request whose update state moved anyway answers **unverified** with the dish's state (Python: ok) (owner, Q-S1) | The request itself failed |
 | D10 | The gateway waits up to 15 s for an Espar reply (one verify window is 6 s, and a queued command waits for the one before it) | Avoids reporting "unverified" for a command that is still being verified |
 
 ## 14. Open questions for the owner
@@ -452,6 +454,10 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-D3 | Accept D11–D18 | answered 2026-11-23: all accepted |
 | Q-U1 | WPE candidate: `cog` is not packaged for Arch ARM and targets the legacy libwpe API | answered 2026-11-23: benchmark WPE through its MiniBrowser (wpewebkit 2.52, WPE Platform API); if WPE wins, ship a small WPE Platform kiosk launcher |
 | Q-U2 | Bench monitor not detected on HDMI | answered 2026-11-23: develop the benchmark headless for now; the owner reports when the monitor is back |
+| Q-U3 | Home page MCS7 heat buttons send without a confirmation (as app.js) | answered 2026-11-23: keep as today (optimistic light, rollback on failure) |
+| Q-U4 | Home inverter overlay changes the MultiPlus mode without a confirmation (Energy asks first) | answered 2026-11-23: keep as today |
+| Q-A2 | Acknowledged alerts when the alerts service restarts on its own | answered 2026-11-23: keep the acks (D19) |
+| Q-S1 | Starlink check_update: request failed but the update state moved | answered 2026-11-23: unverified (D20) |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -486,3 +492,6 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Golden-parity rule: sampling-time fields within tolerance, everything else exact | owner (Q-P2) |
 | 2026-11-23 | Differences D11–D18 (§13a) accepted | owner (Q-D3) |
 | 2026-11-23 | WPE is benchmarked through MiniBrowser (WPE Platform API) instead of `cog` | owner (Q-U1) |
+| 2026-11-23 | Home MCS7 heat buttons and the Home inverter overlay keep sending without a confirmation, as today | owner (Q-U3, Q-U4) |
+| 2026-11-23 | Alerts keep their acknowledgement over a restart of the alerts service within one boot (D19) | owner (Q-A2) |
+| 2026-11-23 | Starlink check_update with a failed request answers unverified (D20) | owner (Q-S1) |
