@@ -17,7 +17,9 @@ if ! ssh -o BatchMode=yes "$HOST" '! ip -br link | grep -qE "^(hat0|hat1)\b"'; t
 P=/opt/aetherrv-rs/src/packaging
 MARK=$(mktemp); trap 'rm -f "$MARK"' EXIT
 case $SYS in
-  rust) RT=${3:-wpe-launcher}; ORDER=rust ;;
+  rust) RT=${3:-wpe-launcher}; ORDER=rust
+    # shellcheck disable=SC2029
+    ssh -o BatchMode=yes "$HOST" "$P/heaters-idle.sh" ;;     # a reboot stops the Espar's controller
   python) RT=python; ORDER=python
     # shellcheck disable=SC2029
     ssh -o BatchMode=yes "$HOST" "set -e; $P/heaters-idle.sh; sudo $P/rollback.sh | tail -1; sudo systemctl disable --now aetherrv-kiosk.service 2>&1 | tail -1
