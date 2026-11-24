@@ -25,7 +25,8 @@ person, one device at a time. The rollback is one command and can be run at any 
 
 ```sh
 ts=$(date +%Y%m%d-%H%M%S)
-tar -C / -czf /root/aetherrv-pre-rust-$ts.tgz etc/aetherrv etc/systemd/system/aetherrv* var/lib/aetherrv/settings.json
+cd /   # the unit glob below is expanded by the shell, so it must run in /
+tar -czf /root/aetherrv-pre-rust-$ts.tgz etc/aetherrv etc/systemd/system/aetherrv* var/lib/aetherrv/settings.json
 sudo -u aetherrv sqlite3 /var/lib/aetherrv/history.sqlite3 ".backup /var/lib/aetherrv/history-pre-rust-$ts.sqlite3"
 systemctl list-unit-files 'aetherrv*' > /root/aetherrv-units-pre-rust-$ts.txt
 ```
