@@ -286,3 +286,32 @@ async fn a_late_heat_is_refused_but_a_late_off_runs() {
     assert_eq!(off.result, ResultKind::Ok, "{off:?}");
     assert_eq!(h.report().state, "after-run");
 }
+
+/// No cabin Ruuvi on the bus (no Victron): FAN wakes the heater, the read-only diagnostics read its intake sensor,
+/// and HEAT then regulates on that value (Python's fallback), never on FE FF.
+#[tokio::test(flavor = "multi_thread")]
+async fn without_the_ruuvi_heat_uses_the_heater_intake_sensor() {
+    let iface = "vcan9";
+    if !have(iface) {
+        return eprintln!("{iface} or mosquitto missing: skipped");
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let b = Broker::start(false);
+    let h = Heater::start(HeaterConfig { iface: iface.into(), loss_timeout_s: 15.0, after_run_s: 5.0, sleep_s: 5.0, log: None }).unwrap();
+    let mut e = Espar::new(dir.path(), iface, &b.socket, 600.0);
+    e.start();
+    let g = client(&b, "gateway");
+    g.subscribe_all_state().await;
+    assert!(eventually(S10, || g.remote().owner_ok("espar")).await);
+    let r = g.request("espar", "set", json!({"mode": "heat", "setpoint_c": 21.0}), "kiosk", 3000, Duration::from_secs(15)).await;
+    assert_eq!(r.result, ResultKind::Refused, "no room temperature yet: {r:?}");
+    let r = g.request("espar", "set", json!({"mode": "fan"}), "kiosk", 3000, Duration::from_secs(15)).await;
+    assert_eq!(r.result, ResultKind::Ok, "{r:?}");
+    assert!(eventually(Duration::from_secs(30), || g.remote().string("climate.espar.ctl.room_src").as_deref() == Some("heater intake sensor")).await,
+            "the diagnostics read the intake sensor");
+    heat(&g).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    let rep = h.report();
+    assert_eq!(rep.state, "heating");
+    assert_eq!(rep.full_power_frames, 0);
+}

@@ -128,7 +128,8 @@ impl Model {
             self.room = room;
             let want = d[1];
             match (want, self.state) {
-                (0x05, 0x03) if self.after_until.is_none() => {
+                // HEAT from idle, or straight from FAN (the controller switches modes without an OFF between)
+                (0x05, 0x03) | (0x05, 0x21) if self.after_until.is_none() => {
                     self.state = 0x09;
                     self.flags = 0x00;
                     self.report.heat_runs += 1;
@@ -157,17 +158,21 @@ impl Model {
         out
     }
 
+    /// One reply: a single frame, or a first frame that waits for the tester's flow control (ISO-TP).
+    fn reply(&mut self, p: &[u8]) -> Vec<CanFrame> {
+        if p.len() <= 7 {
+            let mut b = vec![p.len() as u8];
+            b.extend_from_slice(p);
+            b.resize(8, 0xAA);
+            return vec![CanFrame::std(proto_espar::uds::RESP_ID, &b)];
+        }
+        let mut b = vec![0x10 | ((p.len() >> 8) as u8 & 0x0F), p.len() as u8];
+        b.extend_from_slice(&p[..6]);
+        self.pending_tx = p[6..].to_vec();
+        vec![CanFrame::std(proto_espar::uds::RESP_ID, &b)]
+    }
+
     fn uds(&mut self, d: &[u8]) -> Vec<CanFrame> {
-        let rsp = |p: &[u8]| -> Vec<CanFrame> {
-            if p.len() <= 7 {
-                let mut b = vec![p.len() as u8];
-                b.extend_from_slice(p);
-                b.resize(8, 0xAA);
-                vec![CanFrame::std(proto_espar::uds::RESP_ID, &b)]
-            } else {
-                vec![]
-            }
-        };
         if d[0] == 0x30 {
             // flow control: send the rest as consecutive frames
             let rest = std::mem::take(&mut self.pending_tx);
@@ -199,9 +204,9 @@ impl Model {
                         }
                     }
                     0xFD10 => p.extend_from_slice(&[if self.state == 0x09 { 1 } else { 0 }, if self.state == 0x09 { 0x14 } else { 0 }]),
-                    _ => return rsp(&[0x7F, 0x22, 0x31]),
+                    _ => return self.reply(&[0x7F, 0x22, 0x31]),
                 }
-                rsp(&p)
+                self.reply(&p)
             }
             0x19 => {
                 let mut p = vec![0x59, 0x02, 0xFF];
@@ -212,16 +217,9 @@ impl Model {
                     }
                     p.push(if *active { 0x09 } else { 0x08 });
                 }
-                if p.len() <= 7 {
-                    return rsp(&p);
-                }
-                // first frame, then wait for flow control
-                let mut b = vec![0x10 | ((p.len() >> 8) as u8 & 0x0F), p.len() as u8];
-                b.extend_from_slice(&p[..6]);
-                self.pending_tx = p[6..].to_vec();
-                vec![CanFrame::std(proto_espar::uds::RESP_ID, &b)]
+                self.reply(&p)
             }
-            _ => rsp(&[0x7F, svc, 0x11]), // service not supported (the heater refuses anything else too)
+            _ => self.reply(&[0x7F, svc, 0x11]), // service not supported (the heater refuses anything else too)
         }
     }
 
