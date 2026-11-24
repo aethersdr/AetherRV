@@ -350,9 +350,9 @@ enforcement points follow that one switch.
 - `aetherrv-admind`: the Python helper's verbs ported one for one, with the same validation patterns, argv-only
   commands, secrets on stdin only, `SO_PEERCRED` allowing root and `aetherrv`. `restart_kiosk` restarts
   `aetherrv-panel`. Socket path unchanged (`/run/aetherrv-admin.sock`); the unit conflicts with the Python one.
-- `aetherrv-panel`: sway (as today, for output power) plus the UI runtime chosen by the benchmark (WPE `cog`,
-  Tauri v2 or Chromium; prompt §7), and `aetherrv-screen` (Rust, sway IPC; replaces `screen_helper.py`, same HTTP
-  API on 127.0.0.1:8091). The Plymouth hand-off (`plymouth quit --retain-splash` at kiosk start) stays.
+- `aetherrv-panel`: sway (as today, for output power) plus the UI runtime chosen by the benchmark (WPE, Tauri v2
+  or Chromium; prompt §7; WPE through its own launcher, not `cog`, Q-U1), and `aetherrv-screen` (Rust, sway IPC;
+  replaces `screen_helper.py`, same HTTP API on 127.0.0.1:8091). The Plymouth hand-off (`plymouth quit --retain-splash` at kiosk start) stays.
   - The runtime is set in `/etc/aetherrv/panel.env` (`AETHERRV_PANEL_RUNTIME`, read by `packaging/panel/launch.sh`).
     WPE runs through the panel's own launcher, `panel/wpe/aetherrv-panel-wpe` (WPE Platform API, built by
     `install.sh`; owner Q-U1): one full-screen view, no navigation off the UI's origin, and it exits when its web
