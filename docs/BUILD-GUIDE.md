@@ -204,7 +204,7 @@ pacman -S --needed sudo openssh rsync git base-devel clang rustup mosquitto \
   sway chromium noto-fonts wlr-randr grim \
   iwd bluez bluez-utils \
   plymouth tailscale
-rustup default stable                            # as the admin user from step 4, not root
+# later, as your admin user (item 4 below), not root: rustup default stable
 ```
 
 `base-devel`, `clang` and `rustup` build AetherRV on the Pi; `mosquitto` is its internal message bus; `sway` and
