@@ -7,6 +7,10 @@
 //!    state (any key it owns restamped after the kill; for the broker: every service up and connected again),
 //!    that the heater simulator never loses its controller (054 gap, controller-loss faults) and that the MCS7
 //!    simulator was sent nothing.
+//!    Every OTHER unit's MainPID and NRestarts must be unchanged after each case (no collateral restart), the gateway
+//!    must answer /api/state during every case it isn't the victim of, and the admin helper (socket-activated, not
+//!    on the bus) must answer a Settings call after its kill. `can-aux@<bus>` victims are on the bus as
+//!    `can-aux-<bus>`. At the end the history database must have no sample gap longer than two intervals.
 //! 3. Writes a JSON report; exit code 1 if anything failed.
 
 use aetherrv_core::bus::{Bus, BusOptions};
@@ -41,6 +45,27 @@ fn owned(bus: &Bus, owner: &str, t_ms: i64) -> (usize, bool) {
     (mine.len(), fresh)
 }
 
+/// The name a victim has on the bus (`None`: not a bus client).
+fn owner_of(victim: &str) -> Option<String> {
+    match victim {
+        "admind" => None,
+        v if v.starts_with("can-aux@") => Some(format!("can-aux-{}", &v["can-aux@".len()..])),
+        v => Some(v.to_string()),
+    }
+}
+
+/// (MainPID, NRestarts) of every unit.
+fn unit_snapshot(units: &[String]) -> Vec<(String, String, String)> {
+    units
+        .iter()
+        .map(|u| (u.clone(), sh(&["systemctl", "show", "-p", "MainPID", "--value", u]), sh(&["systemctl", "show", "-p", "NRestarts", "--value", u])))
+        .collect()
+}
+
+fn gateway_answers() -> bool {
+    sh(&["curl", "-sS", "--max-time", "2", "-o", "/dev/null", "-w", "%{http_code}", "http://127.0.0.1:8080/api/state"]) == "200"
+}
+
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().collect();
@@ -72,14 +97,41 @@ async fn main() -> anyhow::Result<()> {
     let mut cases: Vec<(String, &'static str)> = services.iter().map(|s| (s.clone(), "kill")).collect();
     cases.push(("bus".into(), "restart"));
     cases.push(("bus".into(), "kill"));
+    let owners: Vec<String> = services.iter().filter_map(|s| owner_of(s)).collect();
+    // every long-running unit (the socket-activated admin helper comes and goes by design: judged by its own case)
+    let mut all_units: Vec<String> = services.iter().filter(|s| *s != "admind").map(|s| format!("aetherrv-{s}.service")).collect();
+    all_units.push("aetherrv-bus.service".into());
+    let run_t0 = aetherrv_core::clock::now_s();
     for (victim, how) in cases {
+        let before = unit_snapshot(&all_units);
+        if victim == "admind" {
+            // the helper is socket-activated: make sure it is running, kill it, then a Settings call must still work
+            let _ = sh(&["curl", "-sS", "--max-time", "25", "-o", "/dev/null", "http://127.0.0.1:8080/api/settings"]);
+            let active0 = sh(&["systemctl", "is-active", "aetherrv-admind.service"]);
+            let pid0 = sh(&["systemctl", "show", "-p", "MainPID", "--value", "aetherrv-admind.service"]);
+            sh(&["systemctl", "kill", "-s", "KILL", "aetherrv-admind.service"]);
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let body = sh(&["curl", "-sS", "--max-time", "25", "http://127.0.0.1:8080/api/settings"]);
+            let admin_ok = serde_json::from_str::<Value>(&body).ok().is_some_and(|j| j["admin"]["ok"] == true || j["admin"].get("error").is_none() && j["admin"].is_object());
+            let pid1 = sh(&["systemctl", "show", "-p", "MainPID", "--value", "aetherrv-admind.service"]);
+            let after = unit_snapshot(&all_units);
+            let collateral: Vec<String> = before.iter().zip(&after).filter(|(b, a)| b != a).map(|(b, _)| b.0.clone()).collect();
+            let pass = admin_ok && pid1 != pid0 && collateral.is_empty();
+            ok_all &= pass;
+            let row = json!({"victim": "admind", "how": "kill", "pass": pass, "was_active": active0, "pid_before": pid0, "pid_after": pid1,
+                             "settings_answered": admin_ok, "collateral_restarts": collateral});
+            println!("{row}");
+            results.push(row);
+            continue;
+        }
         let h0 = read_json(&heater);
         let m0 = lines(&mcs7);
         let gap0 = h0["max_054_gap_running"].as_f64().unwrap_or(0.0);
         let unit = format!("aetherrv-{victim}.service");
+        let me = owner_of(&victim).unwrap_or_default();
         let pid0 = sh(&["systemctl", "show", "-p", "MainPID", "--value", &unit]);
         let t_kill = aetherrv_core::clock::now_ms();
-        let (keys_before, _) = owned(&bus, &victim, t_kill);
+        let (keys_before, _) = owned(&bus, &me, t_kill);
         if how == "kill" {
             sh(&["systemctl", "kill", "-s", "KILL", &unit]);
         } else {
@@ -99,11 +151,15 @@ async fn main() -> anyhow::Result<()> {
         let mut others_down: Vec<String> = vec![];
         let mut back_at: Option<f64> = None;
         let mut fresh_at: Option<f64> = None;
+        let mut gateway_seen = victim == "gateway";
         while start.elapsed() < Duration::from_secs(20) {
             tokio::time::sleep(Duration::from_millis(250)).await;
+            if !gateway_seen && gateway_answers() {
+                gateway_seen = true;
+            }
             if victim != "bus" {
                 for (n, up, _) in bus.remote().owners() {
-                    if n != victim && n != "isolation" && !n.starts_with("ctl-") && services.contains(&n) && !up && !others_down.contains(&n) {
+                    if n != me && owners.contains(&n) && !up && !others_down.contains(&n) {
                         others_down.push(n);
                     }
                 }
@@ -111,19 +167,19 @@ async fn main() -> anyhow::Result<()> {
             // back = a new process (systemd's MainPID changed) that is on the bus again (a heartbeat stamped after
             // the kill); for the broker: every service has published a heartbeat since it came back
             let up = if victim == "bus" {
-                bus.connected() && services.iter().all(|s| hb_after(&bus, s, t_kill))
+                bus.connected() && owners.iter().all(|s| hb_after(&bus, s, t_kill))
             } else {
                 let pid = sh(&["systemctl", "show", "-p", "MainPID", "--value", &unit]);
-                pid != pid0 && pid != "0" && hb_after(&bus, &victim, t_kill) && bus.remote().owner_ok(&victim)
+                pid != pid0 && pid != "0" && hb_after(&bus, &me, t_kill) && bus.remote().owner_ok(&me)
             };
             if up && back_at.is_none() {
                 back_at = Some(start.elapsed().as_secs_f64());
             }
             let needs_fresh = victim != "bus" && keys_before > 0;
-            if fresh_at.is_none() && up && (!needs_fresh || owned(&bus, &victim, t_kill).1) {
+            if fresh_at.is_none() && up && (!needs_fresh || owned(&bus, &me, t_kill).1) {
                 fresh_at = Some(start.elapsed().as_secs_f64());
             }
-            if back_at.is_some() && fresh_at.is_some() && start.elapsed() > Duration::from_secs(6) {
+            if back_at.is_some() && fresh_at.is_some() && gateway_seen && start.elapsed() > Duration::from_secs(6) {
                 break;
             }
         }
@@ -132,13 +188,18 @@ async fn main() -> anyhow::Result<()> {
         let mcs7_new = lines(&mcs7).saturating_sub(m0);
         let heater_ok = h1["state"] == "heating" && h1["controller_loss_faults"] == h0["controller_loss_faults"];
         let furnace = bus.remote().list("climate.rixens.sources").iter().any(|v| v == "furnace");
+        // no OTHER unit restarted (the victim's own PID/restart count is expected to change)
+        let after = unit_snapshot(&all_units);
+        let collateral: Vec<String> =
+            before.iter().zip(&after).filter(|(b, a)| b != a && b.0 != unit).map(|(b, _)| b.0.clone()).collect();
         let pass = others_down.is_empty() && back_at.is_some() && fresh_at.is_some() && heater_ok && mcs7_new == 0 && furnace
-            && switch_probe != Some(false);
+            && switch_probe != Some(false) && collateral.is_empty() && gateway_seen;
         ok_all &= pass;
         let row = json!({"victim": victim, "how": how, "pass": pass, "back_s": back_at, "fresh_state_s": fresh_at,
                          "others_down": others_down, "keys_owned": keys_before, "heater_state": h1["state"], "max_054_gap_s": gap.max(gap0),
                          "controller_loss_faults": h1["controller_loss_faults"], "mcs7_commands_sent": mcs7_new,
-                         "mcs7_furnace_on": furnace, "switch_probe_ok": switch_probe});
+                         "mcs7_furnace_on": furnace, "switch_probe_ok": switch_probe,
+                         "collateral_restarts": collateral, "gateway_answered": gateway_seen});
         println!("{row}");
         results.push(row);
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -147,7 +208,19 @@ async fn main() -> anyhow::Result<()> {
     println!("espar off: {:?}", r);
     let r = bus.request("rixens", "furnace", json!(false), "isolation", 3000, s30).await;
     println!("mcs7 furnace off: {:?}", r);
-    let report = json!({"pass": ok_all, "results": results, "version": std::fs::read_to_string("/opt/aetherrv-rs/VERSION").unwrap_or_default().trim()});
+    // history kept writing through every case (its own restart included): no gap over two intervals
+    let interval: f64 = flag("--history-interval").and_then(|s| s.parse().ok()).unwrap_or(30.0);
+    let db = flag("--history-db").unwrap_or_else(|| "/var/lib/aetherrv/history.sqlite3".into());
+    let q = format!("SELECT DISTINCT round(t) FROM samples WHERE t >= {run_t0} ORDER BY 1");
+    let ts: Vec<f64> = sh(&["sqlite3", &db, &q]).lines().filter_map(|l| l.trim().parse().ok()).collect();
+    let max_gap = ts.windows(2).map(|w| w[1] - w[0]).fold(0.0, f64::max);
+    let run_s = aetherrv_core::clock::now_s() - run_t0;
+    let history_ok = ts.len() as f64 >= (run_s / interval).floor() - 1.0 && max_gap <= 2.0 * interval + 1.0;
+    ok_all &= history_ok;
+    let history = json!({"pass": history_ok, "samples_times": ts.len(), "max_gap_s": max_gap, "run_s": run_s.round(), "interval_s": interval});
+    println!("history: {history}");
+    let report = json!({"pass": ok_all, "results": results, "history": history,
+                        "version": std::fs::read_to_string("/opt/aetherrv-rs/VERSION").unwrap_or_default().trim()});
     std::fs::write(&out, serde_json::to_string_pretty(&report)?)?;
     println!("{}", if ok_all { "ISOLATION: PASS" } else { "ISOLATION: FAIL" });
     std::process::exit(if ok_all { 0 } else { 1 });

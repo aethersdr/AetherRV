@@ -20,6 +20,11 @@ channel = "vcan0"
 interface = "socketcan"
 channel = "vcan1"
 
+# a bus no device owns: aetherrv-can-aux@aux0 watches it (the van's fd0/fd1 kind)
+[bus.aux0]
+interface = "socketcan"
+channel = "vcan2"
+
 [device.espar]
 kind = "espar"
 bus = "hat1"
@@ -33,7 +38,9 @@ bus = "hat0"
 tx_enabled = true   # vcan0 + the CLMD16 simulator only
 
 [power]
-auto_shutdown = false
+# as in the van: the heat lockout and the low-battery power-off are live (the Cerbo simulator reports 85.8 % SoC,
+# far above heater_off_soc 10 % and shutdown_soc 5 %, so they never trigger on the bench)
+auto_shutdown = true
 
 [device.rixens_http]
 kind = "rixens_http"

@@ -175,6 +175,28 @@ def close(a, b, field: str = "") -> bool:
     return a == b
 
 
+# Owner rule Q-P2 (2026-11-23): an alert may be raised a little earlier or later in one system because the two
+# started at different moments (each rule waits its own `for_s` from its first evaluation). In alerts.* the raise
+# times (`since`, `t`) may differ by up to ALERT_SKEW_S; ids, severities, titles, details, sources, acks and event
+# names must match exactly, in the same order.
+ALERT_SKEW_S = 10.0
+
+
+def alerts_equal(a, b) -> bool:
+    if not (isinstance(a, list) and isinstance(b, list) and len(a) == len(b)):
+        return False
+    for x, y in zip(a, b):
+        if not (isinstance(x, dict) and isinstance(y, dict) and x.keys() == y.keys()):
+            return False
+        for k in x:
+            if k in ("since", "t"):
+                if not (isinstance(x[k], (int, float)) and isinstance(y[k], (int, float)) and abs(x[k] - y[k]) <= ALERT_SKEW_S):
+                    return False
+            elif x[k] != y[k]:
+                return False
+    return True
+
+
 # keys the Rust system adds on purpose (ARCHITECTURE.md §13a D7)
 RUST_ONLY_OK = re.compile(r"^(svc\.|tx\.(enabled|blocked)\.|climate\.(espar|rixens)\.lockout)")
 
@@ -187,6 +209,8 @@ def diff(py: dict, rs: dict) -> dict:
         a, b = normalize(k, py[k]), normalize(k, rs[k])
         if a == b or close(a, b):
             same.append(k)
+        elif k in ("alerts.active", "alerts.log") and alerts_equal(a, b):
+            loose.append({"key": k, "python": a, "rust": b, "rule": f"raise times within {ALERT_SKEW_S:.0f} s (Q-P2)"})
         elif TIME_KEYS.search(k):
             loose.append({"key": k, "python": a, "rust": b})
         else:

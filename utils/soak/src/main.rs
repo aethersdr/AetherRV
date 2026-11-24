@@ -65,7 +65,12 @@ async fn main() -> anyhow::Result<()> {
     let out = std::path::PathBuf::from(flag("--out").unwrap_or_else(|| "/var/tmp/soak".into()));
     let heater = flag("--heater-report").unwrap_or_else(|| "/run/aetherrv-sim-espar.json".into());
     std::fs::create_dir_all(&out)?;
-    let services: Vec<String> = units.iter().filter_map(|u| u.strip_prefix("aetherrv-").map(|s| s.trim_end_matches(".service").to_string())).filter(|s| s != "bus").collect();
+    // bus names of the services (aetherrv-can-aux@<bus>.service is on the bus as can-aux-<bus>)
+    let services: Vec<String> = units
+        .iter()
+        .filter_map(|u| u.strip_prefix("aetherrv-").map(|s| s.trim_end_matches(".service").replacen("can-aux@", "can-aux-", 1)))
+        .filter(|s| s != "bus")
+        .collect();
 
     let bus = Bus::start(BusOptions::new("soak"), Arc::new(StateStore::new()));
     bus.subscribe_all_state().await;

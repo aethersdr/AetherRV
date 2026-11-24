@@ -7,7 +7,7 @@ ip -br link | grep -qE '^(hat0|hat1)\b' && { echo "refused: this is the van" >&2
 SRC=/opt/aetherrv-rs/src; BIN=/opt/aetherrv-rs/bin
 CAP=${1:?usage: bench-up.sh <n2k capture> [clmd16 args]}; shift
 CLMD16_ARGS=${*:-}
-SERVICES=${SERVICES:-"espar n2k rixens victron starlink peplink weather derive settings alerts history power-guard gateway netmon gps batteries-ble"}
+SERVICES=${SERVICES:-"espar n2k rixens victron starlink peplink weather derive settings alerts history power-guard gateway netmon gps batteries-ble can-aux@aux0 admind"}
 SIMS="aetherrv-sim-espar aetherrv-sim-mcs7 aetherrv-sim-replay aetherrv-sim-cerbo aetherrv-sim-starlink aetherrv-sim-peplink aetherrv-sim-clmd16 aetherrv-sim-gps"
 $SRC/harness/dev-setup.sh >/dev/null
 cmp -s $SRC/harness/bench/bench-config.toml /etc/aetherrv/aetherrv.toml || install -m 644 $SRC/harness/bench/bench-config.toml /etc/aetherrv/aetherrv.toml

@@ -7,6 +7,7 @@ SRC=/opt/aetherrv-rs/src; BIN=/opt/aetherrv-rs/bin
 CAP=${1:?usage: soak.sh <n2k capture> [hours]}; HOURS=${2:-1}
 SERVICES=$($SRC/harness/bench/bench-up.sh "$CAP" --toggle-input 2 --every 600 | tail -1)
 UNITS="aetherrv-bus.service"
-for s in $SERVICES; do UNITS="$UNITS,aetherrv-$s.service"; done
+# the admin helper is socket-activated (it may come and go by design): not a soak unit
+for s in $SERVICES; do [ "$s" = admind ] || UNITS="$UNITS,aetherrv-$s.service"; done
 rm -rf /var/tmp/soak
 exec $BIN/aetherrv-soak --hours "$HOURS" --units "$UNITS" --out /var/tmp/soak
