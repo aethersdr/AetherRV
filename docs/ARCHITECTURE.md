@@ -460,6 +460,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-S1 | Starlink check_update: request failed but the update state moved | answered 2026-11-23: unverified (D20) |
 | Q-U5 | Settings: Wi-Fi off / join / rename act without a confirmation | answered 2026-11-23: confirm Wi-Fi off only (remote access over Wi-Fi drops) |
 | Q-U6 | Energy "3D battery bank": today an SVG scene; keep it or build a WebGL bank? | answered 2026-11-23: build a real WebGL (three.js) bank; it must hold ≥ 30 fps on the Pi |
+| Q-H1 | The bench Pi's hostname was committed in two `rust` commits (fixed in the files): rewrite history? | answered 2026-11-23: leave the history; keep it out from now on |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -500,3 +501,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Settings asks before turning Wi-Fi off; join and rename stay one step | owner (Q-U5) |
 | 2026-11-23 | Energy page: a WebGL (three.js) battery bank replaces the SVG scene | owner (Q-U6) |
 | 2026-11-23 | Soak: at most 1 hour on the bench (replaces the prompt's 12 hours, goal item 5) | owner |
+| 2026-11-23 | The bench hostname stays in the `rust` history (no force-push); scripts take the bench host from the environment | owner (Q-H1) |
