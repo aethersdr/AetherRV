@@ -1,8 +1,12 @@
 // Energy page against a STUB gateway (page.routeWebSocket; no backend). Invented data only. Checks the layout's
 // contents, the confirmations before every MultiPlus / MPPT mode change, the single-flight rule, the debounced shore
-// limit shared with the Home inverter overlay, view-only mode, skeletons, the chart and per-key updates.
+// limit shared with the Home inverter overlay, view-only mode, skeletons, the chart and per-key updates; and the WebGL
+// battery bank: render on demand, disposal when the page is hidden, orbit, and the SVG scene without WebGL2.
 import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
 import { STATE as BASE } from "./fixture";
+
+// WebGL in headless Chrome through SwiftShader (as the weather / network specs)
+test.use({ launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } });
 
 interface Sent { type: string; device?: string; cmd?: string; value?: unknown; id?: number }
 
@@ -55,20 +59,39 @@ async function stubGateway(page: Page, opts: { control?: boolean; state?: Record
 const controls = (sent: Sent[]) => sent.filter(m => m.type === "control");
 const OUT = "../harness/out/ui-pages";
 
+interface Bench { live: number; created: number; disposed: number; frames: number; res: number; lost: number;
+  levels: (number | null)[]; hues: string[]; flow: string; calls: number; triangles: number; firstFrameMs: number | null; orbit: number[] }
+/** The WebGL bank's counters (only with ?bench=1). */
+const bench = (page: Page) => page.evaluate(() => (window as unknown as { __bank3d?: Bench }).__bank3d ?? null);
+/** This browser has no WebGL at all: the real detection path runs and must pick the SVG scene. */
+const noWebGL = (page: Page) => page.addInitScript(() => {
+  const get = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string, ...a: unknown[]) {
+    return /webgl/.test(type) ? null : (get as (...x: unknown[]) => unknown).call(this, type, ...a);
+  } as typeof get;
+});
+const in3D = async (page: Page) => {
+  await expect(page.locator(".bank3d[data-ready] canvas")).toHaveCount(1);
+  await expect(page.locator("#bank-scene")).toHaveCount(0);
+};
+
 test("the battery card, tiles, controls and chart show the state", async ({ page }) => {
   await stubGateway(page);
-  await page.goto("/#energy");
+  await page.goto("/?bench=1#energy");
   const card = page.locator("#batt-card");
   // headline: available Ah of the batteries reporting it ÷ their capacity: (410.2 + 55.5) / 920
   await expect(card.locator(".bc-soc")).toHaveText("50.6%");
   await expect(card.locator(".bc-state")).toHaveText(/Discharging/i);
   await expect(card).toContainText("466 / 1380 Ah · 2 of 3 batteries via Bluetooth");
-  await expect(page.locator("#bank-scene .bg-stack")).toHaveCount(3);
-  await expect(page.locator("#bg-pct0")).toHaveText("89.2%");
-  await expect(page.locator("#bg-pct2")).toHaveText("—");
-  await expect(page.locator("#bg-s2")).toHaveClass(/\boff\b/);                 // no data: dimmed, dashed
-  await expect(page.locator("#bg-ls1-0")).toHaveAttribute("fill", "url(#bg-side-red)");   // 12 %: red
-  await expect(page.locator("#bank-scene")).toHaveClass(/\bchg\b/);           // bank current +4.5 A: buses flow
+  await in3D(page);                                                           // the WebGL bank, one block per battery
+  await expect(page.locator(".bank3d .b3-pct")).toHaveText(["89.2%", "12.1%", "—"]);
+  await expect(page.locator(".bank3d .b3-name")).toHaveText(["A1", "B2", "C3"]);
+  await expect(page.locator(".bank3d .b3-amp")).toHaveText(["2.4 A", "2.1 A", ""]);
+  await expect(page.locator(".bank3d .b3-head")).toHaveText("50.6% bank +4.5 A");
+  const b = (await bench(page))!;
+  expect(b.hues).toEqual(["blue", "red", "off"]);                             // 12 %: red; no data: dimmed, dashed
+  expect(b.levels).toEqual([89.2, 12.1, null]);
+  expect(b.flow).toBe("chg");                                                 // bank current +4.5 A: buses flow
   await expect(page.locator("#bc-cells")).toContainText("VDIFF0.030 V");
   await expect(page.locator("#bc-rows tr")).toHaveCount(3);
   await expect(page.locator("#bc-rows tr").nth(2)).toContainText("no data · reconnecting");
@@ -206,6 +229,7 @@ test("the power chart loads its range on demand", async ({ page }) => {
 test("per-key updates: a solar reading touches only the Solar tile; a battery read only the battery card", async ({ page }) => {
   const gw = await stubGateway(page);
   await page.goto("/#energy");
+  await in3D(page);
   await expect(page.locator('.stat[data-k="victron.pv.power"] .stat-v')).toHaveText("120W");
   await page.waitForTimeout(600);                                            // let the first values settle
   const watch = () => page.evaluate(() => {
@@ -215,7 +239,7 @@ test("per-key updates: a solar reading touches only the Solar tile; a battery re
     w.__mo = new MutationObserver(ms => ms.forEach(m => {
       const el = (m.target.nodeType === 1 ? m.target : m.target.parentElement) as Element;
       const tile = el.closest(".stat");
-      const part = tile ? `stat:${tile.getAttribute("data-k")}` : el.closest("#bank-scene") ? "scene" : el.closest("#bc-rows") ? "rows"
+      const part = tile ? `stat:${tile.getAttribute("data-k")}` : el.closest("#bank-scene, .bank3d") ? "scene" : el.closest("#bc-rows") ? "rows"
         : el.closest(".bc-head") ? "head" : el.closest("#bc-cells") ? "cells" : el.closest(".card")?.id || el.tagName;
       w.__muts.add(part);
     }));
@@ -234,41 +258,179 @@ test("per-key updates: a solar reading touches only the Solar tile; a battery re
   // a new current on one battery: that battery's row and its label / sparkline in the scene, nothing else
   await watch();
   gw.send({ type: "delta", data: { "batteries.ble": BLE.map((b, i) => (i === 0 ? { ...b, current: 3.1, age: 0.1 } : b)) } });
-  await expect(page.locator("#bg-amp0")).toHaveText("3.1 A");
+  await expect(page.locator(".bank3d .b3-amp").first()).toHaveText("3.1 A");
   await page.waitForTimeout(300);
   expect((await muts()).sort()).toEqual(["rows", "scene"]);
 });
 
 test("a battery's level eases to a new reading and changes colour across 30 %", async ({ page }) => {
   const gw = await stubGateway(page);
-  await page.goto("/#energy");
-  await expect(page.locator("#bg-pct0")).toHaveText("89.2%");
-  await expect(page.locator("#bg-ls0-0")).toHaveAttribute("fill", "url(#bg-side-blue)");
+  await page.goto("/?bench=1#energy");
+  await in3D(page);
+  const pct0 = page.locator(".bank3d .b3-pct").first();
+  await expect(pct0).toHaveText("89.2%");
+  expect((await bench(page))!.hues[0]).toBe("blue");
   await page.evaluate(() => {                                                 // every % label shown on the way
     const w = window as unknown as { __pcts: string[] };
     w.__pcts = [];
-    const el = document.querySelector("#bg-pct0")!;
+    const el = document.querySelector(".bank3d .b3-pct")!;
     new MutationObserver(() => w.__pcts.push(el.textContent || "")).observe(el, { childList: true, characterData: true, subtree: true });
   });
   gw.send({ type: "delta", data: { "batteries.ble": BLE.map((b, i) => (i === 0 ? { ...b, remaining_ah: 120 } : b)) } });  // 26.1 %
-  await expect(page.locator("#bg-pct0")).toHaveText("26.1%");
-  await expect(page.locator("#bg-ls0-0")).toHaveAttribute("fill", "url(#bg-side-amber)");
-  expect(+(await page.locator("#bg-cr0-1").getAttribute("height"))!).toBeGreaterThan(0);   // 1.1 % into the 2nd quarter
-  await expect(page.locator("#bg-cr0-2")).toHaveAttribute("height", "0");
-  await expect(page.locator("#bg-cr0-3")).toHaveAttribute("height", "0");
+  await expect(pct0).toHaveText("26.1%");
+  await expect.poll(async () => (await bench(page))!.hues[0]).toBe("amber");
+  expect((await bench(page))!.levels[0]).toBe(26.1);
   const seen = await page.evaluate(() => (window as unknown as { __pcts: string[] }).__pcts);
   expect(new Set(seen).size).toBeGreaterThan(3);                              // it counted down, not jumped
   expect(seen.map(s => parseFloat(s)).every((v, i, a) => i === 0 || v <= a[i - 1]!)).toBe(true);
   // a small step (< 0.5 %) is written at once
   gw.send({ type: "delta", data: { "batteries.ble": BLE.map((b, i) => (i === 0 ? { ...b, remaining_ah: 121 } : b)) } });
-  await expect(page.locator("#bg-pct0")).toHaveText("26.3%");
+  await expect(pct0).toHaveText("26.3%");
+});
+
+test("without WebGL2 the SVG scene shows, in the same box, with the same readings", async ({ page, browser }) => {
+  // the WebGL bank's box first
+  await stubGateway(page);
+  await page.goto("/#energy");
+  await in3D(page);
+  const box3d = await page.locator(".bank3d").boundingBox();
+  // a browser without WebGL
+  const ctx = await browser.newContext({ viewport: { width: 1920, height: 1200 } });
+  const p2 = await ctx.newPage();
+  await noWebGL(p2);
+  const gw = await stubGateway(p2);
+  await p2.goto("/#energy");
+  await expect(p2.locator("#bank-scene .bg-stack")).toHaveCount(3);
+  await expect(p2.locator(".bank3d")).toHaveCount(0);
+  expect(await p2.locator("#bank-scene").boundingBox()).toEqual(box3d);
+  await expect(p2.locator("#bg-pct0")).toHaveText("89.2%");
+  await expect(p2.locator("#bg-pct2")).toHaveText("—");
+  await expect(p2.locator("#bg-s2")).toHaveClass(/\boff\b/);                   // no data: dimmed, dashed
+  await expect(p2.locator("#bg-ls1-0")).toHaveAttribute("fill", "url(#bg-side-red)");   // 12 %: red
+  await expect(p2.locator("#bank-scene")).toHaveClass(/\bchg\b/);             // bank current +4.5 A: buses flow
+  // its level still eases in
+  gw.send({ type: "delta", data: { "batteries.ble": BLE.map((b, i) => (i === 0 ? { ...b, remaining_ah: 120 } : b)) } });
+  await expect(p2.locator("#bg-pct0")).toHaveText("26.1%");
+  await expect(p2.locator("#bg-ls0-0")).toHaveAttribute("fill", "url(#bg-side-amber)");
+  expect(+(await p2.locator("#bg-cr0-1").getAttribute("height"))!).toBeGreaterThan(0);   // 1.1 % into the 2nd quarter
+  await expect(p2.locator("#bg-cr0-2")).toHaveAttribute("height", "0");
+  await p2.screenshot({ path: `${OUT}/react-energy-svg-fallback.png` });
+  // and at phone width the two boxes agree too
+  await page.setViewportSize({ width: 390, height: 844 });
+  await p2.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  expect(await p2.locator("#bank-scene").boundingBox()).toEqual(await page.locator(".bank3d").boundingBox());
+  await ctx.close();
+});
+
+test("render on demand: no frames while nothing moves; the flow runs only while charging or discharging", async ({ page }) => {
+  const gw = await stubGateway(page, { state: { ...STATE, "batteries.ble.current": 0.2 } });
+  await page.goto("/?bench=1#energy");
+  await in3D(page);
+  expect((await bench(page))!.flow).toBe("");
+  await page.waitForTimeout(500);
+  const f0 = (await bench(page))!.frames;
+  await page.waitForTimeout(1000);
+  expect((await bench(page))!.frames).toBe(f0);                                // idle: nothing drawn
+  gw.send({ type: "delta", data: { "batteries.ble.current": -12 } });
+  await expect.poll(async () => (await bench(page))!.flow).toBe("dis");
+  const f1 = (await bench(page))!.frames;
+  await page.waitForTimeout(1000);
+  expect((await bench(page))!.frames - f1).toBeGreaterThan(20);               // discharging: the dashes run
+  const b = (await bench(page))!;
+  expect(b.calls).toBeLessThan(80);                                           // a small scene
+  expect(b.triangles).toBeLessThan(6000);
+  gw.send({ type: "delta", data: { "batteries.ble.current": 0 } });
+  await expect.poll(async () => (await bench(page))!.flow).toBe("");
+  await page.waitForTimeout(200);
+  const f2 = (await bench(page))!.frames;
+  await page.waitForTimeout(1000);
+  expect((await bench(page))!.frames).toBe(f2);
+});
+
+test("reduced motion: the flow shows but doesn't run", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await stubGateway(page);
+  await page.goto("/?bench=1#energy");
+  await in3D(page);
+  expect((await bench(page))!.flow).toBe("chg");
+  await page.waitForTimeout(400);
+  const f0 = (await bench(page))!.frames;
+  await page.waitForTimeout(800);
+  expect((await bench(page))!.frames).toBe(f0);
+});
+
+test("hiding the page disposes the renderer and everything it holds; showing it builds a fresh one", async ({ page }) => {
+  const warnings: string[] = [];
+  page.on("console", m => { if (/too many active webgl contexts|context lost/i.test(m.text())) warnings.push(m.text()); });
+  await stubGateway(page);
+  await page.goto("/?bench=1#energy");
+  await in3D(page);
+  let b = (await bench(page))!;
+  expect(b.live).toBe(1);
+  expect(b.res).toBeGreaterThan(0);
+  await page.click(".rail button[data-v=home]");
+  await expect.poll(async () => (await bench(page))!.live).toBe(0);
+  b = (await bench(page))!;
+  expect(b.res).toBe(0);                                                      // every geometry, material, texture freed
+  expect(b.disposed).toBe(b.created);
+  await expect(page.locator(".bank3d canvas")).toHaveCount(0);
+  await page.click(".rail button[data-v=energy]");
+  await in3D(page);
+  const f = (await bench(page))!.frames;
+  await expect.poll(async () => (await bench(page))!.frames).toBeGreaterThan(f + 10);   // a live context, drawing again
+  expect((await bench(page))!.firstFrameMs).not.toBeNull();
+  // 20 hide / show cycles: no context left behind
+  for (let i = 0; i < 20; i++) {
+    await page.click(".rail button[data-v=home]");
+    await expect.poll(async () => (await bench(page))!.live).toBe(0);
+    await page.click(".rail button[data-v=energy]");
+    await expect(page.locator(".bank3d[data-ready] canvas")).toHaveCount(1);
+  }
+  b = (await bench(page))!;
+  expect(b.live).toBe(1);
+  expect(b.lost).toBe(0);
+  expect(b.created - b.disposed).toBe(1);
+  expect(warnings).toEqual([]);
+});
+
+test("a lost WebGL context falls back to the SVG scene", async ({ page }) => {
+  await stubGateway(page);
+  await page.goto("/?bench=1#energy");
+  await in3D(page);
+  await page.evaluate(() => {
+    const c = document.querySelector<HTMLCanvasElement>(".bank3d canvas")!;
+    (c.getContext("webgl2") as WebGL2RenderingContext).getExtension("WEBGL_lose_context")!.loseContext();
+  });
+  await expect(page.locator("#bank-scene .bg-stack")).toHaveCount(3);
+  await expect(page.locator("#bg-pct0")).toHaveText("89.2%");
+  const b = (await bench(page))!;
+  expect(b.live).toBe(0);
+  expect(b.res).toBe(0);
+});
+
+test("drag to orbit, then it eases back home", async ({ page }) => {
+  await stubGateway(page, { state: { ...STATE, "batteries.ble.current": 0 } });
+  await page.goto("/?bench=1#energy");
+  await in3D(page);
+  const home = (await bench(page))!.orbit;
+  const box = (await page.locator(".bank3d canvas").boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 150, box.y + box.height / 2 + 40, { steps: 8 });
+  await page.mouse.up();
+  const turned = (await bench(page))!.orbit;
+  expect(turned[0]).toBeGreaterThan(home[0]! + 0.5);                          // turned round the bank
+  expect(turned[1]).toBeGreaterThan(home[1]!);
+  await page.screenshot({ path: `${OUT}/react-energy-3d-orbit.png` });
+  await expect.poll(async () => (await bench(page))!.orbit, { timeout: 8000 }).toEqual(home);
 });
 
 test("phone width: one column, no sideways scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await stubGateway(page);
   await page.goto("/#energy");
-  await expect(page.locator("#bank-scene")).toBeVisible();
+  await in3D(page);
   const over = await page.evaluate(() => { const v = document.querySelector(".view.on")!; return v.scrollWidth - v.clientWidth; });
   expect(over).toBeLessThanOrEqual(0);
   await page.screenshot({ path: `${OUT}/react-energy-390x844.png`, fullPage: true });

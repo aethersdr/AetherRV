@@ -1,8 +1,9 @@
 // Energy page logic: the numbers app.js showed, character for character (invented data).
 import { describe, expect, it } from "vitest";
 import { socColor } from "../../lib/format";
-import { bankPct, bankState, battPct, BS, cellTiles, discClip, flowDur, flowOf, headView, hueOf, nudgeLimit, recordBank, rowView,
-  sparkPaths, splitUnit, sumSeries, type BankHist, type Ble } from "./bank";
+import { approach, B3, b3FillH, b3Width, b3X, bankPct, bankState, battPct, BS, cellTiles, clampOrbit, discClip, durSeconds, fitDistance,
+  flowAdvance, flowDur, flowOf, headView, hueOf, nudgeLimit, ORBIT, orbitPos, recordBank, rowView, sparkPaths, splitUnit, sumSeries,
+  type BankHist, type Ble } from "./bank";
 
 const A: Ble = { name: "A1", ok: true, soc: 91, voltage: 13.31, current: 2.4, remaining_ah: 410.2, cycles: 12,
   temps: [12.5, 13, 11, 15], cells: [3.327, 3.329, 3.326, 3.328], charge_fet: true, discharge_fet: true, age: 1 };
@@ -113,5 +114,52 @@ describe("power", () => {
     expect(splitUnit("1.2 kW")).toEqual(["1.2", "kW"]);
     expect(splitUnit("51°")).toEqual(["51°", ""]);
     expect(splitUnit("—")).toEqual(["—", ""]);
+  });
+});
+
+describe("WebGL bank maths (three-free)", () => {
+  it("blocks are centred on the bank, one block + one gap apart", () => {
+    expect([0, 1, 2, 3].map(i => b3X(i, 4))).toEqual([-2.325, -0.775, 0.775, 2.325]);
+    expect(b3X(0, 1)).toBe(0);
+    expect(b3Width(4)).toBeCloseTo(5.65);
+    expect(b3Width(1)).toBe(1);
+  });
+
+  it("fill height follows the charge, clamped to the block", () => {
+    const inner = B3.h - B3.lid - 2 * B3.fillPad;
+    expect(b3FillH(null)).toBe(0);
+    expect(b3FillH(50)).toBeCloseTo(inner / 2);
+    expect(b3FillH(104)).toBeCloseTo(inner);                  // a battery can read past its rating
+    expect(b3FillH(-3)).toBe(0);
+  });
+
+  it("the camera distance fits the wider of the two spans", () => {
+    const wide = fitDistance(8, 1, 8 / 3, 20), tall = fitDistance(1, 8, 8 / 3, 20);
+    expect(tall).toBeGreaterThan(wide);
+    // the span just fits: half-width / distance = tan(half the horizontal fov)
+    const hz = 2 * Math.atan(Math.tan(10 * Math.PI / 180) * 8 / 3);
+    expect(4 / wide).toBeCloseTo(Math.tan(hz / 2), 6);
+  });
+
+  it("orbit stays in front of and above the bank, and eases home", () => {
+    expect(clampOrbit(ORBIT.az + 5, -1)).toEqual([ORBIT.az + ORBIT.azMax, ORBIT.elMin]);
+    expect(clampOrbit(ORBIT.az - 5, 3)).toEqual([ORBIT.az - ORBIT.azMax, ORBIT.elMax]);
+    let az = 1;
+    for (let i = 0; i < 120; i++) az = approach(az, 0.15, 1 / 60, ORBIT.tau);   // 2 s at 60 fps
+    expect(Math.abs(az - 0.15)).toBeLessThan(1e-3);
+    // frame-rate independent: one 0.1 s step = six 1/60 s steps
+    let a = 1, b = 1;
+    a = approach(a, 0, 0.1, ORBIT.tau);
+    for (let i = 0; i < 6; i++) b = approach(b, 0, 0.1 / 6, ORBIT.tau);
+    expect(a).toBeCloseTo(b, 10);
+    const [x, y, z] = orbitPos(0, 0, 5, 1);
+    expect([x, y, z]).toEqual([0, 1, 5]);
+  });
+
+  it("flow dashes run with the current and wrap", () => {
+    expect(flowAdvance(0.5, 1, 0.5, 2)).toBeCloseTo(0.25);      // charging: offset falls (dashes run source → battery)
+    expect(flowAdvance(0.5, -1, 0.5, 2)).toBeCloseTo(0.75);     // discharging: the other way
+    expect(flowAdvance(0.1, 1, 0.5, 2)).toBeCloseTo(0.85);      // wraps into [0, 1)
+    expect(durSeconds(flowDur(24))).toBe(2);
   });
 });

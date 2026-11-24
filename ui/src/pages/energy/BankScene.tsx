@@ -7,7 +7,7 @@
 import { Fragment, memo, useLayoutEffect, useRef } from "react";
 import { reducedMotion, tween } from "../../lib/tween";
 import { store } from "../../state/store";
-import { BS, discClip, discSide, flowDur, flowOf, hueOf, pctText, recordBank, sparkPaths, stackX, battPct,
+import { BS, discClip, discSide, flowDur, flowOf, hueOf, LEVEL_MIN, LEVEL_MS, pctText, recordBank, sparkPaths, stackX, battPct,
   type BankHist, type Ble, type Hue } from "./bank";
 
 // aethersdr.com tokens: --bg-2/--bg-3 navy, --cyan-deep #3aa7ff → --cyan #5de3ff → --aqua #8ef7e6 (their --grad);
@@ -130,8 +130,8 @@ const SceneSvg = memo(function SceneSvg({ names }: { names: readonly string[] })
   );
 });
 
-const LEVEL_MS = 900;                // a new charge reading eases in over this long …
-const LEVEL_MIN = 0.5;               // … when it moves the level visibly (≥ 0.5 %); smaller steps are just written
+// LEVEL_MS / LEVEL_MIN (bank.ts): a new charge reading eases in over 0.9 s …
+// … when it moves the level visibly (≥ 0.5 %); smaller steps are just written
 const setAttr = (el: Element | null | undefined, a: string, v: string) => { if (el && el.getAttribute(a) !== v) el.setAttribute(a, v); };
 const setText = (el: Element | null | undefined, s: string) => { if (el && el.textContent !== s) el.textContent = s; };
 

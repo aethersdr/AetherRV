@@ -182,3 +182,36 @@ export const nudgeLimit = (cur: number, dir: 1 | -1) => Math.min(LIM_MAX, Math.m
 
 /** A stat tile's text: "1.2 kW" → ["1.2", "kW"], "51°" → ["51°", ""]. */
 export const splitUnit = (s: string): [string, string] => { const i = s.indexOf(" "); return i < 0 ? [s, ""] : [s.slice(0, i), s.slice(i + 1)]; };
+
+// ── WebGL bank (bank3d.ts): layout, camera and animation maths, kept free of three so they test without WebGL ──
+/** A charge reading eases in when it moves the level visibly (both scenes use these). */
+export const LEVEL_MS = 900, LEVEL_MIN = 0.5;
+/** Scene units: one EPOCH block (w × h × d), the gap between blocks, the + / − bus heights and depths. */
+export const B3 = { w: 1, h: 1.3, d: 0.72, lid: 0.1, gap: 0.55, fillPad: 0.04, term: 0.28, busP: 1.9, busN: 1.74, zP: -0.12, zN: 0.12,
+  platZ: 0.95, fov: 20, ty: 0.6, zoom: 1.1, dash: 0.24 } as const;
+export const b3Width = (n: number) => n * B3.w + Math.max(0, n - 1) * B3.gap;
+export const b3X = (i: number, n: number) => (i - (n - 1) / 2) * (B3.w + B3.gap);
+/** Height of the fill at a charge of `pct` % (0 … the block's inner height). */
+export const b3FillH = (pct: number | null) => (pct == null ? 0 : Math.max(0, Math.min(100, pct)) / 100 * (B3.h - B3.lid - 2 * B3.fillPad));
+
+/** Camera distance at which a span `w` wide and `h` high fits the view (vertical fov in degrees). */
+export function fitDistance(w: number, h: number, aspect: number, fovDeg: number): number {
+  const v = fovDeg * Math.PI / 180, hz = 2 * Math.atan(Math.tan(v / 2) * aspect);
+  return Math.max(w / 2 / Math.tan(hz / 2), h / 2 / Math.tan(v / 2));
+}
+
+/** Drag to orbit: azimuth / elevation (radians) around the bank, clamped so the camera never goes under or behind it;
+ *  `idleMs` after the last touch it eases home with time constant `tau` (s). */
+export const ORBIT = { az: 0.15, el: 0.26, azMax: 0.75, elMin: 0.05, elMax: 1.0, perPx: 0.008, idleMs: 3000, tau: 0.28 } as const;
+export const clampOrbit = (az: number, el: number): [number, number] =>
+  [Math.max(ORBIT.az - ORBIT.azMax, Math.min(ORBIT.az + ORBIT.azMax, az)), Math.max(ORBIT.elMin, Math.min(ORBIT.elMax, el))];
+/** Frame-rate independent exponential approach of v to target over dt seconds. */
+export const approach = (v: number, target: number, dt: number, tau: number) => target + (v - target) * Math.exp(-dt / tau);
+/** Camera position for an orbit (target at the origin of `ty`). */
+export const orbitPos = (az: number, el: number, dist: number, ty: number): [number, number, number] =>
+  [dist * Math.sin(az) * Math.cos(el), ty + dist * Math.sin(el), dist * Math.cos(az) * Math.cos(el)];
+
+/** Dash texture offset after dt s: one dash period per `durS` s; dashes run with the current (+1 charging, −1 discharging). */
+export const flowAdvance = (offset: number, dir: 1 | -1, dtS: number, durS: number) => (((offset - dir * dtS / durS) % 1) + 1) % 1;
+/** flowDur's "2.00s" as seconds. */
+export const durSeconds = (s: string) => parseFloat(s) || 2;

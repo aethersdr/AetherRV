@@ -1,13 +1,14 @@
 // Battery bank card (app.js renderBattCard): the Lynx shunt for the bank, the EPOCH batteries over Bluetooth for each
-// battery. Header, 3D scene, cell / temperature tiles and the per-battery table, each subscribed on its own: the
-// batteries' `age` changes on every read, so every part selects only the strings it shows.
+// battery. Header, the 3D bank (WebGL, or the SVG scene without it), cell / temperature tiles and the per-battery
+// table, each subscribed on its own: the batteries' `age` changes on every read, so every part selects only the strings
+// it shows.
 import { memo } from "react";
 import { Icon } from "../../components/Icon";
 import { fmtPct, socColor } from "../../lib/format";
 import { useTweenText } from "../../lib/tween";
 import { useKeySelector, useReady, useSelect } from "../../state/hooks";
 import { BATT_AH, cellTiles, headView, rowView, type Ble, type RowView } from "./bank";
-import { BankScene } from "./BankScene";
+import { Bank } from "./Bank3D";
 
 const HEAD_KEYS = ["batteries.ble", "victron.battery.soc", "victron.battery.power", "victron.battery.voltage",
   "victron.battery.current", "victron.battery.ttg"];
@@ -63,7 +64,7 @@ export const BatteryCard = memo(function BatteryCard() {
     <div className="card batt-card" id="batt-card">
       <BankHead />
       {names.length ? <>
-        <BankScene key={names.join("|")} names={names} />
+        <Bank key={names.join("|")} names={names} />
         <BankCells />
         <table className="bc-table">
           <thead><tr><th>Battery</th><th>SoC</th><th>Volts</th><th>Amps</th><th>Power</th><th>Cycles</th><th>Ah</th><th>Temp</th><th>MOS</th></tr></thead>

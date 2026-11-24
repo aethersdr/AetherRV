@@ -20,3 +20,29 @@
   .pwr-chart .card-h { flex-wrap: wrap; row-gap: 8px; }
   .pwr-chart .card-h .seg.range { margin-left: 0; }
 }
+
+/* ── WebGL battery bank (Bank3D.tsx): exactly the SVG scene's box (width 100 %, 8:3, at most 300 px high); the labels
+   are HTML over the canvas, sized in container units so they scale with the box as the SVG's text did ── */
+.bank3d { position: relative; width: 100%; aspect-ratio: 8 / 3; max-height: 300px; container-type: inline-size; flex: none; }
+.bank3d .b3-gl, .bank3d .b3-ov { position: absolute; inset: 0; }
+.bank3d .b3-canvas { display: block; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
+.bank3d .b3-canvas:active { cursor: grabbing; }
+.bank3d .b3-ov { pointer-events: none; overflow: visible; opacity: 0; transition: opacity .25s; }
+.bank3d[data-ready] .b3-ov { opacity: 1; }
+.bank3d .b3-defs { position: absolute; width: 0; height: 0; }
+.bank3d .b3-pct, .bank3d .b3-name, .bank3d .b3-foot, .bank3d .b3-pol { position: absolute; left: 0; top: 0; white-space: nowrap; will-change: transform; }
+.bank3d .b3-pct, .bank3d .b3-name, .bank3d .b3-pol { translate: -50% -50%; }
+.bank3d .b3-pct { color: #eaf2fb; font-size: 3.75cqw; font-weight: 800; letter-spacing: -.5px;
+  -webkit-text-stroke: .5cqw rgba(6, 11, 19, .88); paint-order: stroke fill; }
+.bank3d .b3-name { color: #7bf2dc; font-size: 1.75cqw; font-weight: 700; letter-spacing: .375cqw; opacity: .9; padding-left: .375cqw; }
+.bank3d .b3-pol { font-size: 2.75cqw; font-weight: 800; line-height: 1; }
+.bank3d .b3-plus { color: #EE7355; } .bank3d .b3-minus { color: #5de3ff; }
+.bank3d .b3-foot { translate: -60% -100%; display: flex; align-items: flex-end; gap: .6cqw; padding-bottom: .2cqw; }
+.bank3d .b3-foot svg { width: 14cqw; height: 4.25cqw; overflow: visible; }
+.bank3d .b3-sl { fill: none; stroke: url(#b3-sparkline); stroke-width: 1.8; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.bank3d .b3-sa { fill: url(#b3-spark); }
+.bank3d .b3-zero { stroke: rgba(120, 165, 210, .22); stroke-dasharray: 2 4; vector-effect: non-scaling-stroke; }
+.bank3d .b3-amp { color: #c4d4e8; font-size: 1.5cqw; font-weight: 600; line-height: 1; padding-bottom: .5cqw; }
+.bank3d .b3-head { position: absolute; left: .5cqw; top: 0; color: var(--muted); font-size: 1.6cqw; letter-spacing: .5px; }
+.bank3d .b3-head b { color: var(--ink-2); font-weight: 700; }
+.bank3d .b3-head span { margin-left: .4em; }
