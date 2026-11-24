@@ -57,20 +57,24 @@ snapshot() {   # sway launch.sh launcher webprocs loop helper
 }
 whole() {
   local s; s=$(sway_pid)
-  [ "${s:-0}" != 0 ] && kill -0 "$s" 2>/dev/null || return 1
+  [ "${s:-0}" != 0 ] && [ -d "/proc/$s" ] || return 1   # (kill -0 can't probe kiosk's processes)
   [ "$(count -f '^/bin/bash /opt/aetherrv-rs/panel/launch.sh')" = 1 ] || return 1
   [ "$(count -f '^/opt/aetherrv-rs/bin/aetherrv-panel-wpe')" = 1 ] || return 1
   [ "$(count -x WPEWebProcess)" -ge 1 ] || return 1
   [ "$(count -f '/opt/aetherrv-rs/panel/screen.sh')" = 1 ] || return 1
   [ "$(count -x aetherrv-screen)" = 1 ] || return 1
   curl -sf -m 1 -o /dev/null http://127.0.0.1:8091/screen || return 1
-  # the page is live: a kiosk-owned process holds a connection to the gateway
-  sudo ss -Htnp state established '( dport = :8080 )' | grep -q "pid=" || return 1
-  sudo ss -Htnp state established '( dport = :8080 )' | grep -oE 'pid=[0-9]+' | cut -d= -f2 \
-    | while read -r p; do [ "$(stat -c %U /proc/"$p" 2>/dev/null)" = $K ] && echo y; done | grep -q y
+  # the page is live: a kiosk-owned process holds a connection to the gateway (no `| grep -q` here: with pipefail,
+  # its early exit fails the pipeline when there is more than one connection)
+  local p conn
+  conn=$(sudo ss -Htnp state established '( dport = :8080 )')
+  for p in $(grep -oE 'pid=[0-9]+' <<< "$conn" | cut -d= -f2 | sort -u); do
+    [ "$(stat -c %U "/proc/$p" 2>/dev/null)" = $K ] && return 0
+  done
+  return 1
 }
-wait_whole() {   # limit_s → seconds taken, or empty
-  local t0 t; t0=$(date +%s.%N)
+wait_whole() {   # limit_s [t0] → seconds since t0 (default: now), or empty
+  local t0 t; t0=${2:-$(date +%s.%N)}
   while :; do
     t=$(echo "$(date +%s.%N) - $t0" | bc)
     if whole; then echo "$t"; return 0; fi
@@ -78,7 +82,7 @@ wait_whole() {   # limit_s → seconds taken, or empty
     sleep 0.2
   done
 }
-alive_of() { for p in $1; do kill -0 "$p" 2>/dev/null && echo -n "$p "; done; }
+alive_of() { for p in $1; do [ -d "/proc/$p" ] && echo -n "$p "; done; }
 
 echo "panel-isolation: $(cat /opt/aetherrv-rs/VERSION 2>/dev/null), $(date '+%F %T')"
 sudo systemctl start $U
@@ -90,11 +94,12 @@ run_case() {   # name kill-target-cmd survives(yes|no)
   local name=$1 survive=$3 before o_before n_before old t left after o_after
   before=$(snapshot); o_before=$(others); n_before=$(nrestarts)
   IFS='|' read -r b_sway b_launch b_rt b_web b_loop b_helper <<< "$before"
+  local t0; t0=$(date +%s.%N)
   eval "$2"
   if [ "$survive" = yes ]; then
-    t=$(wait_whole 10); sleep 0.5
+    t=$(wait_whole 10 "$t0"); sleep 0.5
   else
-    sleep 1; t=$(wait_whole 30); sleep 4   # the old helper polls its sway every 2 s
+    sleep 1; t=$(wait_whole 30 "$t0"); sleep 4   # (the old session is still whole for a moment); the old helper polls its sway every 2 s
   fi
   after=$(snapshot); o_after=$(others)
   IFS='|' read -r a_sway _ a_rt _ _ a_helper <<< "$after"
@@ -110,7 +115,7 @@ run_case() {   # name kill-target-cmd survives(yes|no)
     [ -z "$left" ] || { ok=0; why+=" left over: $left;"; }
   fi
   [ "$o_after" = "$o_before" ] || { ok=0; why+=" another unit changed: $(diff <(echo "$o_before") <(echo "$o_after") | grep '^>' | tr '\n' ' ');"; }
-  if [ $ok = 1 ]; then echo "PASS $name: whole again after ${t}s; no other unit restarted"; else echo "FAIL $name:$why"; FAIL=1; fi
+  if [ $ok = 1 ]; then echo "PASS $name: whole again ${t}s after it; no other unit restarted"; else echo "FAIL $name:$why"; FAIL=1; fi
   echo "  before $before"; echo "  after  $after"
   sleep 3
 }
@@ -131,6 +136,5 @@ print(f"gateway: {len(ok)} answers, {len(bad)} not 200, longest gap {gap:.2f} s"
 sys.exit(1 if bad or gap > 1.5 else 0)
 EOF
 [ $? = 0 ] || FAIL=1
-echo "panel exit codes: $(sudo journalctl -u $U --since "-15min" --no-pager -o cat | grep -oE 'aetherrv-panel-wpe: [^:]+' | sort | uniq -c | tr '\n' ';')"
 [ $FAIL = 0 ] && echo "PANEL ISOLATION: PASS" || echo "PANEL ISOLATION: FAIL"
 exit $FAIL
