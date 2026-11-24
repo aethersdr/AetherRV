@@ -1,10 +1,13 @@
 #!/bin/bash
 # Start the UI runtime on http://127.0.0.1:8080/ (the gateway) and end the sway session when it exits, so systemd
-# restarts the whole panel. The runtime is chosen by the benchmark (docs/UI-RUNTIME-BENCHMARK.md) and set in
-# /etc/aetherrv/panel.env: AETHERRV_PANEL_RUNTIME=chromium | wpe | tauri (default chromium).
+# restarts the whole panel. The runtime: WPE through the panel's own launcher (the owner's choice, 2026-11-24, from
+# the benchmark: docs/UI-RUNTIME-BENCHMARK.md §9). /etc/aetherrv/panel.env can set AETHERRV_PANEL_RUNTIME=wpe |
+# chromium | tauri; by default wpe, or chromium when the WPE launcher isn't installed (wpewebkit missing at build).
 URL=${AETHERRV_PANEL_URL:-http://127.0.0.1:8080/}
 STATE=/var/lib/aetherrv-panel
-case "${AETHERRV_PANEL_RUNTIME:-chromium}" in
+DEFAULT=chromium
+[ -x /opt/aetherrv-rs/bin/aetherrv-panel-wpe ] && DEFAULT=wpe
+case "${AETHERRV_PANEL_RUNTIME:-$DEFAULT}" in
   wpe)
     # the panel's own WPE kiosk launcher (panel/wpe): full screen, the page colour behind the view, no chrome, no
     # navigation off the UI, a persistent profile (the UI keeps per-screen preferences in localStorage); it exits

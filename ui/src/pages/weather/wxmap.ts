@@ -3,9 +3,10 @@
 // (RadarGL, or tile layers without WebGL2) and TomTom traffic, centred on the van.
 //
 // Lifetime (React <Activity>): the Leaflet map is kept while the page is hidden (pan, zoom and the pinned spot
-// survive, and coming back shows the tiles at once). pause() stops what runs (the loop, the timers) and keeps the
-// radar's WebGL context and textures, so resume() shows the radar at once (lib/glkeep.ts); with ?keepgl=0, pause()
-// also frees the radar and resume() rebuilds it after the page's first frame (the earlier rule). destroy() (a real
+// survive, and coming back shows the tiles at once). pause() stops what runs (the loop, the timers) and frees the
+// radar (its WebGL context and frame textures, ~800 MB of GPU memory with the loop loaded), and resume() rebuilds it
+// after the page's first frame (owner, 2026-11-24: lib/glkeep.ts); with ?keepgl=1 the radar is kept instead, paused,
+// and resume() shows it at once. destroy() (a real
 // unmount) removes the map and frees everything; its view, the pin and the frame list live on in module state (P).
 import * as L from "leaflet";
 import { keepGl } from "../../lib/glkeep";

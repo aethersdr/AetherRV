@@ -4,9 +4,9 @@
 // Page switching: every page is kept mounted inside <Activity>. The visible one is live; hidden ones are
 // display:none with their effects (store subscriptions, timers, rAF loops) torn down, so they cost no CPU per
 // update, and React pre-renders them at idle priority after boot. Switching back reveals already-built DOM
-// instead of building a page (measured: see the report / docs). The WebGL scenes (Network sky, Weather radar,
-// Energy bank) keep their paused context while hidden, so they show at once on return (lib/glkeep.ts; ?keepgl=0
-// frees them instead). A page that is expensive to even pre-render (maps, three.js) should be React.lazy() and
+// instead of building a page (measured: see the report / docs). The Network sky and the Energy bank keep their
+// paused WebGL context while hidden, so they show at once on return; the Weather radar is freed on hide and rebuilt
+// on return (owner, 2026-11-24: its frames hold ~800 MB of GPU memory). lib/glkeep.ts; ?keepgl=1 / 0 keep / free all. A page that is expensive to even pre-render (maps, three.js) should be React.lazy() and
 // do its heavy setup in an effect.
 import { Activity, lazy, memo, Suspense, useEffect, type ComponentType } from "react";
 import { ConfirmModal, Toast, WakeShield } from "./components/Overlays";

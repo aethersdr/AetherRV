@@ -237,8 +237,8 @@ test("radar opacity: the slider sets it in 5 % steps and remembers it", async ({
   await noLeaks(s);
 });
 
-test("hidden page: the radar keeps its WebGL context, paused, and shows at once on return; the map and its pin stay", async ({ page }) => {
-  const s = await stub(page);
+test("?keepgl=1: a hidden page keeps the radar's WebGL context, paused, and shows it at once on return; the map and its pin stay", async ({ page }) => {
+  const s = await stub(page, { query: "?keepgl=1" });
   await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
   await page.locator(".wx-radar-gl").evaluate(c => {
     const w = window as unknown as { __wxLost?: boolean };
@@ -261,8 +261,8 @@ test("hidden page: the radar keeps its WebGL context, paused, and shows at once 
   await noLeaks(s);
 });
 
-test("?keepgl=0: hiding the page frees the radar's WebGL context and showing it rebuilds it; the map and its pin stay", async ({ page }) => {
-  const s = await stub(page, { query: "?keepgl=0" });
+for (const query of ["", "?keepgl=0"]) test(`${query || "default"} (owner 2026-11-24): hiding the page frees the radar's WebGL context and showing it rebuilds it; the map and its pin stay`, async ({ page }) => {
+  const s = await stub(page, { query });
   await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);
   const m = (await page.locator("#wx-map").boundingBox())!;
   await page.mouse.click(m.x + m.width * 0.6, m.y + m.height * 0.6);
@@ -297,7 +297,7 @@ test("?keep=0 (a real unmount): leaving removes the map; coming back rebuilds it
 const SKY = { "starlink.reachable": true, "starlink.online": true, "starlink.azimuth": 90, "starlink.elevation": 70,
   "starlink.obstruction_map": { rows: 3, cols: 3, max_theta: 80, frame: "dish", data: btoa("\xfe".repeat(9)) } };
 
-test("many page switches don't pile up WebGL contexts (one per scene, kept)", async ({ page }) => {
+test("many page switches don't pile up WebGL contexts (the sky kept, the radar freed and rebuilt)", async ({ page }) => {
   const s = await stub(page, { state: { ...STATE, ...SKY } });
   for (let i = 0; i < 12; i++) {
     await expect(page.locator(".wx-radar-gl.on")).toHaveCount(1);

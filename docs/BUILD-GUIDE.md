@@ -32,7 +32,7 @@ assistant can do the rest while you check the results.
 
 | Item | Notes |
 |---|---|
-| **Raspberry Pi 5**, 8 GB or 16 GB | The reference build uses 16 GB. 4 GB works but leaves little room for Chromium. |
+| **Raspberry Pi 5**, 8 GB or 16 GB | The reference build uses 16 GB. 4 GB works but leaves less room for the screen and the radar loop. |
 | **Active cooler** for the Pi 5 | The official one, or any Pi 5 cooler that leaves the 40-pin header free. |
 | **Waveshare 10.1" HDMI LCD (H)** | 1920×1200 IPS, HDMI video + USB touch. Other HDMI touchscreens work; see the prompts at the end for a different size. |
 | Micro-HDMI to HDMI cable, and a USB-A cable for touch | Short ones; the screen and Pi usually sit together. |
@@ -201,15 +201,17 @@ pacman -S linux-rpi raspberrypi-bootloader firmware-raspberrypi
 
 ```sh
 pacman -S --needed sudo openssh rsync git base-devel clang rustup mosquitto \
-  sway chromium noto-fonts wlr-randr grim \
+  sway wpewebkit gst-plugins-base gst-plugins-good noto-fonts wlr-randr grim \
   iwd bluez bluez-utils \
   plymouth tailscale
 # later, as your admin user (item 4 below), not root: rustup default stable
 ```
 
 `base-devel`, `clang` and `rustup` build AetherRV on the Pi; `mosquitto` is its internal message bus; `sway` and
-`chromium` run the screen (the UI runtime: see docs/UI-RUNTIME-BENCHMARK.md); `iwd` is Wi-Fi; `bluez` is
-Bluetooth for the batteries; `plymouth` is the boot splash and `tailscale` is remote access (both optional).
+`wpewebkit` run the screen (WPE WebKit through AetherRV's own small launcher, built at install; see
+docs/UI-RUNTIME-BENCHMARK.md), the two `gst-plugins` packages play its alert chime, and `noto-fonts` is its font;
+`iwd` is Wi-Fi; `bluez` is Bluetooth for the batteries; `plymouth` is the boot splash and `tailscale` is remote
+access (both optional).
 On your computer you need `git`, `rsync` and Node.js (`npm`) to build the screen's app.
 
 4. Your admin account, SSH key only, and a name:

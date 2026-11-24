@@ -7,8 +7,8 @@ person, one device at a time. The rollback is one command and can be run at any 
 
 - [ ] The bench results are green: `docs/STATUS.md` (all eight items), `docs/TEST-PARITY.md`, the parity runs,
       the isolation tests, the 1 h soak and the UI runtime benchmark (`docs/UI-RUNTIME-BENCHMARK.md`).
-- [ ] The UI runtime the owner chose is installed on the van Pi's package list (§3) and `aetherrv-panel.service` is
-      in `packaging/systemd/`.
+- [ ] The UI runtime the owner chose (WPE through the panel's launcher, 2026-11-24) has its packages on the van Pi
+      (§3) and `aetherrv-panel.service` is in `packaging/systemd/`.
 - [ ] Read §8 (checks the bench could not do) so they are on the day's list.
 
 ## 1. Pre-checks in the van (all must hold)
@@ -38,14 +38,17 @@ The Python system keeps running. Install the packages the Rust system needs if m
 and the panel need them):
 
 - `mosquitto` (the bus);
-- the chosen UI runtime (`docs/UI-RUNTIME-BENCHMARK.md` §9, `/etc/aetherrv/panel.env`):
+- the UI runtime, **WPE** (the owner's choice, 2026-11-24; `docs/UI-RUNTIME-BENCHMARK.md` §9). `install.sh` builds the
+  panel's WPE launcher only if `wpewebkit` is installed when it runs, and `launch.sh` falls back to Chromium without
+  it, so install these first and check `/opt/aetherrv-rs/bin/aetherrv-panel-wpe` exists after the push. Keep
+  Chromium installed: the Python kiosk, and so the rollback, needs it.
   - **WPE**: `wpewebkit` (it brings `bubblewrap` and `xdg-dbus-proxy`), `noto-fonts` (the bench had to add the
     fonts: WPE has no bundled fallback font), and **`gst-plugins-base gst-plugins-good`** for the alert chime.
     WebKit plays WebAudio through GStreamer's `autoaudiosink` (gst-plugins-good), which picks `alsasink`
     (gst-plugins-base) when there is no sound server, as in the van. `wpewebkit` depends on neither: without them the
     page is silent and its AudioContext stays suspended (`harness/uibench/audio-gst-check.sh`);
-  - Tauri: `webkit2gtk-4.1`, and the same two GStreamer packages for the chime;
-  - Chromium: already there (today's kiosk; it plays to ALSA itself).
+  - (not chosen) Tauri would need `webkit2gtk-4.1` and the same two GStreamer packages; Chromium is already there
+    and plays to ALSA itself.
 
 The panel's PAM stack (`packaging/pam/aetherrv-panel`, installed by `install.sh`) uses `pam_systemd class=user-light`,
 which needs systemd 256 or later: check `systemctl --version` (the van ran 262 on 2026-11-24).
