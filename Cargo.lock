@@ -182,6 +182,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-migrate"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-core",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "aetherrv-n2k"
 version = "0.1.0"
 dependencies = [
@@ -273,22 +283,17 @@ dependencies = [
 name = "aetherrv-screen"
 version = "0.1.0"
 dependencies = [
- "aetherrv-core",
  "anyhow",
- "http-body-util",
- "hyper",
- "hyper-util",
- "serde",
+ "libc",
  "serde_json",
  "tempfile",
- "tokio",
- "tracing",
 ]
 
 [[package]]
 name = "aetherrv-settings"
 version = "0.1.0"
 dependencies = [
+ "aetherrv-alerts",
  "aetherrv-core",
  "anyhow",
  "reqwest",
@@ -315,14 +320,26 @@ dependencies = [
  "prost-reflect",
  "prost-types",
  "proto-espar",
+ "rumqttc",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-rustls",
  "tonic",
  "tonic-reflection",
  "tower",
  "tracing",
+]
+
+[[package]]
+name = "aetherrv-sim-cerbo"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-sim",
+ "anyhow",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -361,10 +378,13 @@ name = "aetherrv-starlink"
 version = "0.1.0"
 dependencies = [
  "aetherrv-core",
+ "aetherrv-sim",
  "anyhow",
+ "futures",
  "prost",
  "prost-reflect",
  "prost-types",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
@@ -380,8 +400,11 @@ name = "aetherrv-victron"
 version = "0.1.0"
 dependencies = [
  "aetherrv-core",
+ "aetherrv-sim",
  "anyhow",
+ "libc",
  "rumqttc",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

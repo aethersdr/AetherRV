@@ -8,6 +8,10 @@
 #   tools/van-read.sh ls <dir>                 list a directory under /var/lib/aetherrv
 #   tools/van-read.sh pull <path> <local-dir>  copy files from /var/lib/aetherrv (rsync, pulling only)
 #   tools/van-read.sh mcs7-status <host>       one HTTP GET of the MCS7's /status.xml from the van Pi
+#   tools/van-read.sh config                   /etc/aetherrv/aetherrv.toml (no secrets in it)
+#   tools/van-read.sh secrets-shape            the secrets file's KEY NAMES only: values are replaced ON THE VAN
+#   tools/van-read.sh history-copy <local-dir> pull history.sqlite3 with its -wal/-shm, and settings.json (nothing
+#                                              is written on the van; the copy is as consistent as a live WAL pull)
 #
 # There is deliberately no generic "run" subcommand. The host comes from deploy/local.env (AETHERRV_HOST).
 set -euo pipefail
@@ -56,6 +60,18 @@ case "$cmd" in
     [[ $h =~ ^[0-9.]+$ ]] || { echo "refused: host must be an IP address" >&2; exit 2; }
     remote "curl -sS --max-time 10 --compressed http://$h/status.xml"
     ;;
+  config)
+    remote 'cat /etc/aetherrv/aetherrv.toml'
+    ;;
+  secrets-shape)
+    remote "sudo -n -u aetherrv sed -E 's/^([A-Za-z0-9_]+)[[:space:]]*=.*/\\1 = \"REDACTED\"/' /etc/aetherrv/secrets.toml"
+    ;;
+  history-copy)
+    dest=${2:?local dir}; mkdir -p "$dest"
+    remote 'command -v sqlite3 >/dev/null && echo has-sqlite3 || echo no-sqlite3'
+    say "rsync (pull) $HOST:/var/lib/aetherrv/{history.sqlite3*,settings.json} -> $dest"
+    rsync -a --rsync-path="sudo -n -u aetherrv rsync" "$HOST:/var/lib/aetherrv/history.sqlite3*" "$HOST:/var/lib/aetherrv/settings.json" "$dest/"
+    ;;
   *)
-    sed -n '2,13p' "$0"; exit 2 ;;
+    sed -n '2,19p' "$0"; exit 2 ;;
 esac
