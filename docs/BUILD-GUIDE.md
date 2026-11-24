@@ -66,17 +66,20 @@ None of these is required; each one you have lights up part of the screen.
 
 ## How it fits together
 
-- **Arch Linux ARM** runs on the Pi. AetherRV lives in `/opt/aetherrv`, its configuration in
+- **Arch Linux ARM** runs on the Pi. AetherRV lives in `/opt/aetherrv-rs`, its configuration in
   `/etc/aetherrv/aetherrv.toml`, secrets in `/etc/aetherrv/secrets.toml`, and its history in `/var/lib/aetherrv`.
-- **`aetherrv.service`** is the backend: a Python program that talks to every device and serves the screen
-  on port 8080.
-- **`aetherrv-kiosk.service`** logs a `kiosk` user into a sway session on the screen and runs Chromium full
-  screen on the backend's page.
-- **`aetherrv-admin.socket`** is the only part that runs as root: a small helper with a fixed list of actions
+- **One small program per device** (`aetherrv-espar`, `aetherrv-n2k`, `aetherrv-victron`, `aetherrv-rixens`, …),
+  each its own systemd unit, plus a few core services (alerts, history, settings, the low-battery guard). They
+  share state over a local MQTT broker (`aetherrv-bus`, Mosquitto on a Unix socket, nothing on the network), so a
+  crash or restart of one never takes the others down. `aetherrv.target` starts them all.
+- **`aetherrv-gateway`** serves the screen (a React app) and its WebSocket on port 8080.
+- **`aetherrv-panel.service`** logs a `kiosk` user into a sway session on the screen and runs the UI full screen.
+- **`aetherrv-admind.socket`** is the only part that runs as root: a small helper with a fixed list of actions
   (Wi-Fi, updates, reboot, CAN recovery) that the Settings page uses.
 - **CAN ports** get stable names (`hat0`, `hat1`, `fd0`, `fd1`) from systemd-networkd and start **listen-only**:
   the Pi can't send a single frame until you change that, port by port.
-- **You deploy from your computer:** `deploy/push.sh` copies the repo to the Pi and runs the installer.
+- **You deploy from your computer:** `packaging/push.sh <pi>` builds the UI, copies the source to the Pi, builds
+  the programs natively there and runs the installer.
 
 ## 0. Ground rules for your AI
 
@@ -197,14 +200,17 @@ pacman -S linux-rpi raspberrypi-bootloader firmware-raspberrypi
 3. Install what AetherRV needs:
 
 ```sh
-pacman -S --needed sudo openssh rsync git python uv \
+pacman -S --needed sudo openssh rsync git base-devel clang rustup mosquitto \
   sway chromium noto-fonts wlr-randr grim \
   iwd bluez bluez-utils \
   plymouth tailscale
+rustup default stable                            # as the admin user from step 4, not root
 ```
 
-`sway` and `chromium` run the screen; `iwd` is Wi-Fi; `bluez` is Bluetooth for the batteries; `plymouth` is the
-boot splash and `tailscale` is remote access (both optional).
+`base-devel`, `clang` and `rustup` build AetherRV on the Pi; `mosquitto` is its internal message bus; `sway` and
+`chromium` run the screen (the UI runtime: see docs/UI-RUNTIME-BENCHMARK.md); `iwd` is Wi-Fi; `bluez` is
+Bluetooth for the batteries; `plymouth` is the boot splash and `tailscale` is remote access (both optional).
+On your computer you need `git`, `rsync` and Node.js (`npm`) to build the screen's app.
 
 4. Your admin account, SSH key only, and a name:
 
@@ -321,27 +327,30 @@ with nothing wired yet), and `dmesg | grep -i mcp25` shows each chip initialized
 
 ## 5. Install AetherRV
 
-**What's happening:** you download AetherRV on your computer and push it to the Pi. The installer creates the
-`aetherrv` and `kiosk` users, the Python environment, the services and a starter configuration. It never
-touches `/boot` or existing configuration.
+**What's happening:** you download AetherRV on your computer and push it to the Pi. `push.sh` builds the
+screen's app, copies the source, and builds the programs on the Pi itself (about 6–12 minutes the first time).
+The installer creates the `aetherrv` and `kiosk` users, the services, the screen session and a starter
+configuration, then starts everything. It never touches `/boot` or existing configuration.
 
 On your computer:
 
 ```sh
-git clone https://github.com/aethersdr/AetherRV.git && cd AetherRV
-cp deploy/local.env.example deploy/local.env      # set AETHERRV_HOST=aetherrv
-./deploy/push.sh
+git clone -b rust https://github.com/aethersdr/AetherRV.git && cd AetherRV
+(cd ui && npm ci)
+packaging/push.sh aetherrv --system
 ```
 
-**Check:** the last line says `installed: active / kiosk active`, and the screen shows AetherRV. With nothing
-configured yet most cards are empty or say "not connected"; that's expected.
+**Check:** the last line says `installed to /opt/aetherrv-rs (…) and started: active / panel active`, and the
+screen shows AetherRV. With nothing configured yet most cards are empty or say "not connected"; that's expected.
+`ssh aetherrv sudo -u aetherrv /opt/aetherrv-rs/bin/aetherrv-ctl health` lists every module and its heartbeat.
 
 **Kernel updates:** the installer holds `linux-rpi` and the boot firmware packages (`IgnorePkg` in
 `/etc/pacman.conf`) because the reference build boots a custom kernel. On the stock Raspberry Pi kernel you
 can remove those three names from `IgnorePkg` so system updates (Settings → Updates) include the kernel.
 
-> **Prompt:** "Do step 5 of the build guide: clone AetherRV, set deploy/local.env to my SSH alias, and run
-> deploy/push.sh. Then show me the service status and the last 30 lines of the aetherrv log."
+> **Prompt:** "Do step 5 of the build guide: clone AetherRV (branch rust), install the UI's packages and run
+> packaging/push.sh with my SSH alias and --system. Then show me aetherrv-ctl health and the last 30 lines of
+> the AetherRV logs (journalctl -u 'aetherrv-*')."
 
 ## 6. Configure your equipment
 
@@ -352,7 +361,7 @@ the tools below write them to `/etc/aetherrv/secrets.toml`, readable only by roo
 
 | Equipment | What to set |
 |---|---|
-| Victron GX | `[device.victron]`: `host` = the GX's address, `enabled = true`. Then pair: `sudo /opt/aetherrv/.venv/bin/python /opt/aetherrv/tools/victron_pair.py <gx-address>` and enable MQTT pairing on the GX (Settings → Integrations → MQTT) while it waits. |
+| Victron GX | `[device.victron]`: `host` = the GX's address, `enabled = true`. Then pair: `sudo /opt/aetherrv-rs/bin/aetherrv-setup victron-pair <gx-address>` and enable MQTT pairing on the GX (Settings → Integrations → MQTT) while it waits. |
 | Ruuvi / temperature sensors on the GX | `[device.victron]` `cabin_temp`, `outside_temp`, `fridge_temp`, `freezer_temp`: the sensors' names on the GX. |
 | Rixens MCS7 | `[device.rixens_http]`: `host` = the MCS7's address on your LAN, `enabled = true`. |
 | Starlink | `[device.starlink]`: `enabled = true`; `target` is the dish's gRPC address (usually `192.168.100.1:9200`, reachable through the router). |
@@ -364,14 +373,14 @@ the tools below write them to `/etc/aetherrv/secrets.toml`, readable only by roo
 | Remote control | `[web] control_subnets` / `control_tailnet`: who besides the touchscreen may control. |
 | Low-battery shutdown | `[power] auto_shutdown = true`: the Pi powers itself off cleanly when the house bank stays at or below `shutdown_soc` (5 %) for 2 minutes while not charging, before the battery BMS cuts it off. A Pi 5 then stays off until its power is cycled or its button is pressed. This replaces a UPS HAT. Earlier, at `heater_off_soc` (10 %), heat is locked out: both heaters are turned off and kept off, so they're never burning (or still in their after-run) when the BMS cuts power, which can seriously damage them. Before the 5 % power-off, AetherRV waits for the after-runs to finish. |
 
-After each change: `sudo systemctl restart aetherrv`.
+After each change: `sudo systemctl restart aetherrv.target` (or just the one service, e.g. `aetherrv-victron`).
 
 **Remote access (optional):** `sudo systemctl enable --now tailscaled && sudo tailscale up`, then sign in with
 the link it prints (or use Settings → Tailscale on the screen).
 
 **Wi-Fi (optional):** Settings → Wi-Fi on the screen.
 
-**Boot splash (optional, changes `/boot`):** `sudo /opt/aetherrv/tools/install_boot_splash.sh`.
+**Boot splash (optional, changes `/boot`):** `sudo /opt/aetherrv-rs/src/tools/install_boot_splash.sh`.
 
 **Check:** each device you configured shows live values within a minute, and the Systems page lists its
 messages.
@@ -433,13 +442,15 @@ off**. The heater's bus then keeps its termination even if the Pi is unplugged.
 
 ## 9. Looking after it
 
-- **Updates:** Settings → Updates installs Arch updates; `deploy/push.sh` from your computer installs a new
-  AetherRV version. Check the Espar isn't running before you push: restarting the backend stops a heater
-  AetherRV is controlling.
+- **Updates:** Settings → Updates installs Arch updates; `packaging/push.sh aetherrv` from your computer builds
+  and installs a new AetherRV version (it doesn't restart anything; `sudo systemctl restart aetherrv.target`
+  does). The Espar service re-attaches to a running heater after a restart without stopping it, but until the
+  heater's own controller-loss timeout has been measured on your van, update with the heater off.
 - **Back up** `/etc/aetherrv/` and `/etc/systemd/network/` after you change them.
 - **History** is in `/var/lib/aetherrv/history.sqlite3` (30 days by default). Don't create files there as
   root; use `sudo -u aetherrv`.
-- **Logs:** `journalctl -u aetherrv -f`.
+- **Logs:** `journalctl -u 'aetherrv-*' -f` (one service: `journalctl -u aetherrv-espar -f`).
+- **Module health:** `sudo -u aetherrv /opt/aetherrv-rs/bin/aetherrv-ctl health`; the Systems page shows the same.
 
 ## If something goes wrong
 
@@ -447,50 +458,51 @@ off**. The heater's bus then keeps its termination even if the Pi is unplugged.
 |---|---|
 | A CAN port is missing after a reboot, or its log says the chip "didn't enter config mode" | The MCP2515 occasionally fails to start. AetherRV rebinds the driver by itself after about 30 s; if not, reboot. |
 | CAN port up but no messages | H/L swapped, wrong bitrate, or missing termination at one end of the bus. |
-| Screen black but SSH works | `systemctl status aetherrv-kiosk` and `journalctl -u aetherrv-kiosk`. |
+| Screen black but SSH works | `systemctl status aetherrv-panel` and `journalctl -u aetherrv-panel`. |
+| One card stuck or "module down" | `aetherrv-ctl health`; `journalctl -u aetherrv-<module>`; `sudo systemctl restart aetherrv-<module>` (the others keep running). |
 | A device shows "not connected" | Its address in `aetherrv.toml`, or the network between them (`ping` from the Pi). |
 | Controls are greyed out | That device's `tx_enabled` is off, or you're on a browser that isn't allowed to control (`[web] control_subnets`). |
 
 ## Make it yours: prompts for your AI
 
-AetherRV is organized so that each piece of equipment is one **adapter** in `src/aetherrv/adapters/`. Adapters
-only publish values into a shared state (`climate.*`, `victron.*`, `switches.*`…) and accept a small, checked
-set of commands, and the screen in `web/` draws whatever is in that state. Adapting to different equipment
-usually means writing one new adapter and pointing the existing cards at its values. Give your assistant the
-repository and one of these prompts.
+AetherRV is organized so that each piece of equipment is one **service** in `services/` (with its protocol in
+`crates/proto-*`). Services only publish values onto the bus (`climate.*`, `victron.*`, `switches.*`…; see
+docs/ARCHITECTURE.md §4) and accept a small, checked set of commands, and the screen in `ui/` draws whatever is in
+that state. Adapting to different equipment usually means writing one new service (docs/SERVICE-GUIDE.md) and
+pointing the existing cards at its values. Give your assistant the repository and one of these prompts.
 
 **Start here, whatever you have:**
 
-> "Read the AetherRV repository: README.md, docs/BUILD-GUIDE.md, src/aetherrv/adapters/ and
-> config/aetherrv.example.toml. My van has <list everything: battery system, charger/inverter, heater,
+> "Read the AetherRV repository (branch rust): README.md, docs/BUILD-GUIDE.md, docs/ARCHITECTURE.md, services/
+> and config/aetherrv.example.toml. My van has <list everything: battery system, charger/inverter, heater,
 > switching, router, internet, sensors>. Tell me which of these AetherRV already supports, which need
-> configuration only, and which need a new adapter, with the effort for each. Don't change anything yet."
+> configuration only, and which need a new service, with the effort for each. Don't change anything yet."
 
 **Different battery monitor or BMS:**
 
 > "My batteries are <brand/model> and report over <Bluetooth / CAN / a Victron or other monitor>. Find out
 > how their BMS protocol works (look for open-source projects such as aiobmsble that support it), then add
-> support to AetherRV the way adapters/epoch_ble.py does: read-only, publishing the same batteries.ble.*
+> support to AetherRV the way services/batteries-ble does: read-only, publishing the same batteries.ble.*
 > fields so the Energy page's battery bank works unchanged. Write tests from captured sample data."
 
 **No Victron (Renogy, EPEver, Battle Born, Sterling, a plain shunt…):**
 
 > "I don't have a Victron GX. My power system is <devices and how they connect: VE.Direct, Modbus, RS-485,
-> Bluetooth, CAN>. Design an adapter that publishes the same victron.* power-flow values the Energy and Home
+> Bluetooth, CAN>. Design a service that publishes the same victron.* power-flow values the Energy and Home
 > pages use (battery voltage/current/SoC, solar, shore, alternator, loads), read-only first. Show me the plan
 > before writing code."
 
 **Different heater (Webasto, Truma, Dometic, a Chinese diesel heater, another Espar model):**
 
 > "My heater is <make/model> with a <controller> on <W-bus / LIN / CAN / serial>. Research its protocol
-> (open-source projects, service manuals), then add a read-only adapter that fills a heater card on the
-> Climate page the way adapters/espar.py does. Don't add any control until I've reviewed the protocol and
+> (open-source projects, service manuals), then add a read-only service that fills a heater card on the
+> Climate page the way services/espar does. Don't add any control until I've reviewed the protocol and
 > we've planned a supervised bench test like docs/espar-control-design.md."
 
 **Different switching (RV-C, a different N2K load controller, relays on GPIO, Shelly, Victron GX relays):**
 
-> "My loads are switched by <system>. Show me how AetherRV's switching works (adapters/n2k.py,
-> switching.py, the Switches page) and plan an adapter that publishes the same switches.list entries and
+> "My loads are switched by <system>. Show me how AetherRV's switching works (services/n2k,
+> its switching.rs, the Switches page) and plan an adapter that publishes the same switches.list entries and
 > accepts the same set/press commands, with the same safety rules: fresh read, send once, verify, never
 > retry, keep any interlocks in the device itself."
 
@@ -502,30 +514,30 @@ repository and one of these prompts.
 
 **Different router or internet (GL.iNet, Cradlepoint, Winegard, no Starlink, a phone hotspot):**
 
-> "Instead of Peplink/Starlink I have <devices>. Add read-only adapters that fill the Network page's WAN and
+> "Instead of Peplink/Starlink I have <devices>. Add read-only services that fill the Network page's WAN and
 > signal cards from their APIs, and turn off the Peplink and Starlink cards. No router control without my
 > approval."
 
 **Different screen:**
 
-> "My screen is <model>, <resolution>, <HDMI or DSI>. Update deploy/kiosk/sway.conf for its output name and
-> mode, check the touch input maps to it, and tell me which pages in web/ assume 1920×1200 and what to change
+> "My screen is <model>, <resolution>, <HDMI or DSI>. Update packaging/panel/sway.conf for its output name and
+> mode, check the touch input maps to it, and tell me which pages in ui/ assume 1920×1200 and what to change
 > so everything fits without scrolling. Show me screenshots of every page afterwards."
 
 **Raspberry Pi OS (or another Linux) instead of Arch:**
 
-> "I want to run AetherRV on <Raspberry Pi OS Bookworm / Debian / Ubuntu>. Go through deploy/install.sh,
-> deploy/admin/ and the build guide, list everything that's Arch-specific (pacman, package names, iwd,
+> "I want to run AetherRV on <Raspberry Pi OS Bookworm / Debian / Ubuntu>. Go through packaging/install.sh,
+> packaging/system-setup.sh, services/admind and the build guide, list everything that's Arch-specific (pacman, package names, iwd,
 > IgnorePkg, paths), and adapt them for my distribution with the same users, services and safety model."
 
 **New page or card:**
 
-> "Add <what you want to see> to the <page> page. Use the existing card styles in web/style.css, keep it
+> "Add <what you want to see> to the <page> page. Use the existing card styles in ui/src/styles, keep it
 > readable at arm's length on a 10.1-inch touchscreen, and show me a screenshot from the Pi before
 > committing."
 
 **Before you enable control of anything new:**
 
-> "Before I enable control of <device> in AetherRV: walk through the command path in its adapter, show me
+> "Before I enable control of <device> in AetherRV: walk through the command path in its service, show me
 > exactly which messages it can send and with what checks, what happens if the Pi crashes mid-command, and
 > what the device does if AetherRV disappears. Then plan the smallest supervised test."
