@@ -460,7 +460,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-S1 | Starlink check_update: request failed but the update state moved | answered 2026-11-23: unverified (D20) |
 | Q-U5 | Settings: Wi-Fi off / join / rename act without a confirmation | answered 2026-11-23: confirm Wi-Fi off only (remote access over Wi-Fi drops) |
 | Q-U6 | Energy "3D battery bank": today an SVG scene; keep it or build a WebGL bank? | answered 2026-11-23: build a real WebGL (three.js) bank; it must hold ≥ 30 fps on the Pi |
-| Q-U7 | The bench monitor is not detected; how to measure the UI runtimes? | answered 2026-11-23: skip the real-screen bench tests; judge on the headless 1920×1200 runs on the bench Pi's GPU; the on-screen numbers become van checks in CUTOVER.md |
+| Q-U7 | The bench monitor is not detected; how to measure the UI runtimes? | answered 2026-11-23: "skip the monitor bench tests". So the §8 numbers are judged on headless 1920×1200 runs on the bench Pi's GPU (including power-on to a usable UI, measured with a reboot); the real-panel numbers are repeated in the van (CUTOVER.md §8) |
 | Q-H1 | The bench Pi's hostname was committed in two `rust` commits (fixed in the files): rewrite history? | answered 2026-11-23: leave the history; keep it out from now on |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
@@ -502,5 +502,5 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Settings asks before turning Wi-Fi off; join and rename stay one step | owner (Q-U5) |
 | 2026-11-23 | Energy page: a WebGL (three.js) battery bank replaces the SVG scene | owner (Q-U6) |
 | 2026-11-23 | Soak: at most 1 hour on the bench (replaces the prompt's 12 hours, goal item 5) | owner |
-| 2026-11-23 | UI runtime benchmark: headless at 1920×1200 on the bench Pi (no real-screen runs); real-screen numbers and power-on time are checked in the van (replaces the real-screen part of goal item 6) | owner (Q-U7) |
+| 2026-11-23 | UI runtime benchmark: no real-screen runs on the bench (owner, Q-U7); every §8 number, power-on included, is measured headless at 1920×1200 on the bench Pi. Repeating them on the real panel in the van is the assistant's addition to CUTOVER.md §8 | owner (Q-U7) |
 | 2026-11-23 | The bench hostname stays in the `rust` history (no force-push); scripts take the bench host from the environment | owner (Q-H1) |
