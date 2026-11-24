@@ -458,6 +458,8 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-U4 | Home inverter overlay changes the MultiPlus mode without a confirmation (Energy asks first) | answered 2026-11-23: keep as today |
 | Q-A2 | Acknowledged alerts when the alerts service restarts on its own | answered 2026-11-23: keep the acks (D19) |
 | Q-S1 | Starlink check_update: request failed but the update state moved | answered 2026-11-23: unverified (D20) |
+| Q-U5 | Settings: Wi-Fi off / join / rename act without a confirmation | answered 2026-11-23: confirm Wi-Fi off only (remote access over Wi-Fi drops) |
+| Q-U6 | Energy "3D battery bank": today an SVG scene; keep it or build a WebGL bank? | answered 2026-11-23: build a real WebGL (three.js) bank; it must hold ≥ 30 fps on the Pi |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -495,3 +497,5 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-23 | Home MCS7 heat buttons and the Home inverter overlay keep sending without a confirmation, as today | owner (Q-U3, Q-U4) |
 | 2026-11-23 | Alerts keep their acknowledgement over a restart of the alerts service within one boot (D19) | owner (Q-A2) |
 | 2026-11-23 | Starlink check_update with a failed request answers unverified (D20) | owner (Q-S1) |
+| 2026-11-23 | Settings asks before turning Wi-Fi off; join and rename stay one step | owner (Q-U5) |
+| 2026-11-23 | Energy page: a WebGL (three.js) battery bank replaces the SVG scene | owner (Q-U6) |
