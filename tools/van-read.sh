@@ -14,6 +14,8 @@
 #                                              is written on the van; the copy is as consistent as a live WAL pull)
 #   tools/van-read.sh audit [since]            the van's own record (boot, unit start times, packages, ssh logins,
 #                                              command sources) to show nothing was installed, restarted or sent
+#   tools/van-read.sh boot                     the boot path's timings (firewall, network.target, user sessions, the
+#                                              kiosk), the bootloader's configuration, and how sound is played
 #
 # There is deliberately no generic "run" subcommand. The host comes from deploy/local.env (AETHERRV_HOST).
 set -euo pipefail
@@ -92,6 +94,20 @@ case "$cmd" in
       sudo -n journalctl -u aetherrv --since '$since' --no-pager | sed -nE 's/.* ([a-z0-9]+ command [a-z_]+=.*|settings action) from ([^ ]+): .*/\2/p' | sort | uniq -c;
       echo \"journal lines since $since UTC: \$(sudo -n journalctl -u aetherrv --since '$since' --no-pager -q | wc -l)\""
     ;;
+  boot)
+    # For the power-on budget (docs/UI-RUNTIME-BENCHMARK.md §8) and the panel's session: when the firewall,
+    # network.target, user sessions and the kiosk started on this boot (CLOCK_MONOTONIC us, i.e. since the kernel
+    # started), the bootloader's configuration, and whether a sound server plays the UI's alert chime. Reads only.
+    remote "systemd-analyze 2>&1 | head -2;
+      for u in nftables.service network-pre.target systemd-networkd.service network.target systemd-user-sessions.service user@\$(id -u kiosk 2>/dev/null || echo 0).service aetherrv.service aetherrv-kiosk.service; do
+        systemctl show -p Id -p UnitFileState -p ActiveState -p ExecMainStartTimestampMonotonic -p ExecMainExitTimestampMonotonic -p ActiveEnterTimestampMonotonic \$u | tr '\n' ' '; echo; done;
+      systemd-analyze blame --no-pager 2>/dev/null | head -12;
+      test -s /etc/nftables.conf && echo \"nftables.conf: \$(wc -l < /etc/nftables.conf) lines\" || echo 'nftables.conf: none';
+      echo 'bootloader config:'; sudo -n rpi-eeprom-config 2>/dev/null || vcgencmd bootloader_config 2>/dev/null || echo '(not readable)';
+      echo 'sound:'; pacman -Q pipewire wireplumber pipewire-pulse pulseaudio gst-plugins-base gst-plugins-good 2>&1;
+      pgrep -a -u kiosk 'pipewire|wireplumber|pulseaudio' || echo 'no sound server running as kiosk';
+      cat /proc/asound/cards 2>/dev/null || echo 'no sound cards'"
+    ;;
   *)
-    sed -n '2,21p' "$0"; exit 2 ;;
+    sed -n '2,23p' "$0"; exit 2 ;;
 esac

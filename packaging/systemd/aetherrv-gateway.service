@@ -3,7 +3,9 @@ Description=AetherRV HTTP + WebSocket for the UI
 PartOf=aetherrv.target
 # Wants, not Requires: a broker restart must not stop this service (it rides it out).
 Wants=aetherrv-bus.service
-After=aetherrv-bus.service network.target systemd-networkd.service
+# Not after network.target: it binds [web] host (0.0.0.0 by default) and the touchscreen reaches it on loopback,
+# so the panel need not wait for nftables and networkd at boot (power-on, docs/UI-RUNTIME-BENCHMARK.md §8).
+After=aetherrv-bus.service
 
 [Service]
 Type=notify
