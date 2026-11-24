@@ -63,6 +63,10 @@ pub fn check_config(text: &str) -> Vec<Finding> {
     if cfg.at("power").bool("auto_shutdown", false) {
         out.push(f(Level::Note, "power.auto_shutdown on: heat lockout enforced by the guard and inside the heater services"));
     }
+    let web = cfg.at("web");
+    if web.has("static_dir") && !web.has("ui_dir") {
+        out.push(f(Level::Note, "web.static_dir is the Python UI's; the Rust gateway serves [web] ui_dir (default /opt/aetherrv-rs/ui)"));
+    }
     if out.iter().all(|x| x.level < Level::Warn) {
         out.push(f(Level::Ok, format!("config: {} devices, {} buses", cfg.at("device").entries().len(), buses.len())));
     }
