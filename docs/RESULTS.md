@@ -55,10 +55,11 @@ firewall for a measurement (`docs/UI-RUNTIME-BENCHMARK.md` §8).
 
 | Area | Result | Where |
 |---|---|---|
-| Tests | `cargo test --workspace` 390 passed, 0 failed; `tsc` clean; Vitest 109/109; Playwright 99/99 (f9968b1) | `docs/STATUS.md` item 2 |
+| Tests | `cargo test --workspace` 393 passed, 0 failed (f9944f1); `tsc` clean, Vitest 109/109, Playwright 99/99 (f9968b1; nothing under `ui/` changed since) | `docs/STATUS.md` item 2 |
 | Reference tests | 197 / 197 Python tests mapped to a Rust or UI test | `docs/TEST-PARITY.md` |
 | Golden parity | van captures replayed into both systems: differ 0, Rust-only keys exactly D7; D1–D21 accepted by the owner, D22 asked | `docs/STATUS.md` item 3, `docs/ARCHITECTURE.md` §13a |
 | Isolation | **PASS** on f9968b1 (2026-11-24 05:32 bench time): `kill -9` of each of the 16 services, `can-aux@aux0` and the admin helper, the broker restarted and killed. Each victim back with fresh state in 0.26–1.3 s, no other unit restarted, the gateway serving throughout, the Espar heating throughout (max status gap 0.89 s, 0 controller-loss faults), 0 commands to the MCS7, history max gap 30 s | `harness/bench/isolation.sh` |
+| Panel isolation | **PASS** on f9944f1: the real panel unit (WPE launcher, headless output). A killed screen helper is back in 1.1 s in the same session; after a kill -9 of the WPE launcher, its web process or sway the whole panel is back in 3.8 s; `systemctl restart` 1.5 s. Nothing of the old session left, no other unit restarted, the gateway answering throughout | `harness/bench/panel-isolation.sh` |
 | Espar seamless resume | **PASS** on f9968b1: a HEAT run through `systemctl restart`, `kill -9`, a SIGSTOP (watchdog kill) and a broker restart; resumed after 0.5, 1.2 and 3.4 s gaps (max status gap 3.17 s), 0 controller-loss faults, no stored fault, NRestarts 2 | `harness/bench/espar-systemd.sh` |
 | Espar blind running | **PASS** on f9968b1: broker down 30 s → the run continued; broker down for good → the service turned the heater OFF after 61 s without bus contact, normal after-run, 0 faults | `harness/bench/espar-blind.sh` |
 | Soak (1 h, owner decision) | **PASS** on f9968b1 (2026-11-24 05:38–06:38 bench time), every verdict true: 24/24 commands ok (n2k over the bus and the WebSocket, MCS7, Espar FAN/HEAT/OFF), no restarts, no memory growth, the WebSocket never dropped (48,657 messages, max gap 0.66 s), the heater never lost its controller (max status gap 0.21 s, 0 faults). Also PASS at 6501abe (01:15–02:16) | `harness/bench/soak.sh`, `docs/STATUS.md` item 5 |
