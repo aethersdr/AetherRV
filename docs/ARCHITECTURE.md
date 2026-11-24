@@ -436,6 +436,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | D19 | An alert still active when the alerts service restarts (same boot) carries on with its start time and acknowledgement and is not raised again; one that cleared meanwhile is closed in the log; a reboot re-raises as Python did (owner, Q-A2) | Python restarted as a whole; a single module restarting must not re-chime acknowledged alerts |
 | D20 | Starlink "check for update": a failed check request whose update state moved anyway answers **unverified** with the dish's state (Python: ok) (owner, Q-S1) | The request itself failed |
 | D21 | NMEA 2000 node: answering a peer's request for address claims (the Cerbo polls every 10 s) repeats the claim already held and does not restart the 250 ms claim wait. A first claim, a contest and a path change still wait (owner, Q-N1) | switching.py restarted the wait on every reply, so a switch command within 250 ms after a poll was refused as "not claimed yet" (about 1 tap in 40; found by the bench soak) |
+| D22 | The Espar decoder keys (`climate.espar.*`) are republished every 250 ms (Python: every 1 s while the read-only diagnostics are off, 250 ms while on). A time-based change shows up to 0.75 s sooner: the EasyStart command expiring 3 s after its last frame, asleep after 20 s, the after-run countdown (owner: Q-P3, open) | One publish loop for both cases; found by golden parity (a read 3 s after a replay fell on the expiry edge) |
 | D10 | The gateway waits up to 15 s for an Espar reply (one verify window is 6 s, and a queued command waits for the one before it) | Avoids reporting "unverified" for a command that is still being verified |
 
 ## 14. Open questions for the owner
@@ -464,6 +465,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-U7 | The bench monitor is not detected; how to measure the UI runtimes? | answered 2026-11-23: "skip the monitor bench tests". So the §8 numbers are judged on headless 1920×1200 runs on the bench Pi's GPU (including power-on to a usable UI, measured with a reboot); the real-panel numbers are repeated in the van (CUTOVER.md §8) |
 | Q-H1 | The bench Pi's hostname was committed in two `rust` commits (fixed in the files): rewrite history? | answered 2026-11-23: leave the history; keep it out from now on |
 | Q-N1 | The bench soak found the reference refusing switch commands within 250 ms after each Cerbo address-claim poll: fix or keep? | answered 2026-11-23: fix it (D21) |
+| Q-P3 | Accept D22 (the Espar keys refresh every 250 ms, so time-based changes show up to 0.75 s sooner than in Python)? | **open**: asked when the owner is back |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
