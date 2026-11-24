@@ -1,0 +1,8 @@
+# AetherRV bus ACL (ARCHITECTURE.md §4.1). Every service runs as the same Unix user, so this contains bugs rather
+# than attackers: a service (MQTT client id = its name) may only publish its own state, health and events.
+pattern read aetherrv/v1/#
+pattern write aetherrv/v1/state/%c/#
+pattern write aetherrv/v1/svc/%c/#
+pattern write aetherrv/v1/event/%c/#
+pattern write aetherrv/v1/cmd/#
+pattern write aetherrv/v1/reply/#

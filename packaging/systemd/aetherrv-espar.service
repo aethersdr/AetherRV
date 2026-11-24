@@ -1,0 +1,39 @@
+[Unit]
+Description=AetherRV Espar heater (the heater's controller on hat1)
+PartOf=aetherrv.target
+# Wants, not Requires: a broker restart must not stop this service (it rides it out).
+Wants=aetherrv-bus.service
+After=aetherrv-bus.service network.target systemd-networkd.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=aetherrv
+Group=aetherrv
+ExecStart=/opt/aetherrv-rs/bin/aetherrv-espar -c /etc/aetherrv/aetherrv.toml
+Restart=always
+RestartSec=1
+StateDirectory=aetherrv
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_CAN AF_NETLINK
+WatchdogSec=2
+# Back within ~0.1 s: a restart resumes a running heater (ARCHITECTURE.md §7.2). The resume limiter decides crash
+# loops, not systemd.
+RestartSec=100ms
+StartLimitIntervalSec=0
+RuntimeDirectory=aetherrv/espar
+RuntimeDirectoryPreserve=restart
+TimeoutStopSec=5
+PrivateDevices=yes
+
+[Install]
+WantedBy=aetherrv.target

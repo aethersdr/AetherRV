@@ -1,0 +1,32 @@
+[Unit]
+Description=AetherRV spare CAN port %i (capture, MCS7 CAN decoding)
+PartOf=aetherrv.target
+# Wants, not Requires: a broker restart must not stop this service (it rides it out).
+Wants=aetherrv-bus.service
+After=aetherrv-bus.service network.target systemd-networkd.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=aetherrv
+Group=aetherrv
+ExecStart=/opt/aetherrv-rs/bin/aetherrv-can-aux -c /etc/aetherrv/aetherrv.toml --bus %i
+Restart=always
+RestartSec=1
+StateDirectory=aetherrv
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_CAN AF_NETLINK
+WatchdogSec=10
+PrivateDevices=yes
+
+[Install]
+WantedBy=aetherrv.target

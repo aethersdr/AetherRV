@@ -1,0 +1,14 @@
+# AetherRV root helper socket: only root and the aetherrv services (group aetherrv) can connect.
+[Unit]
+Description=AetherRV admin helper socket (Rust)
+Conflicts=aetherrv-admin.socket
+
+[Socket]
+ListenStream=/run/aetherrv-admin.sock
+SocketUser=root
+SocketGroup=aetherrv
+SocketMode=0660
+Accept=no
+
+[Install]
+WantedBy=sockets.target

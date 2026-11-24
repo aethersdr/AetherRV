@@ -1,0 +1,26 @@
+[Unit]
+Description=AetherRV bus (Mosquitto on a Unix socket)
+PartOf=aetherrv.target
+
+[Service]
+Type=simple
+User=aetherrv
+Group=aetherrv
+ExecStart=/usr/bin/mosquitto -c /opt/aetherrv-rs/etc/mosquitto.conf
+Restart=always
+RestartSec=200ms
+StartLimitIntervalSec=0
+RuntimeDirectory=aetherrv/bus
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+StateDirectory=aetherrv/bus
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=aetherrv.target

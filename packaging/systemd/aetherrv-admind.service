@@ -1,0 +1,11 @@
+# AetherRV admin helper (root): a fixed list of validated verbs. Socket-activated; exits when idle.
+[Unit]
+Description=AetherRV admin helper (Rust)
+Requires=aetherrv-admind.socket
+
+[Service]
+Type=simple
+ExecStart=/opt/aetherrv-rs/bin/aetherrv-admind
+Environment=AETHERRV_KIOSK_UNIT=aetherrv-panel.service
+NoNewPrivileges=yes
+PrivateTmp=yes
