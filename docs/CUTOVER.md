@@ -95,6 +95,11 @@ Then `sudo packaging/cutover.sh --full` (the config's `tx_enabled` decides, as i
 - The Bluetooth batteries on real BlueZ (the bench has no batteries).
 - The Cerbo socketcand failover path (hat0 ↔ Cerbo) under a real wiring fault: only if the owner wants to pull hat0.
 - The real Espar controller-loss tolerance (§7).
+- **The §8 UI numbers on the real panel** (owner, Q-U7: the bench ran headless only): tap to visible response
+  ≤ 50 ms, page switch ≤ 150 ms, 60 fps on Home/Climate/Switches and ≥ 30 fps for the Energy/Network/Weather scenes,
+  UI memory ≤ 400 MB, and **power-on to a usable UI ≤ 15 s** (time a cold power-up with a stopwatch from power
+  applied to the first touch that works). `harness/uibench` can measure the panel in the van only with every
+  transmit gate off (the read-only period, §6): it injects touches.
 
 ## 9. Rollback (one command)
 
