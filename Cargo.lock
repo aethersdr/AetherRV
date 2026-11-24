@@ -372,6 +372,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-sim-batteries"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-batteries-ble",
+ "aetherrv-core",
+ "anyhow",
+ "proto-roypow",
+ "tokio",
+]
+
+[[package]]
 name = "aetherrv-sim-cerbo"
 version = "0.1.0"
 dependencies = [

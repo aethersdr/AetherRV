@@ -1,0 +1,20 @@
+[package]
+name = "aetherrv-sim-batteries"
+description = "Simulated EPOCH batteries: the real batteries-ble service core with an in-process stand-in for BlueZ (bench only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-sim-batteries"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+aetherrv-batteries-ble = { path = "../../services/batteries-ble" }
+proto-roypow.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true
