@@ -1,0 +1,38 @@
+# AetherRV panel: sway + the UI runtime on tty1 (replaces the Python system's aetherrv-kiosk.service).
+[Unit]
+Description=AetherRV touchscreen panel (sway + UI runtime) on tty1
+After=systemd-user-sessions.service aetherrv-gateway.service
+Wants=aetherrv-gateway.service
+Conflicts=getty@tty1.service aetherrv-kiosk.service
+After=getty@tty1.service
+# Boot splash: keep Plymouth's AetherRV splash up until sway draws (as the Python kiosk does).
+After=plymouth-start.service plymouth-quit.service
+Conflicts=plymouth-quit.service
+
+[Service]
+Type=simple
+User=kiosk
+PAMName=aetherrv-kiosk
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XCURSOR_PATH=/usr/share/aetherrv/cursors XCURSOR_THEME=default XCURSOR_SIZE=24
+EnvironmentFile=-/etc/aetherrv/panel.env
+# Wait (up to 60 s) for the gateway so the runtime doesn't land on an error page; the UI shows skeletons at once.
+ExecStartPre=/bin/bash -c 'for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && exit 0; sleep 0.25; done; exit 0'
+ExecStartPre=-+/usr/bin/plymouth quit --retain-splash
+ExecStartPre=-/usr/bin/pkill -u kiosk -x aetherrv-screen
+ExecStart=/usr/bin/sway --config /opt/aetherrv-rs/panel/sway.conf
+Restart=always
+RestartSec=3
+StateDirectory=aetherrv-panel
+
+[Install]
+WantedBy=multi-user.target

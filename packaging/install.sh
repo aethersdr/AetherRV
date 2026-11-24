@@ -18,6 +18,9 @@ install -d -m 755 "$DEST" "$DEST/bin" "$DEST/etc" "$DEST/ui"
 install -m 755 "$SRC"/target/release/aetherrv-* "$DEST/bin/" 2>/dev/null || true
 rm -f "$DEST"/bin/*.d
 install -m 644 "$SRC"/packaging/etc/mosquitto.conf "$SRC"/packaging/etc/mosquitto.acl "$DEST/etc/"
+install -d -m 755 "$DEST/panel"
+install -m 644 "$SRC"/packaging/panel/sway.conf "$DEST/panel/"
+install -m 755 "$SRC"/packaging/panel/launch.sh "$DEST/panel/"
 if [ -d "$SRC/ui/dist" ]; then
   rm -rf "$DEST/ui.new" && cp -a "$SRC/ui/dist" "$DEST/ui.new" && rm -rf "$DEST/ui" && mv "$DEST/ui.new" "$DEST/ui"
 fi
