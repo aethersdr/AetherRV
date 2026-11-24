@@ -28,6 +28,7 @@ numbers, and its Weather frame rate was not shown to reach 30 fps. Recommendatio
 | Output | sway's headless output (`WLR_BACKENDS=headless,libinput`), 1920×1200 @ 60 Hz |
 | Backend | the whole Rust system under systemd against simulators (`harness/bench/bench-up.sh`), gateway on 127.0.0.1:8080 |
 | UI | **Final pass (§5.1):** the bundle built from commit f9968b1, deployed to the bench and served by the gateway on 127.0.0.1:8080; the bundle id is its `index.html` sha256, `a78d994cf492`; the runtimes open `http://127.0.0.1:8080/?bench=1`. **The five-runtime pass (§5.2) and §3–§4:** the production bundle (`vite build`, hash `0bb37c08214f`, in every result). The gateway's installed bundle (`/opt/aetherrv-rs/ui`) was left as deployed: `harness/uibench/serve_bundle.py` served the final bundle from the bench user's directory on 127.0.0.1:18082 and passed `/api` and `/ws` through to the gateway. The runtimes opened `http://127.0.0.1:18082/?bench=1`. The source tree differs from that bundle only by the per-scene `?keepgl=` list, added for one attribution run (bundle `9c4426ea0987`, §4.1); the default behaviour is the same. The power-on runs (§8) used the gateway's installed bundle |
+| Batteries | **From the 2026-11-24 07:16 pass on (§5.1):** four simulated EPOCH batteries (`harness/uibench/batteries.sh`: `sims/batteries-sim`, the real batteries-ble core with a stand-in for BlueZ; SoC 84–87 %, the bank discharging at 24.8 A), so the Energy page shows its 3D battery bank (owner Q-U6) with its current flowing. **Every earlier run had no battery data** (the bench has no Bluetooth batteries): the Energy page said "No per-battery data" where the bank goes, so no earlier figure includes the bank: not Energy's scene, switch or press figures, and not the memory figures |
 | Fonts | `noto-fonts` installed on the bench for this. The van has it; without it the UI fell back to FreeSans, which has a different layout and raster cost |
 | (a) WPE | wpewebkit 2.54.3: in the final pass, the panel's own kiosk launcher (`panel/wpe`, §9); before it, `MiniBrowser --fullscreen` with `WPE_PLATFORM=wayland` (WPE Platform API) |
 | (b) Tauri | Tauri 2.12 (`panel/tauri/`, its own Cargo workspace), webkit2gtk-4.1 2.54.3, built natively on the Pi |
@@ -217,9 +218,10 @@ drawn while hidden.
 
 The same comparison inside the final bundle (one warm round each, `?keepgl=0` vs the default, from the memory
 runs below): Network WPE 401–431 → 106–156 ms, Tauri 449 → 156, Chromium 478 → 188; Weather WPE 140–144 → 114–118,
-Tauri 144 → 114, Chromium 770 → 245. **Energy is unchanged by keeping its scene** (WPE 83–86 vs 78–82, Tauri 127 vs
-134, Chromium 207 vs 175). The battery bank's rebuild is cheap. Chromium's slow Energy switch (210–440 ms, the same
-with the bank masked out) comes from the rest of the page: the GPU queue during those switches stood at a median
+Tauri 144 → 114, Chromium 770 → 245. Energy: WPE 83–86 vs 78–82, Tauri 127 vs 134, Chromium 207 vs 175, **but the
+bank was not on the page in these runs** (no battery data on the bench until §5.1; §1), so these Energy figures are
+the rest of the page only. With the bank, §5.1. Chromium's slow Energy switch (210–440 ms) comes from the rest of the
+page: the GPU queue during those switches stood at a median
 80–90 ms, against 12–13 ms in WPE. It is not a WebGL cost and keeping the scene does not fix it.
 
 **Memory, both ways** (every page shown once; PSS of the runtime's process tree; the v3d total of GPU buffer
@@ -239,13 +241,13 @@ round per setting:
 |---|---|---|---|---|
 | none (`0`) | 347 / 535 | 401–431 / 140–144 / 83–86 | 410 / 606 | 478 / 770 / 207 |
 | radar only | 359 / 1331 | 416 / 115 / 86 | 418 / 613 | 469 / 217 / 195 |
-| sky and bank | 366 / 540 | 108 / 150 / 67 | 403 / 649 | 188 / 816 / 172 |
+| sky and bank (the bank was not on the page: §1) | 366 / 540 | 108 / 150 / 67 | 403 / 649 | 188 / 816 / 172 |
 | all three (default) | 352–362 / 1359–1363 | 106–156 / 114–118 / 78–82 | 597 / 789 | 188 / 245 / 175 |
 
 In WPE, **the kept radar holds about 800 MB of the GPU buffers** (presumably its loop's frame textures; not broken
 down further) and saves only 25–35 ms
-on the Weather switch, which is 140–150 ms without it. That is under the 150 ms limit, but only just. The sky and
-the bank together hold about 5 MB, and the sky saves about 300 ms on every switch to Network. Chromium's figures
+on the Weather switch, which is 140–150 ms without it. That is under the 150 ms limit, but only just. The sky
+holds about 5 MB (the bank was not on the page: §1), and it saves about 300 ms on every switch to Network. Chromium's figures
 don't add up per scene in a single round: its extra ~190 MB appears only with all three kept. The default stays
 "all three kept", as measured in both passes of §5. Releasing the radar's frames on hide is the owner's choice: about
 800 MB of GPU memory against a Weather switch at the limit. A middle way for later is to keep the radar's context
@@ -474,8 +476,8 @@ these figures.
 | Python UI, live | 178 / 232 (73 of 108 not seen) | 296 / 406 | 2314 (Network) | 62 / 60 / 60 | 30 / – | 1662 | 316 / 642 | 11 |
 | Python UI, static | 180 / 227 (73 of 108 not seen) | 296 / 362 | 2340 (Network) | 62 / 60 / 60 | 29 / – | 1591 | 313 / 621 | 11 |
 
-The Energy page has no idle animation: its battery bank moves only when touched, so it has no scene fps. Every
-runtime renders on the V3D: the render node is open in the GPU-rendering process, with no llvmpipe threads anywhere.
+The Energy page had no battery data in this pass, so no bank and no scene fps (§1); with batteries its current
+flow runs all the time and the bank is measured in §5.1. Every runtime renders on the V3D: the render node is open in the GPU-rendering process, with no llvmpipe threads anywhere.
 Chromium's WebGL reports `ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1)`; WebKit masks its renderer string as
 "Apple GPU", hence the process check.
 
