@@ -1,0 +1,12 @@
+# UI runtime benchmark session (harness/uibench): the van kiosk's sway config (deploy/kiosk/sway.conf) with the
+# output name and mode filled in by session.sh, and no exec lines: the runner starts each runtime itself, so every
+# runtime gets the same compositor, the same fullscreen rule and its own cgroup.
+xwayland disable
+output * bg #000000 solid_color
+output @OUTPUT@ @MODE@
+default_border none
+default_floating_border none
+focus_follows_mouse no
+seat * hide_cursor 100
+for_window [app_id=".*"] fullscreen enable, border none
+input type:touch map_to_output @OUTPUT@

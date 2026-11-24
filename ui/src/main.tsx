@@ -42,3 +42,4 @@ createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictM
 // screenshot / debug aids (as app.js): ?inv=1, ?batt=1 open the overlays
 if (qs.get("inv") === "1") setTimeout(() => openModal("inv"), 2500);
 if (qs.get("batt") === "1") setTimeout(() => openModal("batt"), 2500);
+if (qs.get("bench") === "1") void import("./bench");   // runtime benchmark instrumentation (harness/uibench), own chunk

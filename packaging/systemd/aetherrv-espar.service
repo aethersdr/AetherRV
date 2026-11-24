@@ -4,6 +4,8 @@ PartOf=aetherrv.target
 # Wants, not Requires: a broker restart must not stop this service (it rides it out).
 Wants=aetherrv-bus.service
 After=aetherrv-bus.service network.target systemd-networkd.service
+# (in [Unit]: systemd ignores StartLimit* in [Service])
+StartLimitIntervalSec=0
 
 [Service]
 Type=notify
@@ -29,7 +31,6 @@ WatchdogSec=2
 # Back within ~0.1 s: a restart resumes a running heater (ARCHITECTURE.md §7.2). The resume limiter decides crash
 # loops, not systemd.
 RestartSec=100ms
-StartLimitIntervalSec=0
 RuntimeDirectory=aetherrv/espar
 RuntimeDirectoryPreserve=restart
 TimeoutStopSec=5

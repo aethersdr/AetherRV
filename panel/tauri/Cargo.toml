@@ -1,0 +1,22 @@
+# AetherRV kiosk panel as a Tauri v2 app (UI runtime candidate (b), docs/UI-RUNTIME-BENCHMARK.md): one fullscreen
+# WebKitGTK 4.1 window on the local gateway. Its own Cargo workspace, so the main workspace never pulls Tauri in.
+# Build natively on the Pi: cargo build --release (needs webkit2gtk-4.1, gtk3, libsoup3, pkgconf).
+[package]
+name = "aetherrv-panel-tauri"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
+strip = "debuginfo"

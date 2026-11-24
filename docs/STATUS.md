@@ -25,7 +25,7 @@ state and where its evidence lives. Updated as work lands; the final report is b
   setup, the van captures (read-only wrapper), the React UI.
 - 2026-11-23 (later): N2K switching (all 28 controller tests), the MCS7 command path (5 tests + lockout), the power
   guard (7 tests) done and pushed. Van read-only: 249 keys / 23 namespaces in /api/state; 1.1 GB of captures pulled to
-  harness/out/van (gitignored). Bench Pi `AetherPI`: checked (no hat0/hat1, sudo, vcan, uinput), kernel/boot packages
+  harness/out/van (gitignored). Bench Pi: checked (no hat0/hat1, sudo, vcan, uinput), kernel/boot packages
   held, upgraded, rustup/mosquitto/sway/chromium/wpewebkit/webkit2gtk-4.1 installed; `cog` is not in the Arch ARM repos
   (build from source). Agents running: victron + batteries-ble; starlink + peplink; alerts/history/derive/settings/
   netmon/gps; weather. Next for the lead: gateway (flat view, auth, WS, proxy), admind, can-aux, screen, parity

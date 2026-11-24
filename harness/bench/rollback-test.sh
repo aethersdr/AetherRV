@@ -3,7 +3,7 @@
 # 5). Starts where the van starts: the Python system running (/opt/aetherrv, deploy/install.sh), the Rust system
 # installed but stopped. Simulators stand in for every device (bench-up.sh). Each step asserts the unit states and
 # which system answers on :8080. Ends back on the Rust system (cutover.sh --full) for the other bench work.
-#   Prerequisite (from the workstation): rsync the repo to aetherpi:/opt/aetherrv (see docs/STATUS.md).
+#   Prerequisite (from the workstation): rsync the repo to <bench>:/opt/aetherrv (see docs/STATUS.md).
 set -uo pipefail
 ip -br link | grep -qE '^(hat0|hat1)\b' && { echo "refused: this is the van" >&2; exit 3; }
 SRC=/opt/aetherrv-rs/src; P=$SRC/packaging

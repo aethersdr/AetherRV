@@ -1,6 +1,8 @@
 [Unit]
 Description=AetherRV bus (Mosquitto on a Unix socket)
 PartOf=aetherrv.target
+# (in [Unit]: systemd ignores StartLimit* in [Service])
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -9,7 +11,6 @@ Group=aetherrv
 ExecStart=/usr/bin/mosquitto -c /opt/aetherrv-rs/etc/mosquitto.conf
 Restart=always
 RestartSec=200ms
-StartLimitIntervalSec=0
 RuntimeDirectory=aetherrv/bus
 RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes

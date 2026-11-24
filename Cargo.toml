@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "services/*", "sims/*", "utils/*"]
+# bench-only tools with their own workspace: never built or installed by packaging/push.sh (uibench injects touches)
+exclude = ["utils/uibench", "panel/tauri"]
 
 [workspace.package]
 version = "0.1.0"

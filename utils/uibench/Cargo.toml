@@ -1,0 +1,22 @@
+[package]
+name = "aetherrv-uibench"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+publish = false
+description = "UI runtime benchmark (docs/UI-RUNTIME-BENCHMARK.md): uinput touchscreen, wlr-screencopy frame timing, cgroup PSS/CPU"
+
+# Bench-only tool. Not part of any service; it never talks to the bus or a device. Licences of the dependencies:
+# wayland-client / wayland-protocols / wayland-protocols-wlr MIT, libc MIT/Apache-2.0, serde/serde_json/anyhow
+# MIT/Apache-2.0. libgbm (Mesa, MIT) is linked from the system for dmabuf screencopy buffers.
+# its own workspace (excluded from the root one): a bench tool must never reach the van's /opt/aetherrv-rs/bin
+[workspace]
+
+[dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
