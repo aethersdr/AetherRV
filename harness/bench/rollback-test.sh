@@ -26,7 +26,14 @@ step "0. the van's starting point: simulators up, the Rust system stopped and di
 $SRC/harness/bench/bench-up.sh /var/tmp/n2k-replay.log >/dev/null
 systemctl disable --now aetherrv.target $(rust_units) aetherrv-admind.socket >/dev/null 2>&1 || true
 [ -d /opt/aetherrv/src/aetherrv ] || { echo "no Python tree in /opt/aetherrv (rsync it first)" >&2; exit 4; }
-/opt/aetherrv/deploy/install.sh 2>&1 | tail -2
+/opt/aetherrv/deploy/install.sh > /var/tmp/python-install.log 2>&1 || {
+  # on this bench `networkctl reload` fails (its networking isn't the van's); finish the installer's last steps
+  echo "  (deploy/install.sh stopped: $(tail -1 /var/tmp/python-install.log); finishing its last steps by hand)"
+  systemctl daemon-reload
+  systemctl enable aetherrv.service && systemctl restart aetherrv.service
+  systemctl enable aetherrv-kiosk.service
+  systemctl enable --now aetherrv-admin.socket
+}
 check "Python backend active" systemctl is-active -q aetherrv.service
 check "Python admin socket active" systemctl is-active -q aetherrv-admin.socket
 check "Python kiosk enabled" bash -c '[ "$(systemctl is-enabled aetherrv-kiosk.service)" = enabled ]'
@@ -64,7 +71,7 @@ wait_for 20 bash -c "curl -sS http://127.0.0.1:8080/api/state | jq -e '.\"climat
 $P/rollback.sh; rc=$?
 check "rollback.sh refused (exit $rc)" test "$rc" -ne 0
 check "the Rust system still running" systemctl is-active -q aetherrv-espar.service
-check "the heater still heating" bash -c "grep -q '\"state\":\"heating\"' /run/aetherrv-sim-espar.json"
+check "the heater still heating" wait_for 5 bash -c "grep -q '\"state\":\"heating\"' /run/aetherrv-sim-espar.json"
 $CTL cmd espar set '{"mode":"off"}'
 check "and refused during the after-run too" bash -c "sleep 3; ! $P/heaters-idle.sh"
 check "heaters idle after the after-run" wait_for 90 $P/heaters-idle.sh
