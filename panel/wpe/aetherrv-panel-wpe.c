@@ -13,6 +13,14 @@
  * start-up error, 4 when the compositor goes away (WPEDisplay "disconnected": the Wayland connection was lost, e.g.
  * sway stopped by a restart of the panel unit; without this the launcher would outlive its session). launch.sh then
  * ends the sway session and the panel unit (Restart=always) starts everything again.
+ *
+ * Memory (docs/UI-RUNTIME-BENCHMARK.md §4.6): WebKit frees its caches and collects garbage when the web process
+ * grows past fractions of a memory limit, which by default is the machine's RAM (16 GB on the Pi), so it never does.
+ * As a safety net against runaway growth (owner, 2026-11-24), AETHERRV_PANEL_MEM_MB sets the limit (default 1000;
+ * 0 = WebKit's default): past 45 % of it (450 MB) WebKit frees caches and collects, past 60 % everything it can.
+ * Normal and even heavy use stays under 45 % (the web process peaked at 360-370 MB on the bench); a low limit kept
+ * memory down but made page switches slow, because the caches it frees are what makes them fast. It never kills the
+ * web process for its memory (kill threshold 0).
  * Build: cc -O2 -o aetherrv-panel-wpe aetherrv-panel-wpe.c $(pkg-config --cflags --libs wpe-webkit-2.0)
  */
 #include <glib-unix.h>
@@ -27,6 +35,22 @@ static int status;
 static char *origin;     /* scheme://host:port of the start URL: the only place the view may navigate to */
 static guint hang_timer;
 static guint hang_s = 30;
+
+/* the web context, with the memory pressure safety net above */
+static WebKitWebContext *new_web_context(void)
+{
+    const char *m = g_getenv("AETHERRV_PANEL_MEM_MB");
+    guint mb = m && *m ? (guint)g_ascii_strtoull(m, NULL, 10) : 1000;
+    if (!mb)
+        return WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, NULL));
+    g_autoptr(WebKitMemoryPressureSettings) mp = webkit_memory_pressure_settings_new();
+    webkit_memory_pressure_settings_set_memory_limit(mp, mb);
+    webkit_memory_pressure_settings_set_conservative_threshold(mp, 0.45);
+    webkit_memory_pressure_settings_set_strict_threshold(mp, 0.6);
+    webkit_memory_pressure_settings_set_kill_threshold(mp, 0);
+    return WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "memory-pressure-settings", mp, NULL));
+}
+
 
 static void quit(int code)
 {
@@ -151,8 +175,9 @@ int main(int argc, char **argv)
     g_autoptr(WebKitWebsitePolicies) policies = webkit_website_policies_new_with_policies("autoplay", WEBKIT_AUTOPLAY_ALLOW, NULL);
     g_autoptr(WebKitSettings) settings = webkit_settings_new();
     webkit_settings_set_media_playback_requires_user_gesture(settings, FALSE);  /* alert tones before the first touch */
+    g_autoptr(WebKitWebContext) context = new_web_context();
     WebKitWebView *view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "display", display, "network-session", session,
-        "website-policies", policies, "settings", settings, NULL));
+        "web-context", context, "website-policies", policies, "settings", settings, NULL));
 
     WebKitColor bg;
     webkit_color_parse(&bg, PAGE_COLOUR);

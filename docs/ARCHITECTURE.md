@@ -363,7 +363,8 @@ enforcement points follow that one switch.
     WPE runs through the panel's own launcher, `panel/wpe/aetherrv-panel-wpe` (WPE Platform API, built by
     `install.sh`; owner Q-U1): one full-screen view, no navigation off the UI's origin, and it exits when its web
     process dies or hangs or sway goes away, so the unit restarts the whole session. MiniBrowser is only a fallback
-    (it keeps a blank page after a web-process crash).
+    (it keeps a blank page after a web-process crash). The launcher gives WebKit a 1000 MB memory limit as a safety
+    net: past 450 MB it frees caches, past 600 MB everything it can; it never kills the web process (owner, Q-U11).
   - The session has its own PAM stack, `packaging/pam/aetherrv-panel`: `pam_systemd class=user-light`, a logind
     session with the seat and device ACLs (DRM, input, sound) but no user service manager and no session bus,
     which nothing in the panel needs. The Python kiosk's `aetherrv-kiosk` stack is untouched. The gateway and the
@@ -487,6 +488,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-U8 | Which UI runtime for the van's panel (benchmark §5–§6, recommendation §9)? | answered 2026-11-24: the WPE launcher (`panel/wpe`) |
 | Q-U9 | The kept radar loop holds ~800 MB of GPU memory for a ~110 ms switch back to Weather (140–150 ms without): keep or release on hide? | answered 2026-11-24: release on hide |
 | Q-U10 | Power-on to a usable UI: 1 of 10 bench boots over 15 s (median 14.74 s, max 15.16 s; 8.2–8.9 s of each is the Pi's firmware): what to do? | answered 2026-11-24: accept as measured (the stopwatch check in the van stays, `docs/CUTOVER.md` §8) |
+| Q-U11 | UI memory: 361–382 MB in normal use, 381–421 MB (once 499) after a 48-taps-per-page stress pass; capping it with WebKit's memory pressure handling slows page switches past 150 ms: accept, enforce or investigate? | answered 2026-11-24: accept, with a safety net (WebKit frees its caches past 450 MB, never kills) |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions
@@ -534,3 +536,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-24 | The panel runs WPE through its own launcher (`panel/wpe`); `launch.sh` uses it by default, Chromium only when it isn't installed | owner (Q-U8) |
 | 2026-11-24 | The Weather radar is freed when its page is hidden and rebuilt on return; the Network sky and the Energy bank stay kept | owner (Q-U9) |
 | 2026-11-24 | Power-on to a usable UI accepted as measured on the bench (median 14.74 s, 1 of 10 boots at 15.16 s) | owner (Q-U10) |
+| 2026-11-24 | UI memory accepted: ≤ 400 MB in normal use, up to ~420 MB under heavy tapping; the WPE launcher sets WebKit's memory limit to 1000 MB (frees caches past 450 MB, never kills the web process) as a safety net | owner (Q-U11) |
