@@ -20,6 +20,8 @@ socket2.workspace = true
 
 [dev-dependencies]
 aetherrv-core = { workspace = true, features = ["testutil"] }
+aetherrv-alerts = { path = "../alerts" }
+socket2.workspace = true
 tempfile.workspace = true
 
 [lints]

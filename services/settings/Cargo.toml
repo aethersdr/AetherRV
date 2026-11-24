@@ -20,6 +20,7 @@ reqwest.workspace = true
 
 [dev-dependencies]
 aetherrv-core = { workspace = true, features = ["testutil"] }
+aetherrv-alerts = { path = "../alerts" }
 tempfile.workspace = true
 
 [lints]

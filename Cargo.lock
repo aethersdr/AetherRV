@@ -43,6 +43,7 @@ dependencies = [
  "anyhow",
  "bluer",
  "futures",
+ "libc",
  "proto-roypow",
  "serde",
  "serde_json",
@@ -240,12 +241,15 @@ dependencies = [
  "aetherrv-core",
  "aetherrv-sim",
  "anyhow",
+ "axum",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -325,7 +329,6 @@ dependencies = [
  "aetherrv-core",
  "anyhow",
  "axum",
- "futures",
  "http-body-util",
  "hyper",
  "hyper-util",

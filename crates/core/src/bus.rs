@@ -193,6 +193,25 @@ impl RemoteState {
     }
 }
 
+/// Other services' keys with their last known values even while the owner is down (the alert engine: a module
+/// outage gets its own "module down" alert instead of clearing and re-raising every alert of that module, which is
+/// also what Python's single state did).
+pub struct RawView(pub Arc<RemoteState>);
+
+impl StateView for RawView {
+    fn get(&self, key: &str) -> Option<Value> {
+        self.0.stamped(key, true).map(|(_, s)| s.v)
+    }
+    fn age(&self, key: &str) -> Option<f64> {
+        self.0.stamped(key, true).map(|(_, s)| (crate::clock::now_ms() - s.t) as f64 / 1000.0)
+    }
+    fn keys(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.0.keys.lock().unwrap().keys().cloned().collect();
+        v.sort();
+        v
+    }
+}
+
 impl StateView for RemoteState {
     fn get(&self, key: &str) -> Option<Value> {
         self.stamped(key, false).map(|(_, s)| s.v)
@@ -326,7 +345,9 @@ impl Bus {
                 true
             }
         };
-        if new && self.connected() {
+        // Always queue it: a reconnect in progress may already have copied the filter list (a duplicate SUBSCRIBE
+        // after the reconnect is harmless; a lost one would leave this key unfollowed until the next reconnect).
+        if new {
             let _ = self.inner.client.subscribe(f, QoS::AtLeastOnce).await;
         }
     }

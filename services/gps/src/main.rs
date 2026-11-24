@@ -3,6 +3,11 @@
 fn main() -> anyhow::Result<()> {
     let args = aetherrv_core::config::Args::parse();
     aetherrv_core::logging::init("aetherrv-gps", args.verbose);
-    let _cfg = aetherrv_core::config::Cfg::load(&args.config)?;
-    anyhow::bail!("aetherrv-gps is not implemented yet")
+    let cfg = aetherrv_core::config::Cfg::load(&args.config)?;
+    let opts = aetherrv_gps::Options::from_config(&cfg);
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()?
+        .block_on(aetherrv_gps::run(cfg, opts))
 }
