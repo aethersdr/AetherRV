@@ -3,14 +3,15 @@
 // as a second guard. Never point these tests at a live AetherRV (prompt §5).
 import { defineConfig } from "@playwright/test";
 
-const PORT = 4317;
+// UI_TEST_PORT lets parallel runs (one per page agent) use their own dev server and output folder
+const PORT = Number(process.env.UI_TEST_PORT || 4317);
 export default defineConfig({
   testDir: "tests/e2e",
   timeout: 30_000,
   fullyParallel: false,
   workers: 1,
   reporter: "list",
-  outputDir: "test-results",
+  outputDir: PORT === 4317 ? "test-results" : `test-results-${PORT}`,
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     channel: "chrome",
