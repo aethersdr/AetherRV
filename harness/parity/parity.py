@@ -229,6 +229,9 @@ def main() -> None:
     ap.add_argument("--n2k-if", default="vcan10")
     ap.add_argument("--espar-if", default="vcan11")
     ap.add_argument("--out", default=str(ROOT / "harness/out/parity/run"))
+    # When both systems are read after the replay. Not 3 s: that is the decoders' EasyStart command expiry, and
+    # Python recomputes every 1 s, Rust every 250 ms, so a read on that edge compares sampling phase, not behaviour.
+    ap.add_argument("--settle", type=float, default=1.0)
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -267,7 +270,7 @@ def main() -> None:
             t.start()
         for t in th:
             t.join()
-        time.sleep(3)
+        time.sleep(a.settle)
         py, rs = fetch(py_port), fetch(rs_port)
         (out / "python.json").write_text(json.dumps(py, indent=1, sort_keys=True))
         (out / "rust.json").write_text(json.dumps(rs, indent=1, sort_keys=True))
