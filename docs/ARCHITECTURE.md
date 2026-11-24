@@ -547,3 +547,5 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-24 | UI memory accepted: ≤ 400 MB in normal use, up to ~420 MB under heavy tapping; the WPE launcher sets WebKit's memory limit to 1000 MB (frees caches past 450 MB, never kills the web process) as a safety net | owner (Q-U11) |
 | 2026-11-24 | §8 judged as: every tap under 100 ms (50 ms is a loose target); page switches warm (a page already visited since boot) | owner (Q-U12, Q-U13) |
 | 2026-11-24 | Bench deploys may be cross-compiled on the workstation (`harness/bench/cross-push.sh`); the van's deploys stay native (`packaging/push.sh`) | owner |
+| 2026-11-24 | The cutover started (`docs/CUTOVER.md`) with the owner at the van: §2–§6 now, then control one device at a time (§7) with the owner's yes for each | owner |
+| 2026-11-24 | The van's packages for the cutover installed from its current package database (no `-Syu`): `clang rustup mosquitto wpewebkit gst-plugins-base gst-plugins-good jq`, and Rust 1.100.0 (minimal profile) for the native build | owner |

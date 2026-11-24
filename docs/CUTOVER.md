@@ -37,6 +37,10 @@ natively (about 6 minutes on a Pi 5), installs the binaries, units and Mosquitto
 The Python system keeps running. Install the packages the Rust system needs if missing, before the push (the build
 and the panel need them):
 
+- `clang` and `rustup` for the native build, then, as the admin user, `rustup default 1.100.0` (the toolchain the
+  bench was tested with; `base-devel` is already there from the Python install);
+- `jq`: `heaters-idle.sh`, and so `cutover.sh` and the **rollback**, read the heaters' state with it (the van had
+  none on 2026-11-24);
 - `mosquitto` (the bus);
 - the UI runtime, **WPE** (the owner's choice, 2026-11-24; `docs/UI-RUNTIME-BENCHMARK.md` §9). `install.sh` builds the
   panel's WPE launcher only if `wpewebkit` is installed when it runs, and `launch.sh` falls back to Chromium without

@@ -2,6 +2,7 @@
 # Exit 0 if neither heater is burning or in its after-run, judged from whichever system answers on :8080.
 # Used by cutover.sh and rollback.sh before they stop the system that drives the Espar.
 set -euo pipefail
+command -v jq >/dev/null || { echo "jq is not installed (pacman -S jq): can't tell whether the heaters are idle" >&2; exit 2; }
 S=$(curl -sS --max-time 5 http://127.0.0.1:8080/api/state) || { echo "no /api/state on :8080: can't tell (use --force)" >&2; exit 2; }
 python_or_jq() { jq -r "$1" <<<"$S" 2>/dev/null; }
 esp_active=$(python_or_jq '."climate.espar.ctl.active" // false')
