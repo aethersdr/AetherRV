@@ -2,8 +2,9 @@
 # UI runtime benchmark driver, on the BENCH Pi (prompt §7/§8, docs/UI-RUNTIME-BENCHMARK.md).
 #
 #   run.sh <runtime|all> <headless|screen> [WxH[@Hz]] [-- extra aetherrv-uibench run options]
-#     runtime: wpe | tauri | chromium | python (reference UI, live-fed) | python-static (one frozen snapshot)
-#     all = python python-static wpe tauri chromium
+#     runtime: wpe (MiniBrowser) | wpe-launcher (panel/wpe, the panel's own WPE kiosk launcher) | tauri | chromium |
+#              python (reference UI, live-fed) | python-static (one frozen snapshot)
+#     all = python python-static wpe tauri chromium (wpe-launcher only when named)
 #
 # Every runtime shows the same production bundle (/opt/aetherrv-rs/ui via the gateway on 127.0.0.1:8080, with
 # ?bench=1) fullscreen in the same sway session (session.sh); the reference UI is served by serve_ref.py on
@@ -22,6 +23,7 @@ if [ $# -gt 0 ] && [ "$1" != "--" ]; then RES=$1; shift; fi
 EXTRA=("$@")
 BIN=${UIBENCH_BIN:-$HOME/uibench/crate/target/release/aetherrv-uibench}
 TAURI_BIN=${UIBENCH_TAURI_BIN:-$HOME/uibench/tauri/target/release/aetherrv-panel-tauri}
+WPE_BIN=${UIBENCH_WPE_BIN:-$HOME/uibench/wpe/aetherrv-panel-wpe}
 VENV=${UIBENCH_VENV:-$HOME/uibench/venv}
 REF=${UIBENCH_REF:-$HOME/uibench/ref}
 URL=${UIBENCH_URL:-http://127.0.0.1:8080/?bench=1}
@@ -36,7 +38,9 @@ curl -sf -m 3 -o /dev/null http://127.0.0.1:8080/ || { echo "gateway on 127.0.0.
 # ── the sway session (reused when it already has this mode and size) ──
 ENVF=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/uibench/env
 want_kind=$MODE
-if [ -f "$ENVF" ] && grep -qx "KIND=$want_kind" "$ENVF" && grep -qx "REQUESTED_MODE=$RES" "$ENVF" && systemctl is-active -q uibench-sway; then
+want_extra=$(printf '%s' "${UIBENCH_SWAY_EXTRA:-}" | md5sum | cut -c1-8)     # session.sh's extra config lines, if any
+if [ -f "$ENVF" ] && grep -qx "KIND=$want_kind" "$ENVF" && grep -qx "REQUESTED_MODE=$RES" "$ENVF" && grep -qx "SWAY_EXTRA=$want_extra" "$ENVF" \
+   && systemctl is-active -q uibench-sway; then
   :
 else
   if [ "$MODE" = screen ]; then "$H/session.sh" start screen "$RES"; else "$H/session.sh" start headless "${RES%@*}"; fi
@@ -52,6 +56,7 @@ if [ "$MODE" = screen ]; then
 else
   LABEL="headless (owner decision 2026-11-23): WLR headless output $OUTMODE"
 fi
+[ -n "${UIBENCH_SWAY_EXTRA:-}" ] && LABEL="$LABEL; sway extra: ${UIBENCH_SWAY_EXTRA//$'\n'/; }"
 echo "uibench: $LABEL" | tee "$OUT/session.txt"
 journalctl -u uibench-sway -b --no-pager -o cat 2>/dev/null | grep -iE 'mode|error|fail' | tail -20 >> "$OUT/session.txt" || true
 
@@ -86,6 +91,7 @@ set_cmd() {   # runtime → CMD array (persistent profile, like the van's kiosk)
       local u=$URL; [ "$1" != chromium ] && u=$REF_URL
       CMD=(chromium "${CHROMIUM_FLAGS[@]}" --user-data-dir="$prof" "$u") ;;
     wpe) CMD=(env WPE_PLATFORM=wayland /usr/lib/wpe-webkit-2.0/MiniBrowser --fullscreen "$URL") ;;
+    wpe-launcher) CMD=(env AETHERRV_PANEL_PROFILE="$HOME/uibench/profiles/wpe-launcher" "$WPE_BIN" "$URL") ;;
     tauri) CMD=("$TAURI_BIN" "$URL") ;;
     *) echo "unknown runtime $1" >&2; return 1 ;;
   esac
@@ -104,6 +110,7 @@ start_ref() {   # $1 = live|static
 for rt in $WHICH; do
   case $rt in
     tauri) [ -x "$TAURI_BIN" ] || { echo "skip tauri: $TAURI_BIN not built" >&2; continue; } ;;
+    wpe-launcher) [ -x "$WPE_BIN" ] || { echo "skip wpe-launcher: $WPE_BIN not built" >&2; continue; } ;;
     python) stop_leftovers; start_ref live ;;
     python-static) stop_leftovers; start_ref static ;;
   esac

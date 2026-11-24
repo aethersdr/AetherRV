@@ -40,6 +40,8 @@ start)
     grep -qx "${MODE%@*}" "/sys/class/drm/card1-$OUT/modes" 2>/dev/null && OUTMODE="mode $MODE"
   fi
   sed -e "s|@OUTPUT@|$OUT|g" -e "s|@MODE@|$OUTMODE|" "$HERE/sway.conf.in" > "$STATE/sway.conf"
+  # experiments: extra sway config lines, e.g. UIBENCH_SWAY_EXTRA=$'output * max_render_time 4\nfor_window [app_id=".*"] max_render_time 4'
+  if [ -n "${UIBENCH_SWAY_EXTRA:-}" ]; then printf '%s\n' "$UIBENCH_SWAY_EXTRA" >> "$STATE/sway.conf"; fi
   T0=$(date +%s%N)
   sudo systemd-run --quiet --unit=$UNIT --uid="$(id -un)" -p PAMName=login -p TTYPath=/dev/tty$VT \
     -p StandardInput=tty-fail -p StandardOutput=journal -p StandardError=journal -p TTYReset=yes -p TTYVHangup=yes \
@@ -50,7 +52,7 @@ start)
   [ -n "$SWAYSOCK" ] || { echo "sway did not start: journalctl -u $UNIT" >&2; exit 5; }
   WD=$(ls -t "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"/wayland-? 2>/dev/null | head -1)
   SWAY_START_MS=$(( ($(date +%s%N) - T0) / 1000000 ))       # unit start → sway answering on its IPC socket
-  printf 'SWAYSOCK=%s\nWAYLAND_DISPLAY=%s\nOUTPUT=%s\nKIND=%s\nREQUESTED_MODE=%s\nSWAY_START_MS=%s\n' "$SWAYSOCK" "$(basename "$WD")" "$OUT" "$KIND" "$MODE" "$SWAY_START_MS" > "$STATE/env"
+  printf 'SWAYSOCK=%s\nWAYLAND_DISPLAY=%s\nOUTPUT=%s\nKIND=%s\nREQUESTED_MODE=%s\nSWAY_START_MS=%s\nSWAY_EXTRA=%s\n' "$SWAYSOCK" "$(basename "$WD")" "$OUT" "$KIND" "$MODE" "$SWAY_START_MS" "$(printf '%s' "${UIBENCH_SWAY_EXTRA:-}" | md5sum | cut -c1-8)" > "$STATE/env"
   cat "$STATE/env"
   swaymsg -t get_outputs -r | python3 -c 'import json,sys; [print("output", o["name"], o["current_mode"], "power", o.get("power")) for o in json.load(sys.stdin)]'
   ;;

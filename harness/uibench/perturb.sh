@@ -22,8 +22,9 @@ for page in $PAGES; do
   case $RT in
     chromium) cmd=(chromium --kiosk --ozone-platform=wayland --noerrdialogs --no-first-run --user-data-dir="$prof" "$u") ;;
     wpe) cmd=(env WPE_PLATFORM=wayland /usr/lib/wpe-webkit-2.0/MiniBrowser --fullscreen "$u") ;;
+    wpe-launcher) cmd=(env AETHERRV_PANEL_PROFILE="$prof" "${UIBENCH_WPE_BIN:-$HOME/uibench/wpe/aetherrv-panel-wpe}" "$u") ;;
     tauri) cmd=("$TAURI_BIN" "$u") ;;
-    *) echo "runtime: chromium|wpe|tauri" >&2; exit 2 ;;
+    *) echo "runtime: chromium|wpe|wpe-launcher|tauri" >&2; exit 2 ;;
   esac
   systemd-run --user --scope --quiet --collect --unit="uibench-rt-perturb-$page" -- "${cmd[@]}" >/dev/null 2>&1 &
   sleep 10

@@ -15,7 +15,7 @@
 //! taps are on rail buttons (navigation).
 
 use crate::analysis::{self, MosaicRef, SwitchParams, ref_patches, timeline};
-use crate::capture::{Patch, Recorder, Rect};
+use crate::capture::{Patch, Recorder, Rect, Update};
 use crate::helper::Helper;
 use crate::report::Reports;
 use crate::{arg, flag, mono_ns, real_minus_mono, sway};
@@ -329,15 +329,47 @@ pub fn main(args: &[String]) -> Result<()> {
     let pages: Vec<String> = arg(opts, "--pages").unwrap_or("home,energy,climate,weather,switches,network,alerts,systems,settings").split(',').map(String::from).collect();
     let warm_rounds: usize = arg(opts, "--warm-rounds").unwrap_or("5").parse()?;
     let press_reps: usize = arg(opts, "--press-reps").unwrap_or("8").parse()?;
+    // --press-reps-for page=N[,page=N]: more (or fewer) presses on the pages named, e.g. network=100
+    let press_reps_for: std::collections::HashMap<String, usize> = arg(opts, "--press-reps-for").unwrap_or("").split(',')
+        .filter_map(|kv| kv.split_once('=').and_then(|(k, v)| Some((k.to_string(), v.parse().ok()?)))).collect();
     let null_reps: usize = arg(opts, "--null-reps").unwrap_or("4").parse()?;
     let fps_secs: f64 = arg(opts, "--fps-secs").unwrap_or("8").parse()?;
     let port: u16 = arg(opts, "--port").unwrap_or("18099").parse()?;
+    // --cold-only: the cold start and nothing else (the power-on measurement; works for a page with no bench
+    // module, e.g. the Python UI served by its own backend: then no page report ever comes, so wait only
+    // --report-wait-ms for one before taking the settled reference)
+    let cold_only = flag(opts, "--cold-only");
+    // --no-scope: start the runtime as a plain child, not in its own `systemd-run --user` scope (a session with no
+    // user service manager, pam_systemd class=user-light): no per-runtime memory or CPU figures then
+    let no_scope = flag(opts, "--no-scope");
+    let report_wait: u64 = arg(opts, "--report-wait-ms").unwrap_or("60000").parse()?;
     let output = std::env::var("OUTPUT").ok();
     let started = chrono_like();
+    let t_main = mono_ns();                  // the runner's own set-up before it launches the runtime, itemised
+    // --launch-first (with --cold-only): start the runtime at once, as the panel's launch.sh would, and attach the
+    // capture while it starts (the power-on measurement: the runner's set-up must not delay the launch). The cold
+    // start's reference "before" frame is then the black output, not a captured one.
+    let launch_first = flag(opts, "--launch-first");
+    let unit = format!("uibench-rt-{}-{}", runtime, std::process::id());
+    let spawn = || -> Result<std::process::Child> {
+        let mut b = if no_scope {
+            let mut b = std::process::Command::new(&cmd[0]);
+            b.args(&cmd[1..]);
+            b
+        } else {
+            let mut b = std::process::Command::new("systemd-run");
+            b.args(["--user", "--scope", "--quiet", "--collect", &format!("--unit={unit}"), "--"]).args(cmd);
+            b
+        };
+        Ok(b.stdout(std::process::Stdio::null()).stderr(std::fs::File::create(format!("{out}.stderr.log"))?).spawn()?)
+    };
+    let early = if launch_first { Some((mono_ns(), spawn()?)) } else { None };
 
     let rec = Recorder::start(output.clone())?;
+    let t_rec = mono_ns();
     let rep = Reports::listen(port)?;
     let mut hp = Helper::spawn()?;
+    let t_help = mono_ns();
     let info = rec.info();
     // --no-touch: no injected touchscreen (the boot measurement: a headless session with no seat, nothing tapped)
     let touch = !flag(opts, "--no-touch");
@@ -369,20 +401,23 @@ pub fn main(args: &[String]) -> Result<()> {
     let cpatches = analysis::bands(full, 1);
     let crefs = ref_patches(&cpatches, 0, 1000);
     c.rec.set_patches(cpatches.clone());
-    let cbase = c.rec.force(cpatches.clone())?;
-    sleep_ms(200);
-    c.rec.clear();
-    let unit = format!("uibench-rt-{}-{}", runtime, std::process::id());
-    let t_launch = mono_ns();
-    let child = std::process::Command::new("systemd-run")
-        .args(["--user", "--scope", "--quiet", "--collect", &format!("--unit={unit}"), "--"])
-        .args(cmd)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::fs::File::create(format!("{out}.stderr.log"))?)
-        .spawn()?;
+    let cbase = if launch_first {
+        cpatches.iter().map(|p| { let (w, h) = p.dims(); Update { id: p.id, t: 0, recv: 0, px: std::sync::Arc::new(vec![0u8; w * h * 3]) } }).collect()
+    } else {
+        c.rec.force(cpatches.clone())?
+    };
+    let t_base = mono_ns();
+    if !launch_first {
+        sleep_ms(200);
+        c.rec.clear();
+    }
+    let (t_launch, mut child) = match early {
+        Some(e) => e,
+        None => (mono_ns(), spawn()?),
+    };
     let pid = child.id();
     let _guard = ScopeGuard(unit.clone());
-    for _ in 0..50 {
+    for _ in 0..if no_scope { 0 } else { 50 } {
         if let Some(cg) = cgroup_of(pid)
             && cg.contains(&unit)
         {
@@ -394,7 +429,7 @@ pub fn main(args: &[String]) -> Result<()> {
     if c.rt_cg.is_empty() {
         c.note(format!("runtime pid {pid} not in its scope; memory/CPU figures unavailable"));
     }
-    let ready = page_report(&c.rep, t_launch, None, 60_000);
+    let ready = page_report(&c.rep, t_launch, None, report_wait);
     let t_ready = mono_ns();
     sleep_ms(4000);
     let cfin = c.rec.force(crefs.clone())?;
@@ -436,6 +471,28 @@ pub fn main(args: &[String]) -> Result<()> {
         v
     };
     let mem_after_boot = c.sample();
+    if cold_only {
+        let _ = std::process::Command::new("systemctl").args(["--user", "stop", &format!("{unit}.scope")]).status();
+        if no_scope {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let info = c.rec.info();
+        let res = json!({
+            "runtime": runtime, "url": url, "command": cmd, "mode": arg(opts, "--mode").unwrap_or("headless"),
+            "label": arg(opts, "--label"), "started": started, "bundle": std::env::var("UIBENCH_BUNDLE").ok(), "cold_only": true,
+            "page_report": ready.is_some(),
+            "recorder": {"output": info.output, "size": [info.width, info.height], "refresh_mhz": info.refresh_mhz},
+            "thresholds": {"content_mismatch": CONTENT_TAU, "settled_frac": SETTLED_TAU, "pixel": PIX_THR},
+            "runner_setup_ms": {"launch_first": launch_first, "start_since_kernel": analysis::r2(t_main as f64 / 1e6), "recorder": analysis::ms(t_main, t_rec),
+                "helper": analysis::ms(t_main, t_help), "baseline_frame": analysis::ms(t_main, t_base), "launch": analysis::ms(t_main, t_launch)},
+            "cold_start": cold, "memory_after_boot": mem_after_boot, "no_scope": no_scope, "meta_before": meta_before, "meta_after": meta(), "log": c.log,
+        });
+        std::fs::write(&out, serde_json::to_string_pretty(&res)?)?;
+        eprintln!("uibench: wrote {out} (cold start only)");
+        c.rec.stop();
+        return Ok(());
+    }
     // the layout is only valid once the window has its final (fullscreen) size: wait for a report at that size
     let ready = ready.map(|r| {
         let full_size = |b: &Value| {
@@ -512,6 +569,7 @@ pub fn main(args: &[String]) -> Result<()> {
             if slide_ok || local {
                 if let Some(tr) = c.to_screen(&tg["rect"]) {
                     target = tg.clone();
+                    let press_reps = press_reps_for.get(page.as_str()).copied().unwrap_or(press_reps);
                     for i in 0..press_reps.max(null_reps) {
                         if i < press_reps {
                             presses.push(measure_press(&mut c, tr, true, false)?);

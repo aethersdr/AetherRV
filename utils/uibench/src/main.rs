@@ -3,9 +3,10 @@
 //! ```text
 //! aetherrv-uibench run --runtime <name> --url <url> --out <file.json> [options] -- <runtime command…>
 //!     the whole scenario set against one runtime: cold start, page switches, taps, fps, CPU, memory, screen power
-//! aetherrv-uibench frames [--secs N] [--patch x,y,w,h,step]… [--grid cols,rows,size,step] [--no-capture]
+//! aetherrv-uibench frames [--secs N] [--patch x,y,w,h,step]… [--grid cols,rows,size,step] [--no-capture] [--cmd C]
 //!     calibration: presented frames and intervals, patch copies and their cost, and what a page posts to the
-//!     report port (harness/uibench/calib.html posts its own rAF count) for N seconds
+//!     report port (harness/uibench/calib.html posts its own rAF count) for N seconds; --cmd hands the page's
+//!     bench module one command over its long poll (e.g. "presscost 12", harness/uibench/presscost.sh)
 //! aetherrv-uibench globals
 //!     the compositor's Wayland globals (which capture protocols it offers)
 //! aetherrv-uibench touch-test <x> <y>
@@ -75,6 +76,9 @@ fn frames(args: &[String]) -> Result<()> {
         rec.clear();
     }
     let t0 = mono_ns();
+    if let Some(c) = arg(args, "--cmd") {
+        reports.command(c);
+    }
     std::thread::sleep(std::time::Duration::from_secs_f64(secs));
     let page: Vec<serde_json::Value> = reports.since(t0).into_iter().map(|r| r.body).collect();
     let Some(rec) = rec else {
