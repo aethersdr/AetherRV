@@ -28,13 +28,28 @@ impl TxGate {
 
     /// From the whole config, as Python's `build()`: one entry per `[device.<name>]` (`tx_enabled`), plus
     /// `<name>_diag` (`diag_tx`) for `kind = "espar"` devices.
+    ///
+    /// `AETHERRV_TX_ALLOW` (the cutover's read-only period, docs/CUTOVER.md) can only take permissions away: when it
+    /// is set, a device keeps `tx_enabled` only if it is also named there (comma-separated; empty = nothing may
+    /// transmit). It never enables a device the config doesn't.
     pub fn from_config(cfg: &Cfg) -> Self {
+        Self::from_config_with(cfg, std::env::var("AETHERRV_TX_ALLOW").ok().as_deref())
+    }
+
+    pub fn from_config_with(cfg: &Cfg, allow: Option<&str>) -> Self {
+        let allowed: Option<Vec<String>> =
+            allow.map(|a| a.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect());
+        let ok = |dev: &str| allowed.as_ref().is_none_or(|a| a.iter().any(|x| x == dev));
         let mut m = BTreeMap::new();
         for (dev, d) in cfg.at("device").entries() {
-            m.insert(dev.clone(), d.flag("tx_enabled"));
+            m.insert(dev.clone(), d.flag("tx_enabled") && ok(&dev));
             if d.str("kind", "") == "espar" {
-                m.insert(format!("{dev}_diag"), d.flag("diag_tx"));
+                let diag = format!("{dev}_diag");
+                m.insert(diag.clone(), d.flag("diag_tx") && ok(&diag));
             }
+        }
+        if let Some(a) = &allowed {
+            tracing::warn!("AETHERRV_TX_ALLOW is set: transmit limited to {a:?}");
         }
         TxGate { enabled: m, blocked: Mutex::new(BTreeMap::new()) }
     }
@@ -98,6 +113,17 @@ mod tests {
         for d in ["b", "c"] {
             assert!(g.check(d, "x", false).is_err());
         }
+    }
+
+    /// The cutover's allowlist only takes permissions away.
+    #[test]
+    fn tx_allow_only_narrows() {
+        let c = Cfg::parse("[device.espar]\nkind='espar'\ntx_enabled=true\ndiag_tx=true\n[device.n2k]\ntx_enabled=true\n[device.x]\ntx_enabled=false").unwrap();
+        let none = TxGate::from_config_with(&c, Some(""));
+        assert!(!none.is_enabled("espar") && !none.is_enabled("espar_diag") && !none.is_enabled("n2k"));
+        let some = TxGate::from_config_with(&c, Some("espar_diag, x"));
+        assert!(some.is_enabled("espar_diag") && !some.is_enabled("espar") && !some.is_enabled("x"), "x stays off: the config says false");
+        assert!(TxGate::from_config_with(&c, None).is_enabled("n2k"));
     }
 
     #[test]
