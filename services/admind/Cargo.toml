@@ -10,15 +10,13 @@ name = "aetherrv-admind"
 path = "src/main.rs"
 
 [dependencies]
-aetherrv-core.workspace = true
-tokio.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-tracing.workspace = true
 anyhow.workspace = true
+libc.workspace = true
+pbkdf2.workspace = true
+sha1.workspace = true
 
 [dev-dependencies]
-aetherrv-core = { workspace = true, features = ["testutil"] }
 tempfile.workspace = true
 
 [lints]

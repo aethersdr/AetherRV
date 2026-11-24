@@ -50,6 +50,8 @@ tonic-prost = "0.14"
 tonic-reflection = "0.14"
 bluer = { version = "0.17", features = ["bluetoothd"] }
 png = "0.18"
+pbkdf2 = { version = "0.13", features = ["hmac"] }
+sha1 = "0.11"
 hyper = { version = "1", features = ["full"] }
 hyper-util = { version = "0.1", features = ["full"] }
 http-body-util = "0.1"
