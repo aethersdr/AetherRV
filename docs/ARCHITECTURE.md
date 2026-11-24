@@ -175,7 +175,8 @@ topic = the requester's reply topic, message expiry = `ttl_ms`.
   The UI's existing `ok` flag stays in the gateway's `control_result` message (`ok = result == "ok"`).
 - **The gateway** refuses at once, "<module> is down; nothing sent", when the owner's `status` is down or its
   heartbeat is older than 6 s. When a reply doesn't come within the command's own timeout (per device: Espar 15 s,
-  MCS7 20 s, Victron 20 s, Starlink 100 s, …), the gateway answers "unverified: no answer from <module>; it may have
+  N2K 15 s, MCS7 40 s, Victron 40 s, Peplink 70 s, Starlink 150 s: each service's own verify window plus a queued
+  command), the gateway answers "unverified: no answer from <module>; it may have
   acted". The gateway never retries.
 - Every attempt (who, what, outcome) goes to `command_log` **in the owning service**, so logging works with the
   broker down (§8). The reply itself carries `result` and `detail` only.
@@ -429,6 +430,8 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | D14 | Settings prefs and Victron command values must have the right JSON type (like D11): Python's `bool()`/`int()` coercion would, for example, have sent MultiPlus mode 1 (charger only) for `true` | Safe direction |
 | D15 | Weather HTTP: no Range requests, every TomTom failure is a 502 (Python: 500 for unexpected errors); the van's last GPS position is kept while the GPS module is down | Only the UI's own fetches use these |
 | D16 | Bluetooth batteries: the reconnect backoff never resets after a good session (Python's reset was unreachable code; ported as is) | Parity; the owner may prefer a reset |
+| D17 | `location.*`: Python's Peplink adapter and the GPS listener both wrote them; now the GPS service owns them and the Peplink service publishes its position only when `[gps]` is disabled | One owner per key (§4.5) |
+| D18 | Starlink and Peplink command values need the right JSON type (like D11/D14) | Safe direction |
 | D10 | The gateway waits up to 15 s for an Espar reply (one verify window is 6 s, and a queued command waits for the one before it) | Avoids reporting "unverified" for a command that is still being verified |
 
 ## 14. Open questions for the owner
@@ -445,7 +448,7 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | Q-D1 | Demo mode: port or drop? | answered 2026-11-23: drop it |
 | Q-T1 | Should a late heater OFF (older than the 3 s TTL) still run, as the safe direction? (D4) | answered 2026-11-23: yes |
 | Q-D2 | Accept the differences D1–D10 in §13a | answered 2026-11-23: all accepted |
-| Q-D3 | Accept D11–D16 | open: next batch |
+| Q-D3 | Accept D11–D18 | open: next batch |
 | Q-B1 | Bench Pi; workstation toolchain | answered 2026-11-23: bench host provided (kept out of the repo, in a gitignored env file); sudo on the workstation for dependencies |
 
 ## Decisions

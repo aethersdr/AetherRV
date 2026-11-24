@@ -70,3 +70,15 @@ fail_after = 2
 
 [radar]
 dir = "/var/lib/aetherrv/radar"
+
+[device.starlink]
+kind = "starlink"
+enabled = true
+target = "127.0.0.1:9200"
+interval = 5
+
+[device.peplink]
+kind = "peplink"
+enabled = true
+host = "127.0.0.1:8443"
+verify_tls = false
