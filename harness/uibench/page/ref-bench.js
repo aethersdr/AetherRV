@@ -80,6 +80,8 @@
     }
     return null;
   };
+  const STIM = { weather: "#wx-play" };
+  const stim = v => { const sel = STIM[v], r = sel ? rect(document.querySelector(`.view[data-view="${v}"] ${sel}`)) : null; return r ? { sel, rect: r } : null; };
   const marks = () => {
     const m = {};
     for (const e of performance.getEntriesByType("mark")) if (e.name.startsWith("aetherrv:")) m[e.name] = performance.timeOrigin + e.startTime;
@@ -117,10 +119,34 @@
       why, view: v, viewport: [innerWidth, innerHeight], dpr: devicePixelRatio, ua: navigator.userAgent, webgl: webgl(),
       conn: /live/i.test(link) ? "live" : link.trim().toLowerCase() || null, ready,
       rail, views: rect(document.getElementById("views")), topbar: rect(document.querySelector(".topbar")),
-      targets: targets(v), scene: scene(v), marks: marks(),
+      targets: targets(v), scene: scene(v), stim: stim(v), marks: marks(),
       event_timing: evOk ? events.splice(0) : "unsupported", longtasks: ltOk ? longtasks.splice(0) : "unsupported",
     });
   }
+  document.addEventListener("pointerdown", e => {
+    const handler = performance.timeOrigin + performance.now(), event = performance.timeOrigin + e.timeStamp;
+    setTimeout(() => send("input", { type: "pointerdown", handler_epoch: handler, event_epoch: event, ptype: e.pointerType }), 400);
+  }, { capture: true, passive: true });
+  const wxObs = new MutationObserver(() => {
+    const tl = document.getElementById("wx-tl");
+    if (tl) send("stim", { view: "weather", playing: tl.classList.contains("playing"), frames: document.querySelectorAll("#wx-tl-ticks i").length });
+  });
+  const wxWatch = setInterval(() => { const tl = document.getElementById("wx-tl"); if (tl) { wxObs.observe(tl, { attributes: true, attributeFilter: ["class"] }); clearInterval(wxWatch); } }, 1000);
+  // the runner's commands over a long poll: "raf <ms>" samples requestAnimationFrame and reports the intervals
+  const sampleRaf = ms => {
+    const iv = []; let last = 0; const t0 = performance.now();
+    const tick = t => { if (last) iv.push(Math.round((t - last) * 100) / 100); last = t;
+      if (t - t0 < ms) requestAnimationFrame(tick); else send("raf", { view: view(), ms, n: iv.length, iv }); };
+    requestAnimationFrame(tick);
+  };
+  (async () => {
+    for (;;) {
+      try {
+        const c = await (await fetch(`http://127.0.0.1:${qs.get("bench_port") || "18099"}/cmd`, { cache: "no-store" })).text();
+        if (c.startsWith("raf ")) sampleRaf(Number(c.slice(4)) || 5000);
+      } catch { await new Promise(r => setTimeout(r, 3000)); }
+    }
+  })();
   let rz;
   window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => ready && report("resize"), 500); });
   let last = "", timer;

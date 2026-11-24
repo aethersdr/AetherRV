@@ -4,7 +4,7 @@
 # and the Python reference UI (src/aetherrv + web, for the "before" numbers) to ~/uibench there, and build natively.
 #   UIBENCH_HOST=<bench> harness/uibench/prepare.sh   (the bench's ssh host, never the van)
 set -euo pipefail
-HOST=${UIBENCH_HOST:?set UIBENCH_HOST to the bench Pi's ssh host (never the van)}
+HOST=${UIBENCH_HOST:?set UIBENCH_HOST to the ssh host of the bench Pi, never the van}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 if ! ssh -o BatchMode=yes "$HOST" '! ip -br link | grep -qE "^(hat0|hat1)\b"'; then echo "refused: $HOST has hat0/hat1, it is the van" >&2; exit 3; fi
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT

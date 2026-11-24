@@ -102,7 +102,7 @@ const TAP_HOLD_MS: u64 = 60;
 const SETTLED_TAU: f64 = 0.004;
 const PIX_THR: u8 = 24;
 
-fn measure_switch(c: &mut Ctx, views: Rect, rail: Rect, page: &str, window_ms: u64) -> Result<Value> {
+fn measure_switch(c: &mut Ctx, views: Rect, rail: Rect, page: &str, window_ms: u64, scene: Option<Rect>) -> Result<Value> {
     let patches = analysis::bands(views, 1);
     let refs = ref_patches(&patches, 12, 1000);
     c.rec.set_patches(patches.clone());
@@ -129,6 +129,12 @@ fn measure_switch(c: &mut Ctx, views: Rect, rail: Rect, page: &str, window_ms: u
     let s = analysis::switch(&tl, &base_grid, &r, t0, &ticks, &p, c.refresh);
     let mut v = serde_json::to_value(&s)?;
     v["page"] = json!(page);
+    // the same switch with the page's scene (its canvas / svg) left out: the rest of the page vs the scene's own start
+    if let Some(sr) = scene {
+        r.mask_rect(&sr);
+        let s2 = analysis::switch(&tl, &base_grid, &r, t0, &ticks, &p, c.refresh);
+        v["without_scene"] = json!({"content_ms": s2.content_ms, "settled_ms": s2.settled_ms, "live_frac": s2.live_frac});
+    }
     v["tap_down_to_up_ms"] = json!(analysis::ms(t_down, t0));
     v["gpu_fence_ms_p50"] = json!(c.rec.take_fence_ms());
     Ok(v)
@@ -159,8 +165,15 @@ fn measure_press(c: &mut Ctx, target: Rect, slide: bool, null: bool) -> Result<V
     let (ticks, ups) = c.rec.drain();
     c.rec.set_patches(vec![]);
     let p = analysis::press(&ups, 7, &base_px, t0, t0 + hold * 1_000_000, 16, 0.02);
+    let input = if null { None } else { c.rep.wait(t0, 800, |b| b["kind"] == "input" && b["type"] == "pointerdown").map(|r| r.body) };
     // if the patch stream skipped a presented frame before the detection, the press may have shown earlier: an upper bound
     let mut v = serde_json::to_value(&p)?;
+    if let Some(i) = &input {
+        let off = real_minus_mono();
+        let at = |k: &str| i[k].as_f64().map(|e| analysis::ms(t0, epoch_ms_to_mono(e, off)));
+        v["handler_ms"] = json!(at("handler_epoch"));                 // injection → the page's pointerdown handler
+        v["event_ts_ms"] = json!(at("event_epoch"));                  // injection → the event's own timestamp
+    }
     if let Some(l) = p.latency_ms {
         let td = t0 + (l * 1e6) as u64;
         let frames = ticks.iter().filter(|&&t| t >= t0 && t <= td).count();
@@ -177,8 +190,29 @@ fn measure_press(c: &mut Ctx, target: Rect, slide: bool, null: bool) -> Result<V
 /// streams (four bands across the view, one inside the page's scene: its largest canvas or svg): the frames in
 /// which the page's content, and the scene itself, actually changed. (b) is what tells the radar loop or the 3D
 /// sky apart from page-wide animations such as the critical-alert flash, which present a frame every refresh.
-fn measure_fps(c: &mut Ctx, secs: f64, views: Rect, scene: Option<Rect>) -> Result<Value> {
+fn measure_fps(c: &mut Ctx, secs: f64, views: Rect, scene: Option<Rect>, stim: Option<Rect>) -> Result<Value> {
+    // (z) nothing captured at all: the runtime's CPU, and the page's own requestAnimationFrame cadence (asked for
+    // over the report port's long poll), with no instrument cost
     c.rec.set_patches(vec![]);
+    c.rec.set_ticker(false);
+    sleep_ms(300);
+    let z0 = c.sample();                                           // (z1) CPU only: nothing captured, nothing sampled
+    sleep_ms((secs * 1000.0) as u64);
+    let z1 = c.sample();
+    let t_cmd = mono_ns();                                         // (z2) the page's rAF cadence, still nothing captured
+    c.rep.command(&format!("raf {}", (secs * 1000.0) as u64));
+    let r0 = c.sample();
+    sleep_ms((secs * 1000.0) as u64);
+    let r1 = c.sample();
+    let raf = c.rep.wait(t_cmd, 3000, |b| b["kind"] == "raf").map(|r| r.body);
+    c.rep.clear_command();
+    c.rec.set_ticker(true);
+    let raf_iv: Vec<f64> = raf.as_ref().and_then(|b| b["iv"].as_array().cloned()).unwrap_or_default().iter().filter_map(Value::as_f64).collect();
+    let period = if c.refresh > 0 { 1e6 / c.refresh as f64 } else { 1000.0 / 60.0 };
+    let raf_v = json!({"n": raf_iv.len(), "interval_ms": analysis::summary(&raf_iv),
+        "fps": analysis::pct(&raf_iv, 50.0).map(|m| analysis::r2(1000.0 / m)),
+        "long_frames": raf_iv.iter().filter(|&&x| x > 1.5 * period).count()});
+    // (a) the ticker only
     c.rec.clear();
     let a = c.sample();
     sleep_ms((secs * 1000.0) as u64);
@@ -192,11 +226,32 @@ fn measure_fps(c: &mut Ctx, secs: f64, views: Rect, scene: Option<Rect>) -> Resu
         Patch { id: 30, rect: Rect { x: cx - w / 2, y: cy - h / 2, w, h }, step: 2 }
     });
     let mut scene_t = vec![];
+    let mut scene_stim_on = false;
     if let Some(p) = &sc {
+        // the page's own stimulus first (Weather: Play, the radar loop doesn't start by itself), undone afterwards;
+        // only undone if it took (with no radar frames loaded, Play does nothing and a second tap would start it later)
+        let mut stim_on = false;
+        if let Some(s) = stim {
+            let (x, y) = s.center();
+            let t = mono_ns();
+            c.tap(x, y, 60)?;
+            stim_on = c.rep.wait(t, 2000, |b| b["kind"] == "stim" && b["playing"] == true).is_some();
+            scene_stim_on = stim_on;
+            if !stim_on {
+                c.note("stimulus: the Weather loop did not start (no radar frames?)".into());
+            }
+            sleep_ms(1500);
+        }
         c.rec.set_patches(vec![p.clone()]);
         sleep_ms(SCENE_SECS * 1000);
         let (_, ups) = c.rec.drain();
+        c.rec.set_patches(vec![]);
         scene_t = analysis::change_times(&ups, &[30], 4);
+        if let (Some(s), true) = (stim, stim_on) {
+            let (x, y) = s.center();
+            c.tap(x, y, 60)?;
+            sleep_ms(500);
+        }
     }
     let inner = Rect { x: views.x + 16, y: views.y + 16, w: views.w - 32, h: views.h - 32 };
     c.rec.set_patches(analysis::bands(inner, 20));
@@ -205,10 +260,13 @@ fn measure_fps(c: &mut Ctx, secs: f64, views: Rect, scene: Option<Rect>) -> Resu
     c.rec.set_patches(vec![]);
     let page_t = analysis::change_times(&ups, &[20, 21, 22, 23], 4);
     Ok(json!({
+        "zero_capture": {"cpu_pct_runtime": cpu_pct(&z0, &z1, "runtime"), "cpu_pct_sway": cpu_pct(&z0, &z1, "sway"), "raf": raf_v,
+                         "cpu_pct_runtime_while_raf": cpu_pct(&r0, &r1, "runtime")},
         "fps": f, "cpu_pct_runtime": cpu_pct(&a, &b, "runtime"), "cpu_pct_sway": cpu_pct(&a, &b, "sway"),
         "pss_mb_runtime": pss_mb(&b, "runtime"), "procs": b["runtime"]["n"],
         "content_fps": analysis::fps_stats(&page_t, c.refresh), "content_secs": CONTENT_SECS, "scene_secs": SCENE_SECS,
-        "scene": sc.as_ref().map(|p| json!(p.rect)), "scene_fps": sc.as_ref().map(|_| analysis::fps_stats(&scene_t, c.refresh)),
+        "scene": sc.as_ref().map(|p| json!(p.rect)), "scene_full": scene.map(|r| json!([r.x, r.y, r.w, r.h])),
+        "stimulus": stim.is_some(), "stimulus_took": scene_stim_on, "scene_fps": sc.as_ref().map(|_| analysis::fps_stats(&scene_t, c.refresh)),
         "gpu_fence_ms_p50": c.rec.take_fence_ms(),
     }))
 }
@@ -281,20 +339,24 @@ pub fn main(args: &[String]) -> Result<()> {
     let rep = Reports::listen(port)?;
     let mut hp = Helper::spawn()?;
     let info = rec.info();
-    let r = hp.req(&format!("touch {} {}", info.width, info.height))?;
-    if !r.starts_with("ok") {
-        bail!("touchscreen: {r}");
-    }
-    let mut mapped = false;
-    for _ in 0..30 {
-        if sway(&["-t", "get_inputs", "-r"]).contains("uibench_touchscreen") {
-            mapped = true;
-            break;
+    // --no-touch: no injected touchscreen (the boot measurement: a headless session with no seat, nothing tapped)
+    let touch = !flag(opts, "--no-touch");
+    if touch {
+        let r = hp.req(&format!("touch {} {}", info.width, info.height))?;
+        if !r.starts_with("ok") {
+            bail!("touchscreen: {r}");
         }
-        sleep_ms(100);
-    }
-    if !mapped {
-        bail!("sway does not see the uinput touchscreen");
+        let mut mapped = false;
+        for _ in 0..30 {
+            if sway(&["-t", "get_inputs", "-r"]).contains("uibench_touchscreen") {
+                mapped = true;
+                break;
+            }
+            sleep_ms(100);
+        }
+        if !mapped {
+            bail!("sway does not see the uinput touchscreen");
+        }
     }
     // sway's own cgroup: PAMName puts it in its login session's scope, not in the service's cgroup
     let sway_pid = std::env::var("SWAYSOCK").ok().and_then(|p| p.rsplit('.').nth(1).and_then(|x| x.parse::<u32>().ok()));
@@ -359,7 +421,7 @@ pub fn main(args: &[String]) -> Result<()> {
             v["white_flash"] = json!(max_luma > 150.0);
         }
         v["first_frame_ms"] = json!(cticks.iter().find(|&&t| t >= t_launch).map(|&t| analysis::ms(t_launch, t)));
-        // CLOCK_MONOTONIC counts from (about) the kernel's start: for the power-on measurement (boot-measure.sh)
+        // CLOCK_MONOTONIC counts from (about) the kernel's start: the launch time since boot, for the power-on components
         v["t_launch_since_kernel_ms"] = json!(analysis::r2(t_launch as f64 / 1e6));
         if let Some(p) = &ready {
             for (k, name) in [("aetherrv:snapshot", "data_frame_ms"), ("first-contentful-paint", "fcp_frame_ms")] {
@@ -409,7 +471,7 @@ pub fn main(args: &[String]) -> Result<()> {
     c.note(format!("layout: views {views:?}, {} rail buttons, window offset {:?}, dpr {}", rail.len(), c.off, c.dpr));
 
     // ── slide-off check: press a rail button, slide, lift: the page must not change ──
-    let probe_page = pages.iter().find(|p| p.as_str() != "home" && rail.contains_key(*p)).cloned();
+    let probe_page = pages.iter().find(|p| p.as_str() != "home" && rail.contains_key(*p)).cloned().filter(|_| touch);
     let mut moved = false;
     if let Some(pp) = &probe_page {
         let t = mono_ns();
@@ -436,11 +498,12 @@ pub fn main(args: &[String]) -> Result<()> {
             continue;
         };
         let t = mono_ns();
-        let sw = if *page == cur { json!({"skipped": "already on this page"}) } else { measure_switch(&mut c, views, r, page, 4000)? };
+        let sw = if *page == cur { json!({"skipped": "already on this page"}) } else { measure_switch(&mut c, views, r, page, 4000, None)? };
         cur = page.clone();
         let rpt = page_report(&c.rep, if sw.get("skipped").is_some() { 0 } else { t }, Some(page), 4000);
         let scene = rpt.as_ref().and_then(|p| c.to_screen(&p["scene"]["rect"]));
-        let fps = measure_fps(&mut c, fps_secs, views, scene)?;
+        let stim = rpt.as_ref().and_then(|p| c.to_screen(&p["stim"]["rect"]));
+        let fps = measure_fps(&mut c, fps_secs, views, scene, stim)?;
         let mut presses = vec![];
         let mut nulls = vec![];
         let mut target = Value::Null;
@@ -462,9 +525,9 @@ pub fn main(args: &[String]) -> Result<()> {
         }
         let lat: Vec<f64> = presses.iter().filter_map(|p| p["latency_ms"].as_f64()).collect();
         let fp = nulls.iter().filter(|p| p["latency_ms"].as_f64().is_some()).count();
-        c.note(format!("{page}: switch content {:?} settled {:?} | presented fps {} | content fps {} scene fps {} | CPU {}% | press median {:?} ({}/{} seen, {} null false+)",
-            sw["content_ms"], sw["settled_ms"], fps["fps"]["fps_raw"], fps["content_fps"]["fps_raw"], fps["scene_fps"]["fps_raw"],
-            fps["cpu_pct_runtime"], analysis::pct(&lat, 50.0), lat.len(), presses.len(), fp));
+        c.note(format!("{page}: switch content {:?} settled {:?} | zero-capture CPU {}% rAF {} fps ({} long) | presented fps {} | scene fps {} | CPU {}% | press median {:?} ({}/{} seen, {} null false+)",
+            sw["content_ms"], sw["settled_ms"], fps["zero_capture"]["cpu_pct_runtime"], fps["zero_capture"]["raf"]["fps"], fps["zero_capture"]["raf"]["long_frames"],
+            fps["fps"]["fps_raw"], fps["scene_fps"]["fps_raw"], fps["cpu_pct_runtime"], analysis::pct(&lat, 50.0), lat.len(), presses.len(), fp));
         per_page.insert(page.clone(), json!({
             "switch_first_visit": sw, "idle": fps, "press_target": target, "press": presses, "press_null": nulls,
             "press_summary": analysis::summary(&lat), "press_false_positive": fp,
@@ -474,13 +537,17 @@ pub fn main(args: &[String]) -> Result<()> {
 
     // ── warm switches ──
     let mut warm: std::collections::BTreeMap<String, Vec<Value>> = Default::default();
+    let scenes: std::collections::HashMap<String, Rect> = per_page.iter()
+        .filter_map(|(k, v)| Some((k.clone(), serde_json::from_value::<[i32; 4]>(v["idle"]["scene_full"].clone()).ok()
+            .map(|a| Rect { x: a[0], y: a[1], w: a[2], h: a[3] })?)))
+        .collect();
     for _ in 0..warm_rounds {
         for page in &pages {
             let Some(r) = rail.get(page).copied() else { continue };
             if *page == cur {
                 continue;
             }
-            let v = measure_switch(&mut c, views, r, page, 1300)?;
+            let v = measure_switch(&mut c, views, r, page, 1300, scenes.get(page).copied())?;
             cur = page.clone();
             warm.entry(page.clone()).or_default().push(v);
         }
@@ -545,7 +612,7 @@ fn screen_power(c: &mut Ctx, views: Rect, rail: &std::collections::HashMap<Strin
     let target = pages.iter().find(|p| p.as_str() != "home" && rail.contains_key(*p)).cloned().unwrap_or_default();
     let t = mono_ns();
     let sw = match rail.get(&target) {
-        Some(r) => measure_switch(c, views, *r, &target, 1500)?,
+        Some(r) => measure_switch(c, views, *r, &target, 1500, None)?,
         None => Value::Null,
     };
     let rpt = page_report(&c.rep, t, Some(&target), 3000);

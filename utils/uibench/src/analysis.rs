@@ -325,6 +325,24 @@ impl MosaicRef {
         self.live = d;
     }
 
+    /// Leave out every sample inside `r` (screen coordinates): the switch measured without the page's scene.
+    pub fn mask_rect(&mut self, r: &Rect) {
+        let mut off = 0usize;
+        for p in &self.patches {
+            let s = p.step.max(1);
+            let (gw, gh) = p.dims();
+            for gy in 0..gh {
+                for gx in 0..gw {
+                    let (x, y) = (p.rect.x + gx as i32 * s, p.rect.y + gy as i32 * s);
+                    if x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h {
+                        self.live[off + gy * gw + gx] = true;
+                    }
+                }
+            }
+            off += gw * gh;
+        }
+    }
+
     pub fn live_frac(&self) -> f64 {
         self.live.iter().filter(|&&b| b).count() as f64 / self.live.len().max(1) as f64
     }

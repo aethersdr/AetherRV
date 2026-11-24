@@ -18,7 +18,7 @@ BANDS=(--patch 152,372,1752,8,2 --patch 152,648,1752,8,2 --patch 152,924,1752,8,
 PATCH=(--patch 868,548,320,200,2)
 for page in $PAGES; do
   prof=$(mktemp -d)
-  u="http://127.0.0.1:8080/?bench=1&raf=1#$page"
+  u="${UIBENCH_BASE:-http://127.0.0.1:8080}/?bench=1&raf=1#$page"
   case $RT in
     chromium) cmd=(chromium --kiosk --ozone-platform=wayland --noerrdialogs --no-first-run --user-data-dir="$prof" "$u") ;;
     wpe) cmd=(env WPE_PLATFORM=wayland /usr/lib/wpe-webkit-2.0/MiniBrowser --fullscreen "$u") ;;

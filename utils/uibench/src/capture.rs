@@ -94,6 +94,7 @@ pub struct Info {
 #[derive(Default)]
 struct Shared {
     ticks: Vec<u64>,
+    ticker_off: bool,
     updates: Vec<Update>,
     patches: Vec<Patch>,
     generation: u64,
@@ -139,6 +140,10 @@ impl Recorder {
     pub fn drain(&self) -> (Vec<u64>, Vec<Update>) {
         let mut s = self.sh.lock().unwrap();
         (std::mem::take(&mut s.ticks), std::mem::take(&mut s.updates))
+    }
+    /// Stop (or restart) the ticker: with it off and no patches, nothing at all is captured (zero instrument cost).
+    pub fn set_ticker(&self, on: bool) {
+        self.sh.lock().unwrap().ticker_off = !on;
     }
     pub fn clear(&self) {
         let _ = self.drain();
@@ -616,9 +621,14 @@ fn run(sh: Arc<Mutex<Shared>>, want: Option<String>, started: &std::sync::mpsc::
         }
         // ── ticker ──
         tick = match tick {
+            Tick::Idle if sh.lock().unwrap().ticker_off => Tick::Idle,
             Tick::Idle => {
                 main.st.fev.insert(0, FrameEv::default());
                 Tick::Await(main.mgr.capture_output_region(0, &main.output, 0, 0, 16, 16, &main.qh, 0))
+            }
+            Tick::Await(f) | Tick::Copy(f) if sh.lock().unwrap().ticker_off => {
+                f.destroy();
+                Tick::Idle
             }
             Tick::Await(f) => {
                 let fe = main.st.fev.get(&0).unwrap();

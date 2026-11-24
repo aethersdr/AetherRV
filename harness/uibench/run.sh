@@ -8,7 +8,7 @@
 # Every runtime shows the same production bundle (/opt/aetherrv-rs/ui via the gateway on 127.0.0.1:8080, with
 # ?bench=1) fullscreen in the same sway session (session.sh); the reference UI is served by serve_ref.py on
 # 127.0.0.1:18080 with no device controls. Results: one JSON per runtime plus summary.md in $UIBENCH_OUT
-# (default ~/uibench/out/<date>-<mode>-<WxH>). A headless run is labelled "headless, not acceptance" everywhere.
+# (default ~/uibench/out/<date>-<mode>-<WxH>). Headless is the benchmark's mode by owner decision (2026-11-23).
 #
 # It never stops, restarts or reconfigures an aetherrv-* unit and never edits /etc/aetherrv: it only reads
 # /api/state and points browsers at the gateway, whose devices are all simulators on the bench.
@@ -50,12 +50,12 @@ if [ "$MODE" = screen ]; then
   KSTATE=$(sudo sh -c 'grep -hE "crtc\[|active=|mode:" /sys/kernel/debug/dri/*/state' 2>/dev/null | tr -s ' ' | paste -sd' ' | cut -c1-300)
   LABEL="real screen $OUTPUT: sway mode $OUTMODE (requested $RES; connector $CONN; kms: ${KSTATE:-n/a})"
 else
-  LABEL="headless, not acceptance: WLR headless output $OUTMODE"
+  LABEL="headless (owner decision 2026-11-23): WLR headless output $OUTMODE"
 fi
 echo "uibench: $LABEL" | tee "$OUT/session.txt"
 journalctl -u uibench-sway -b --no-pager -o cat 2>/dev/null | grep -iE 'mode|error|fail' | tail -20 >> "$OUT/session.txt" || true
 
-BUNDLE=$(cd /opt/aetherrv-rs/ui && find . -type f | sort | xargs sha256sum | sha256sum | cut -c1-12)
+BUNDLE=$(cd "${UIBENCH_BUNDLE_DIR:-/opt/aetherrv-rs/ui}" && find . -type f | sort | xargs sha256sum | sha256sum | cut -c1-12)
 export UIBENCH_BUNDLE=$BUNDLE
 { echo "bundle $BUNDLE"; pacman -Q sway wlroots0.20 chromium wpewebkit webkit2gtk-4.1 mesa linux-rpi 2>/dev/null; uname -r; } > "$OUT/versions.txt"
 

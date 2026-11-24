@@ -5,8 +5,9 @@
 §8 verdicts are provisional and use these readings (docs/UI-RUNTIME-BENCHMARK.md, "Metric definitions"):
 - tap → visible response: press latency (touch-down → first frame showing the pressed state), p95 over all pages
 - page switch: release → first frame showing the new page complete (it may still be easing in), warm p95
-- 60 fps steady (Home, Climate, Switches): the page-switch ease-in moves in steps of ≤ 25 ms (p95 of the worst warm
-  switch), and where the page moves on its own when idle, its content changes ≥ 57 times a second
+- 60 fps steady (Home, Climate, Switches): with nothing captured (no instrument cost), the page's own
+  requestAnimationFrame runs at ≥ 57 fps with ≤ 2 % of its frames longer than 1.5 refresh periods; the ease-in
+  steps (compositor, instrument included) are shown alongside
 - ≥ 30 fps animated scenes (Energy, Network, Weather): the scene (the page's largest canvas, else svg) changes
   ≥ 30 times a second while it moves (frames whose pixels inside the scene changed; presented frames alone would
   count page-wide animations such as the critical-alert flash)
@@ -79,6 +80,7 @@ def page_rows(d):
         settled = [w.get("settled_ms") for w in warm]
         first = v.get("switch_first_visit") or {}
         presses = [p.get("latency_ms") for p in v.get("press", [])]
+        handler = [p.get("handler_ms") for p in v.get("press", []) if p.get("handler_ms") is not None]
         miss = sum(1 for p in v.get("press", []) if p.get("latency_ms") is None)
         ub = sum(1 for p in v.get("press", []) if p.get("upper_bound"))
         idle = v.get("idle", {})
@@ -86,18 +88,24 @@ def page_rows(d):
         cfps = idle.get("content_fps") or {}
         sfps = idle.get("scene_fps") or {}
         ease = [((w.get("transition") or {}).get("ease_in_interval_ms") or {}).get("p95") for w in warm]
+        z = idle.get("zero_capture") or {}
+        zr = z.get("raf") or {}
+        nosc = [(w.get("without_scene") or {}).get("content_ms") for w in warm if w.get("without_scene")]
         rows.append({
             "page": pg,
             "first_content": first.get("content_ms"), "first_settled": first.get("settled_ms"),
             "warm_content_p50": pct(content, 50), "warm_content_p95": pct(content, 95), "warm_settled_p50": pct(settled, 50),
             "warm_n": len(warm), "warm_missing": sum(1 for x in content if x is None),
-            "press_p50": pct(presses, 50), "press_p95": pct(presses, 95), "press_n": len(presses), "press_miss": miss, "press_ub": ub,
+            "press_p50": pct(presses, 50), "press_p95": pct(presses, 95), "press_n": len(presses), "press_miss": miss, "press_ub": ub, "handler_p50": pct(handler, 50),
             "press_fp": v.get("press_false_positive"), "press_target": (v.get("press_target") or {}).get("name"),
             "fps_raw": fps.get("fps_raw"), "fps_motion": fps.get("fps_motion"), "dropped": fps.get("dropped_in_motion"),
             "burst_frames": fps.get("burst_frames"), "cpu": idle.get("cpu_pct_runtime"), "cpu_sway": idle.get("cpu_pct_sway"),
             "content_motion": cfps.get("fps_motion"), "content_bursts": cfps.get("burst_frames"),
             "scene_motion": sfps.get("fps_motion"), "scene_raw": sfps.get("fps_raw"), "scene_dropped": sfps.get("dropped_in_motion"),
             "ease_p95": max([e for e in ease if e is not None], default=None),
+            "z_cpu": z.get("cpu_pct_runtime"), "z_cpu_sway": z.get("cpu_pct_sway"), "raf_fps": zr.get("fps"),
+            "raf_long": zr.get("long_frames"), "raf_n": zr.get("n"), "raf_p95": (zr.get("interval_ms") or {}).get("p95"),
+            "nosc_p50": pct(nosc, 50), "nosc_p95": pct(nosc, 95), "stim": idle.get("stimulus"),
             "pss": idle.get("pss_mb_runtime"),
         })
     return rows
@@ -115,10 +123,10 @@ def main():
     print(f"Bundle `{r0.get('bundle')}`, started {r0.get('started')}, output {r0['recorder']['output']} "
           f"{r0['recorder']['size'][0]}×{r0['recorder']['size'][1]} @ {r0['recorder']['refresh_mhz'] / 1000:.2f} Hz.\n")
     if r0.get("mode") != "screen":
-        print("**Headless, not acceptance**: a WLR headless output, no display engine or scanout.\n")
+        print("**Headless** (owner decision 2026-11-23): sway's headless output on the Pi's GPU; no scanout, so no panel latency.\n")
     print("## Headline (§8)\n")
     print("| runtime | WebGL | tap → pressed p50 / p95 ms (no press seen) | switch → content p50 / p95 ms (warm) | first visit worst ms | "
-          "settled p50 ms | ease-in step p95 ms Home / Climate / Switches | scene fps Energy / Network / Weather | boot → usable ms | PSS after boot / final MB | procs |")
+          "settled p50 ms | page rAF fps, nothing captured: Home / Climate / Switches | scene fps Energy / Network / Weather | boot → usable ms | PSS after boot / final MB | procs |")
     print("|---|---|---|---|---|---|---|---|---|---|---|")
     verdicts = []
     for d in runs:
@@ -133,14 +141,13 @@ def main():
         usable = cold.get("settled_ms")
         pss_boot, pss_final = mb(d.get("memory_after_boot")), mb(d.get("memory_final"))
         nprocs = (d.get("memory_final") or {}).get("runtime", {}).get("n")
-        sm = " / ".join(f(by.get(p, {}).get("ease_p95"), 0) for p in SMOOTH)
+        sm = " / ".join(f(by.get(p, {}).get("raf_fps"), 0) for p in SMOOTH)
         sc = " / ".join(f(by.get(p, {}).get("scene_motion"), 0) for p in SCENES)
         gl = (d.get("webgl") or "").replace("webgl2: ", "")[:40]
         print(f"| {d['runtime']} | {gl} | {f(pct(presses, 50), 1)} / {f(pct(presses, 95), 1)} ({missed} of {len(presses)}) | {f(pct(content, 50), 1)} / {f(pct(content, 95), 1)} | "
               f"{f(max(firsts) if firsts else None, 0)} | {f(pct(settled, 50), 0)} | {sm} | {sc} | {f(usable, 0)} | {f(pss_boot, 0)} / {f(pss_final, 0)} | {f(nprocs)} |")
-        smooth_ok = [(by[p]["ease_p95"] is not None and by[p]["ease_p95"] <= 25)
-                     and (not by[p]["content_bursts"] or (by[p]["content_motion"] or 0) >= 57)
-                     for p in SMOOTH if p in by]
+        smooth_ok = [by[p]["raf_fps"] >= 57 and (by[p]["raf_long"] or 0) <= 0.02 * max(1, by[p]["raf_n"] or 1)
+                     for p in SMOOTH if p in by and by[p]["raf_fps"] is not None]
         scenes_ok = [by[p]["scene_motion"] >= 30 for p in SCENES if p in by and by[p]["scene_motion"] is not None]
         # a press never seen within the hold counts as at least the hold, i.e. a fail, not as a missing sample
         hold = (d.get("thresholds") or {}).get("hold_ms", 300)
@@ -172,6 +179,13 @@ def main():
         if sp:
             print(f"Screen power off {sp.get('off_ms')} ms → on ({sp.get('on_tries')} tries): first frame after {f(sp.get('first_frame_after_on_ms'), 0)} ms, "
                   f"page responds afterwards: {sp.get('ok')}  ")
+        mf = (d.get("memory_final") or {}).get("runtime") or {}
+        bo = sorted(set(x.split(": ", 1)[1] for x in (mf.get("gpu_bo_stats") or []) if ": " in x))
+        if mf.get("memory_current") is not None or bo:
+            ms_ = mf.get("memory_stat") or {}
+            mbv = lambda b: f"{b / 2**20:.0f}" if isinstance(b, (int, float)) else "–"
+            print(f"Memory after every page: PSS {f(mb(d.get('memory_final')), 0)} MB; cgroup memory.current {mbv(mf.get('memory_current'))} MB "
+                  f"(shmem {mbv(ms_.get('shmem'))}); GPU buffer objects, whole system (v3d): {'; '.join(bo) or '–'}  ")
         procs = (d.get("memory_final") or {}).get("runtime", {}).get("procs", [])
         if procs:
             top = sorted(procs, key=lambda p: -p["pss_kb"])[:6]
@@ -180,14 +194,15 @@ def main():
             print("Processes (PSS MB): " + ", ".join(f"{p['comm']} {p['pss_kb'] / 1024:.0f}" for p in top)
                   + f"; render node open in: {', '.join(gpu) or 'none'}; software GL (llvmpipe threads) in: {', '.join(soft) or 'none'}  ")
         print()
-        print("| page | first visit content / settled ms | warm content p50 / p95 ms | warm settled p50 ms | ease-in step p95 ms | press p50 / p95 ms (n, miss, null+) | target | "
-              "presented fps | content fps (idle) | scene fps, lower bound (dropped) | CPU runtime / sway % | PSS MB |")
-        print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+        print("| page | first visit content / settled ms | warm content p50 / p95 ms | without the scene p50 / p95 ms | warm settled p50 ms | ease-in step p95 ms | press p50 / p95 ms (n, miss, null+) | of which to the handler, p50 | target | "
+              "nothing captured: CPU runtime / sway %, page rAF fps (long frames) | presented fps | content fps (idle) | scene fps, lower bound (dropped) | CPU with ticker % | PSS MB |")
+        print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for r in page_rows(d):
             print(f"| {r['page']} | {f(r['first_content'], 0)} / {f(r['first_settled'], 0)} | {f(r['warm_content_p50'], 1)} / {f(r['warm_content_p95'], 1)}"
-                  f"{' (' + str(r['warm_missing']) + ' undetected)' if r['warm_missing'] else ''} | {f(r['warm_settled_p50'], 0)} | {f(r['ease_p95'], 1)} | "
-                  f"{f(r['press_p50'], 1)} / {f(r['press_p95'], 1)} ({r['press_n']}, {r['press_miss']}, {f(r['press_fp'])}{', ' + str(r['press_ub']) + ' upper bound' if r['press_ub'] else ''}) | {r['press_target'] or '–'} | "
-                  f"{f(r['fps_raw'], 1)} | {f(r['content_motion'], 1)} | {f(r['scene_motion'], 1)} ({f(r['scene_dropped'])}) | {f(r['cpu'], 1)} / {f(r['cpu_sway'], 1)} | {f(r['pss'], 0)} |")
+                  f"{' (' + str(r['warm_missing']) + ' undetected)' if r['warm_missing'] else ''} | {f(r['nosc_p50'], 1)} / {f(r['nosc_p95'], 1)} | {f(r['warm_settled_p50'], 0)} | {f(r['ease_p95'], 1)} | "
+                  f"{f(r['press_p50'], 1)} / {f(r['press_p95'], 1)} ({r['press_n']}, {r['press_miss']}, {f(r['press_fp'])}{', ' + str(r['press_ub']) + ' upper bound' if r['press_ub'] else ''}) | {f(r['handler_p50'], 1)} | {r['press_target'] or '–'} | "
+                  f"{f(r['z_cpu'], 1)} / {f(r['z_cpu_sway'], 1)}, {f(r['raf_fps'], 1)} ({f(r['raf_long'])}) | "
+                  f"{f(r['fps_raw'], 1)} | {f(r['content_motion'], 1)} | {f(r['scene_motion'], 1)} ({f(r['scene_dropped'])}){' after Play' if r['stim'] else ''} | {f(r['cpu'], 1)} | {f(r['pss'], 0)} |")
         mb_ = d.get("meta_before") or {}
         ma_ = d.get("meta_after") or {}
         print(f"\nLoad before: `{mb_.get('loadavg')}`; alerts: `{mb_.get('alert_severities')}`")

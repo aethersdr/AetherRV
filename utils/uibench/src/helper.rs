@@ -129,10 +129,18 @@ pub fn sample_cgroup(cg: &str) -> Value {
     });
     let memcur = std::fs::read_to_string(path.join("memory.current")).ok().and_then(|s| s.trim().parse::<u64>().ok());
     let mempeak = std::fs::read_to_string(path.join("memory.peak")).ok().and_then(|s| s.trim().parse::<u64>().ok());
+    // memory.stat: anon / file / shmem (GPU buffers that are shmem-backed show here even when no process maps them)
+    let mstat = std::fs::read_to_string(path.join("memory.stat")).unwrap_or_default();
+    let stat = |k: &str| mstat.lines().find_map(|l| l.strip_prefix(k).and_then(|v| v.trim().parse::<u64>().ok()));
+    // the GPU drivers' own buffer-object totals (system-wide; v3d and vc4 debugfs), for the kept-context comparison
+    let bo: Vec<String> = std::fs::read_dir("/sys/kernel/debug/dri").into_iter().flatten().flatten()
+        .filter_map(|e| std::fs::read_to_string(e.path().join("bo_stats")).ok().map(|s| format!("{}: {}", e.file_name().to_string_lossy(), s.split_whitespace().collect::<Vec<_>>().join(" "))))
+        .collect();
     json!({
         "cgroup": cg, "t": crate::mono_ns(), "n": procs.len(), "pss_kb": pss, "rss_kb": rss, "uss_kb": uss,
         "pss_anon_kb": anon, "pss_file_kb": file, "pss_shmem_kb": shmem,
-        "cpu_usec": cpu_usec, "memory_current": memcur, "memory_peak": mempeak, "procs": procs,
+        "cpu_usec": cpu_usec, "memory_current": memcur, "memory_peak": mempeak,
+        "memory_stat": {"anon": stat("anon "), "file": stat("file "), "shmem": stat("shmem ")}, "gpu_bo_stats": bo, "procs": procs,
     })
 }
 

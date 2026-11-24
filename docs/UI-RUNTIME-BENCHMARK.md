@@ -1,9 +1,20 @@
-# UI runtime benchmark (draft)
+# UI runtime benchmark
 
 Which runtime should show the React UI on the van's touchscreen: (a) WPE WebKit, (b) a Tauri v2 app (WebKitGTK), or
-(c) Chromium (prompt §7)? This page has the method, the numbers and a provisional recommendation. It is a
-**draft**: every number below is from a **headless** sway output (no monitor was detected on the bench), so none of
-them is an acceptance number. The acceptance run is one command once the monitor is back (§9).
+(c) Chromium (prompt §7)? This page has the method, the UI changes the measurements led to, the final numbers, how
+they stand against prompt §8, and a recommendation for the owner to confirm.
+
+**The numbers are headless, by owner decision (2026-11-23).** Every figure here comes from sway's headless output at
+**1920×1200 @ 60 Hz, the van panel's own resolution**, rendered on the bench Pi 5's GPU (V3D) by the compositor,
+config and runtimes the van uses. No monitor was used. With no scanout, no figure includes the panel's display
+latency. Frame times are the compositor's commit times (§2). The power-on time was measured by rebooting the bench
+into a headless kiosk session (§8).
+
+**In short:** WPE WebKit meets the §8 numbers for page switches, frame rate and memory. It misses the tap budget by
+about 6 ms on one control. Power-on on the bench is 15.6–15.9 s with every runtime (upper bounds), at the 15 s limit
+and not shown to meet it; most of it is the Pi's firmware. Tauri uses the same engine with more memory and CPU.
+Chromium shows a press fastest on light pages, but it misses the switch and memory numbers, and its Weather frame
+rate was not shown to reach 30 fps. Recommendation: **WPE** (§9).
 
 ## 1. Setup
 
@@ -11,25 +22,25 @@ them is an acceptance number. The acceptance run is one command once the monitor
 |---|---|
 | Machine | bench Pi 5, 16 GB, NVMe, Arch Linux ARM, kernel 7.0.3-v8+, Mesa 26.3.1 (V3D 7.1), no CAN HAT |
 | Compositor | sway 1.12 (wlroots 0.20.2), the van kiosk's config (`deploy/kiosk/sway.conf`) for every runtime: `harness/uibench/sway.conf.in` |
-| Session | a transient unit with a PAM session on VT 8 (`harness/uibench/session.sh`), like `aetherrv-panel.service` on tty1: logind gives sway its seat (DRM + libinput) |
-| Output | **headless**: `WLR_BACKENDS=headless,libinput`, one output at 1920×1200 @ 60 Hz (the monitor's connectors report `disconnected`) |
+| Session | a transient unit with a PAM session on VT 8 (`harness/uibench/session.sh`), like `aetherrv-panel.service` on tty1: logind gives sway its seat (libinput for the injected touchscreen) |
+| Output | sway's headless output (`WLR_BACKENDS=headless,libinput`), 1920×1200 @ 60 Hz |
 | Backend | the whole Rust system under systemd against simulators (`harness/bench/bench-up.sh`), gateway on 127.0.0.1:8080 |
-| UI | the production bundle (`vite build`) in `/opt/aetherrv-rs/ui`, opened as `http://127.0.0.1:8080/?bench=1`; the bundle hash is in every result |
-| Fonts | `noto-fonts` installed on the bench for this (the van has it; without it the UI fell back to FreeSans, a different layout and raster cost) |
+| UI | the production bundle (`vite build`, hash `0bb37c08214f`, in every result). The gateway's installed bundle (`/opt/aetherrv-rs/ui`) was left as deployed: `harness/uibench/serve_bundle.py` served the final bundle from the bench user's directory on 127.0.0.1:18082 and passed `/api` and `/ws` through to the gateway. The runtimes opened `http://127.0.0.1:18082/?bench=1`. The source tree differs from that bundle only by the per-scene `?keepgl=` list, added for one attribution run (bundle `9c4426ea0987`, §4.1); the default behaviour is the same. The power-on runs (§8) used the gateway's installed bundle |
+| Fonts | `noto-fonts` installed on the bench for this. The van has it; without it the UI fell back to FreeSans, which has a different layout and raster cost |
 | (a) WPE | wpewebkit 2.54.3, `MiniBrowser --fullscreen` with `WPE_PLATFORM=wayland` (WPE Platform API) |
-| (b) Tauri | Tauri 2 (`panel/tauri/`, its own Cargo workspace), webkit2gtk-4.1 2.54.3, built natively on the Pi |
+| (b) Tauri | Tauri 2.12 (`panel/tauri/`, its own Cargo workspace), webkit2gtk-4.1 2.54.3, built natively on the Pi |
 | (c) Chromium | chromium 158, the van's flags (`deploy/kiosk/chromium.sh`): `--kiosk --ozone-platform=wayland`, GPU on |
-| Before | the Python UI (`web/`) served by the Python backend's own web app with **no device controls** (`harness/uibench/serve_ref.py`, from `harness/ui-reference/serve_snapshot.py`), in Chromium kiosk as on the van |
+| Before | the Python UI (`web/`) served by the Python backend's own web app with **no device controls** (`harness/uibench/serve_ref.py`, from `harness/ui-reference/serve_snapshot.py`), in Chromium kiosk as on the van. *python* gets the gateway's live (simulated) state every second; *python-static* gets one frozen snapshot |
 
 **Deviation from the prompt: no `cog`.** The prompt names `cog` for candidate (a). Cog is the launcher for WPE's
 legacy libwpe API, which Arch Linux ARM doesn't package: its `wpewebkit` 2.54 is built for the new WPE Platform API
-only (no libwpe, no wpebackend-fdo). Candidate (a) therefore runs WPE WebKit through its own `MiniBrowser` on the
-WPE Platform Wayland backend, fullscreen. The engine, its processes and its rendering path are the ones a cog kiosk
-would use on a current WPE; on the van it would be a few-line WPEPlatform launcher, or MiniBrowser itself.
+only, with no libwpe and no wpebackend-fdo. Candidate (a) therefore runs WPE WebKit through its own `MiniBrowser`
+on the WPE Platform Wayland backend, fullscreen. The engine, its processes and its rendering path are the ones a cog
+kiosk would use on a current WPE. On the van it would be a few-line WPEPlatform launcher, or MiniBrowser itself.
 
 ## 2. Method
 
-Everything is measured from the **compositor's frames**, not from the page: `harness/uibench/run.sh` drives the
+Everything is measured from the **compositor's frames**, not from the page. `harness/uibench/run.sh` drives the
 tool `utils/uibench` (`aetherrv-uibench`) against one runtime at a time, in the same sway session.
 
 **Touch.** A uinput virtual touchscreen (absolute multitouch protocol B, one slot, `BTN_TOUCH`,
@@ -37,14 +48,14 @@ tool `utils/uibench` (`aetherrv-uibench`) against one runtime at a time, in the 
 sway treat it exactly like the van's capacitive panel. Every injection is timestamped on CLOCK_MONOTONIC just before
 the write.
 
-**Frames.** Two Wayland screencopy clients (`wlr-screencopy-unstable-v1`):
+**Frames.** Two kinds of Wayland screencopy client (`wlr-screencopy-unstable-v1`):
 
-- the **ticker**: a 16×16 region copied with `copy_with_damage` on its own connection. wlroots tracks screencopy
+- the **ticker** is a 16×16 region copied with `copy_with_damage` on its own connection. wlroots tracks screencopy
   damage per client, not per region, so this copy completes once for every frame the compositor commits with damage
   anywhere on the output. Its `ready` time is that commit's time (CLOCK_MONOTONIC);
-- **patches**: small regions copied the same way, one connection each, into GPU buffers (linux-dmabuf via GBM), read
-  once their fence has signalled. Each copy carries the commit time of the frame it shows, so pixels and frame
-  times line up exactly.
+- **patches** are small regions copied the same way, one connection each, into GPU buffers (linux-dmabuf via GBM).
+  Each is read once its fence has signalled. Each copy carries the commit time of the frame it shows, so pixels
+  and frame times line up exactly.
 
 Calibration (a test page with a known cadence, `harness/uibench/calib.html`, in Chromium):
 
@@ -53,285 +64,394 @@ Calibration (a test page with a known cadence, `harness/uibench/calib.html`, in 
 | ticker on a page painting at 0 / 30 / 60 Hz | 0 / 30.9 / 61.3 frames per second, matching the page's own paint count (the headless output runs at 61.4 Hz) |
 | `wlr-export-dmabuf` as the ticker (first attempt) | **rejected**: every request makes sway render a frame, so a static page read ~62 fps |
 | a full-output copy every frame | **rejected**: costs sway ~7.7 ms per frame, the 60 Hz page dropped to ~51 fps |
-| 4 thin bands (3 × 1784×8, 1 × 8×1104) or one 320×200 patch per frame | no effect: 61.4 fps presented, 0 dropped, the page's rAF unchanged |
+| 4 thin bands (3 × 1784×8, 1 × 8×1104) or one 320×200 patch per frame, light page | no effect: 61.4 fps presented, 0 dropped, the page's rAF unchanged |
 | 12 or more small patches per frame | the GPU backs up (fence latency 134 ms), the page drops to ~40–57 fps; not used |
-| the same captures on a GPU-heavy page (Home in Chromium, `perturb.sh`) | **measurable**: the page's rAF p95 16.7 ms → 22.5 ms with the ticker alone, 34.9 ms with four bands (§3, caveat 2) |
 | reading a patch right after `ready` | waits ~8 ms for the copy's fence, so reads happen when the dmabuf fd polls readable (30–200 µs) |
 
-**Timestamps are commit times.** On a real display the frame is scanned out at the next vblank after its rendering
-completes, up to one refresh later. Headless has no scanout at all. The tap and page-switch numbers do not
-include that last step; on the real screen, add up to 16.7 ms.
+On busy pages the captures do cost something, and §3 measures how much per runtime.
 
-**Scenarios, per runtime** (`aetherrv-uibench run`; all pages, in rail order):
+**Timestamps are commit times.** On a real display a frame is scanned out at the next vblank after its rendering
+has finished on the GPU. Headless has no scanout at all. The tap and page-switch numbers therefore leave out up to
+one refresh (16.7 ms), plus any GPU work still pending at the commit (§3), plus the panel's own response.
 
-1. **Cold start**: one warm-up launch first, so caches and profiles are in the state a used kiosk's are. Then
-   launch → the first frame that differs from the black background (first paint) → the frame after the page's
-   own "data arrived" mark (`aetherrv:snapshot`) → the first frame showing the settled Home page (*usable*).
-   Also checked: whether any frame before the content is light (a white flash at the splash hand-off).
+**Scenarios, per runtime** (`aetherrv-uibench run`; all nine pages, in rail order):
+
+1. **Cold start**: one warm-up launch first, so that caches and profiles are in the state a used kiosk's are. Then
+   the timeline: launch → the first frame that differs from the black background (*first paint*) → the frame after
+   the page's own "data arrived" mark (`aetherrv:snapshot`) → the first frame showing the settled Home page
+   (*usable*). It also checks whether any frame before the content is light (a white flash at the splash hand-off).
 2. **Slide-off check**: press a rail button, hold, slide 120 px, lift. The page must not navigate. This proves that
-   a moved touch is not a click in that runtime; every press below relies on it.
-3. Per page, **first visit** (a cold page switch: lazy chunk, first render, WebGL set-up), then:
-   - **Idle**: presented frames per second, CPU of the runtime's whole process tree and of sway, memory. Nothing
-     is copied during this window. Then the page's **scene** (its largest canvas, else its largest svg) alone,
-     then four bands across the page: the frames in which their pixels actually changed (*scene fps*, *content
-     fps*). This tells an animation inside the page apart from page-wide effects, and from frames with no
-     visible change. Scene fps is a **lower bound**: it counts changes in a 320×200 patch at the scene's centre.
-   - **Press latency**, 8 trials plus 4 no-touch control trials (6 + 3 in this draft's run, to finish before the
-     bench's other tests): touch down on a control, hold 300 ms, slide off,
-     lift. The latency runs to the first frame whose pixels inside the control differ from a reference taken just
-     before. This is the "pressed state" that §8's *tap to visible response* is about.
-4. **Warm page switches**: 4 rounds through every page (3 in this draft's run). Tap a rail button (60 ms), and measure **from the release**
-   (navigation happens on click): the first frame showing the new page complete (*content*), and the frame from
-   which it stays settled. The 180 ms `view-in` ease means "complete" is reached while the page is still easing in:
-   the detector correlates the view's bands with the settled page at any opacity and up to 10 px of offset. The
-   ease-in itself is measured as the interval between frames that move the page.
+   a moved touch is not a click in that runtime, and every press below relies on it. All five passed.
+3. Per page, a **first visit** (a cold page switch: lazy chunk, first render, WebGL set-up), then:
+   - **Idle, nothing captured.** The ticker is off and no patch is copied, so the instrument costs nothing. This
+     window gives the CPU of the runtime and of sway. It also gives the page's own requestAnimationFrame cadence:
+     the runner asks the page for a 5 s rAF sample over a long poll (`GET /cmd` on the report port), and the page
+     reports its frame intervals. CPU and rAF are sampled in separate windows.
+   - **Idle, ticker only**: presented frames per second and memory. Then it captures the page's **scene** (its
+     largest canvas, else its largest svg) alone, then four bands across the page, and counts the frames in which
+     their pixels actually changed (*scene fps*, *content fps*). This tells an animation inside the page apart from
+     page-wide effects, and from frames with no visible change. Scene fps is a **lower bound**: it counts changes in
+     a 320×200 patch at the scene's centre. On Weather the runner first presses Play (the radar loop runs only on
+     demand, as in the reference UI), checks from the page's report that the loop is playing, and presses Play
+     again afterwards.
+   - **Press latency**: 12 trials plus 3 no-touch control trials. Each trial touches down on a control, holds
+     300 ms, slides off and lifts. The latency runs to the first frame whose pixels inside the control differ from
+     a reference taken just before. That is the pressed state that §8's *tap to visible response* is about. The page
+     also reports when its `pointerdown` handler ran, which splits the latency into input delivery and rendering.
+4. **Warm page switches**: 3 rounds through every page. Each switch taps a rail button (60 ms) and is measured
+   **from the release**, because navigation happens on click. Two frames are found: the first frame showing the
+   new page complete (*content*), and the frame from which it stays settled. The 180 ms `view-in` ease means the
+   page is complete while it is still easing in, so the detector correlates the view's bands with the settled page
+   at any opacity and up to 10 px of offset. Every switch is read a second time with the page's scene left out, so
+   that a scene's own start is told apart from the rest of the page.
 5. **Memory** after every page has been shown: PSS (`smaps_rollup`) summed over every process in the runtime's
-   cgroup (each runtime runs in its own transient user scope, so the whole tree is counted: Chromium's renderer,
-   GPU and utility processes, WebKit's Web, Network and GPU processes, bwrap and dbus-proxy).
-6. **Screen power**: `swaymsg output … power off`, 6 s, `power on`, repeated until the connector agrees, as the
-   screen helper (`services/screen`) does. Then a page switch must still complete and the page must report the
+   cgroup. Each runtime runs in its own transient user scope, so the whole tree is counted: Chromium's renderer,
+   GPU and utility processes, and WebKit's Web, Network and GPU processes, bwrap and dbus-proxy. Also recorded is the
+   v3d driver's total of GPU buffer objects (debugfs `bo_stats`, whole system). Most of a WebGL scene's memory is
+   held there, outside any process's PSS.
+6. **Screen power**: `swaymsg output … power off`, 6 s, then `power on`, repeated until the connector agrees, as the
+   screen helper (`services/screen`) does. Then a page switch must still complete and the page must report its
    WebSocket live.
 
-**What is pressed, and what never is.** Presses never produce a click: the touch slides off before lifting, and
-the slide-off check proves this per runtime. The targets are UI-local controls (chart ranges, segmented toggles,
-tabs, map zoom, the Home demo tiles) or a switch tile pressed without a click. Never a heater control, and nothing
-that acts on pointerdown: dials, sliders, drag grips, dimmers, or any control inside an element with a React
-pointer handler. A page with no such control gets no press measurement. The only real taps are on rail buttons
-(navigation). Evidence that nothing was sent, from two sources for the whole benchmark window (18:30–20:05 bench
-time): the `command_log` table and the device services' own journals ("TX allowed" / "command … from") show
-only the soak's commands (channel 7 over the bus, channel 15 over the gateway WebSocket, labelled "kiosk" because
-it connects on loopback, every ten minutes; `utils/soak/src/main.rs`), and none at all while the candidates ran.
+**What is pressed, and what never is.** No press ever becomes a click: the touch slides off before lifting, and
+the slide-off check proves this per runtime. The targets are UI-local controls only: chart ranges, segmented
+toggles, tabs, map zoom, the Home demo tiles, or a switch tile that is not a dimmer, pressed without a click (a
+tile's pointerdown handler acts only for dimmers, and the bench module skips those). A heater control is never
+pressed. Neither is anything that acts on pointerdown: dials, sliders, drag grips, dimmers, or any control inside an
+element with a React pointer handler. A page with no such control (Systems) gets no press measurement. The only
+real taps are on rail buttons (navigation). The device services' journals for the whole pass, reboots included
+(2026-11-23 23:21 to 00:57 bench time), show no command at all. No line matches "command … from". The only "TX
+allowed" lines are the n2k service's own address claim (PGN 60928), sent once or twice as it starts after each
+reboot. The same search finds the soak's commands earlier the same evening (282 lines from 21:00 to 23:15).
 
-**Page cross-checks.** The opt-in module `ui/src/bench/` (loaded only with `?bench=1`, its own chunk) and
+**Page cross-checks.** The opt-in module `ui/src/bench/` (loaded only with `?bench=1`, in its own chunk) and
 `harness/uibench/page/ref-bench.js` (injected into the Python UI by `serve_ref.py`) report geometry (where the rail,
-the view and the press targets are), the boot marks, Event Timing and long tasks where the engine has them, and the
-WebGL renderer. No time in the results comes from the page except the "data arrived" mark used to pick the cold-start
-frame.
+the view and the press targets are), the boot marks, the pointerdown handler times, the rAF samples, Event Timing
+and long tasks where the engine has them, and the WebGL renderer. No time in the results comes from the page except
+the "data arrived" mark, which picks the cold-start frame, and the rAF samples.
 
-## 3. Results (headless, not acceptance)
+## 3. The instrument's own cost
 
-Bundle `1d0df4e1bdf9` (all nine pages; the Energy page's WebGL battery bank not yet in it), headless 1920×1200 @ 60 Hz,
-2026-11-23 19:21–19:57 bench time, with the 1-hour soak running on the same machine (load 0.6–2.4). Raw results:
-`harness/out/uibench/20261123-headless-1920x1200/` (one JSON per runtime, `summary.md`, `perturb.txt`).
+`perturb.sh` loads Home and Network in each runtime and reads the page's own rAF intervals three times: with
+nothing captured, with one 320×200 patch (the press and scene measurements), and with the four bands (content fps
+and page switches). Final bundle, headless 1920×1200:
 
-**Read these with three caveats:**
+| runtime | page | page rAF p95 ms, nothing captured | one 320×200 patch | four bands (max) | presented fps with the bands |
+|---|---|---|---|---|---|
+| WPE | Home | 17.0 | 17.0 | 17.0 (30) | 61.4 |
+| WPE | Network | 17.0 | 18.0 | 32.0 (52) | 54.7 |
+| Tauri | Home | 18.0 | 25.0 | 26.0 (36) | 41.6 |
+| Tauri | Network | 18.0 | 24.0 | 25.0 (41) | 44.0 |
+| Chromium | Home | 16.1 | 16.7 | 23.2 (317) | 55.1 |
+| Chromium | Network | 16.1 | 16.7 | 21.4 (117) | 54.9 |
 
-1. **Headless, not acceptance.** No scanout; timestamps are commit times (§2).
-2. **The instrument costs something on GPU-heavy pages** (`perturb.txt`, Chromium, the page's own rAF over 12 s):
+(WebKit reports rAF times in whole milliseconds, so 16–17 ms is one refresh.)
 
-   | page | nothing captured | ticker only (16×16) | one 320×200 patch | four bands |
-   |---|---|---|---|---|
-   | Home | p95 16.7 ms | p95 22.5 ms, 56.5 fps presented | p95 32.4 ms | p95 34.9 ms, 49.4 fps presented |
-   | Network | p95 16.1 ms | – | p95 16.7 ms | p95 21.6 ms |
+What this means for the results:
 
-   On the calibration page nothing was measurable (static pages were not checked). On Home, where the energy flow
-   keeps Chromium at 70–85 % of a core, every wlroots screencopy, even 16×16, costs sway part of each frame. So on
-   Home and Network the press and page-switch times are **upper bounds** and the fps figures **lower bounds**.
-   This was measured in **Chromium only**: whether the cost differs between runtimes, and so whether the runtimes'
-   differences on Home are real, is not established yet (`perturb.sh` gets a runtime argument for the next run).
-   The fix for the acceptance run is in §9.
-3. **The Python runs are contaminated**: two runtime windows left over from an aborted pass (a WPE and a Tauri,
-   hidden behind the measured window) were alive while `python` and `python-static` ran. The candidates' runs
-   were clean (checked: no other runtime scope). The Python numbers are shown as an indication; a clean rerun is
-   pending (`run.sh python headless`, then `python-static`).
+- **Frame rates are read with nothing captured.** The frame-rate verdicts use the page's own rAF cadence from the
+  zero-capture window. Scene fps and content fps are lower bounds, most of all on Tauri, which loses a third of its
+  frames to the bands.
+- **WPE is the least disturbed.** One patch changes nothing measurable, so its press and switch figures are its
+  own. Tauri's are slightly pessimistic. Chromium keeps its p95 but has occasional 100–300 ms stalls under capture.
+  That shows in its Home press figures, which are partly the instrument's (§5).
+- **GPU work still pending at each commit.** Every patch's fence latency (from the copy's `ready` to the buffer
+  being readable) shows how much GPU work was queued ahead of the copy. Median per warm page switch: **WPE
+  10–37 ms, Tauri 14–73 ms, Chromium 57–198 ms** (Chromium Home 198, Network 136, Energy 90). The bands add their
+  own copies, so these are upper bounds. Part of that queue is the runtime's own rendering of the frame, which a
+  real display waits for before scanning out. So, as an inference that needs scanout to confirm, Chromium's frames
+  would appear on a real panel later than its commit times say, and WPE's much less so.
+- One Chromium launch in `perturb.sh` aborted at shutdown (a core dump while its scope was stopped, between the
+  Home and Network loads). The measurements on either side are complete.
 
-### Headline
+## 4. UI changes the measurements led to
 
-| runtime | WebGL | tap → pressed p50 / p95 ms (no press seen) | switch → content p50 / p95 ms (warm) | first visit worst ms | settled p50 ms | ease-in step p95 ms Home / Climate / Switches | scene fps Energy / Network / Weather | boot → usable ms | PSS after boot / final MB | procs |
-|---|---|---|---|---|---|---|---|---|---|---|
-| python | ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES | 173.2 / 267.5 (50 of 72) | 288.4 / 394.0 | 2300 | 376 | 59 / 48 / 57 | – / 32 / – | 2298 | 307 / 512 | 11 |
-| python-static | ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES | 174.0 / 235.3 (50 of 72) | 300.6 / 408.8 | 2326 | 364 | 48 / 60 / 33 | – / 32 / – | 2330 | 303 / 526 | 11 |
-| wpe | Apple GPU | 36.5 / 54.0 (0 of 48) | 80.8 / 398.9 | 828 | 159 | 32 / 16 / 16 | – / 61 / – | 674 | 237 / 366 | 8 |
-| tauri | Apple GPU | 41.7 / 69.8 (0 of 48) | 101.4 / 413.3 | 707 | 174 | 37 / 33 / 16 | – / 55 / – | 904 | 285 / 396 | 3 |
-| chromium | ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES | 26.9 / 95.5 (2 of 48) | 98.7 / 483.4 | 1497 | 207 | 37 / 16 / 16 | – / 61 / – | 1450 | 330 / 407 | 11 |
+The first headless pass (2026-11-23, the earlier version of this page) found §8 misses that were the same on every
+runtime, so they were in the UI. Below: what changed, why, and the effect. *Before* is that first pass (HEAD's UI);
+*after* is the final pass. Both are headless 1920×1200 with the same pages, repetitions and runtimes. Where a
+like-for-like comparison inside the final bundle exists, it is given too.
 
-### Provisional verdicts
+### 4.1 Page switches to the WebGL pages (Network, Weather, Energy)
 
-| runtime | tap ≤ 50 ms (p95, misses = hold) | switch ≤ 150 ms (warm p95) | 60 fps Home/Climate/Switches | ≥ 30 fps Energy/Network/Weather | PSS ≤ 400 MB | power-on ≤ 15 s |
+**What the Network delay was made of.** Every hide disposed the page's WebGL scene (renderer, context, shaders,
+textures), and every show rebuilt it. Warm switches to Network from Switches (not from Settings), p50 / p95:
+
+| UI | sky | WPE | Chromium |
+|---|---|---|---|
+| before (dispose on hide) | 3D | 333 / 374 ms | 380 / 471 ms |
+| before | 2D map (`?sky=2d`, no WebGL) | 67 / 120 ms | 78 / 91 ms |
+| after (scene kept, paused), final pass | 3D | 108 / 164 ms (without the sky: 100 / 108) | 139 / 153 ms (without the sky: 90 / 105) |
+
+About 260–300 ms of the switch was the sky's WebGL rebuild: a new context, the shaders and the first frame. The
+rest of the page switches in 70–80 ms. **No Wi-Fi scan or admin-helper call played any part.** During those
+switches (Switches ↔ Network only, never Settings) the admin helper was not started (its socket had accepted no
+connection), and neither it nor the gateway logged anything. Only the Settings page asks the helper for Wi-Fi status
+(`/api/settings`, every 10 s while shown). On the bench iwd isn't running, so that call fails; it was not timed
+here.
+
+**Change** (`ui/src/lib/glkeep.ts`, `pages/network/Sky.tsx` + `sky3d.ts`, `pages/weather/wxmap.ts`,
+`pages/energy/Bank3D.tsx` + `bank3d.ts`). A hidden page now **pauses** its scene: the loop stops and nothing is
+drawn, but the context, shaders and textures stay. On show, the kept canvas still holds its last image, so the page
+is complete at once. The scene resumes just after the page's first frame, so the switch frame carries no GL work.
+An earlier version resumed inside that frame: WPE Network 106 / 165 ms with the 3D sky in the switch frame. A real
+unmount still frees everything, and radar frames loaded while the page was hidden are attached on return.
+`?keepgl=0` restores dispose-on-hide, and `?keepgl=sky,radar,bank` keeps only the scenes named. New Playwright specs
+cover both modes: no context lost or created on hide/show, one context per scene after twenty switches, nothing
+drawn while hidden.
+
+**Before / after, all three runtimes** (warm, p50 / p95 ms; before = first pass, after = final pass):
+
+| page | WPE | Tauri | Chromium |
+|---|---|---|---|
+| Network | 399 / 410 → **108 / 164** | 413 / 445 → **105 / 106** | 440 / 483 → **139 / 153** |
+| Weather | 153 / 165 → **106 / 117** | 202 / 211 → **106 / 118** | 261 / 828 → **178 / 225** |
+| Energy | 89 / 90 → 83 / 83 | 131 / 149 → 98 / 136 | 275 / 367 → 383 / 438 |
+
+The same comparison inside the final bundle (one warm round each, `?keepgl=0` vs the default, from the memory
+runs below): Network WPE 401–431 → 106–156 ms, Tauri 449 → 156, Chromium 478 → 188; Weather WPE 140–144 → 114–118,
+Tauri 144 → 114, Chromium 770 → 245. **Energy is unchanged by keeping its scene** (WPE 83–86 vs 78–82, Tauri 127 vs
+134, Chromium 207 vs 175). The battery bank's rebuild is cheap. Chromium's slow Energy switch (210–440 ms, the same
+with the bank masked out) comes from the rest of the page: the GPU queue during those switches stood at a median
+80–90 ms, against 12–13 ms in WPE. It is not a WebGL cost and keeping the scene does not fix it.
+
+**Memory, both ways** (every page shown once; PSS of the runtime's process tree; the v3d total of GPU buffer
+objects, whole system, which includes sway's):
+
+| runtime | run | kept (default): PSS / GPU buffers MB | disposed (`?keepgl=0`): PSS / GPU buffers MB |
+|---|---|---|---|
+| WPE | 1 | 362 / 1359 | 347 / 535 |
+| WPE | 2 | 352 / 1363 | 347 / 535 |
+| Tauri | 1 | 415 / 868 | 405 / 656 |
+| Chromium | 1 | 597 / 789 | 410 / 606 |
+
+**Which scene holds it.** The bundle with the per-scene switch (`?keepgl=` lists the scenes kept) ran one warm
+round per setting:
+
+| scenes kept | WPE: PSS / GPU buffers MB | WPE switch to Network / Weather / Energy ms | Chromium: PSS / GPU buffers MB | Chromium switch to Network / Weather / Energy ms |
+|---|---|---|---|---|
+| none (`0`) | 347 / 535 | 401–431 / 140–144 / 83–86 | 410 / 606 | 478 / 770 / 207 |
+| radar only | 359 / 1331 | 416 / 115 / 86 | 418 / 613 | 469 / 217 / 195 |
+| sky and bank | 366 / 540 | 108 / 150 / 67 | 403 / 649 | 188 / 816 / 172 |
+| all three (default) | 352–362 / 1359–1363 | 106–156 / 114–118 / 78–82 | 597 / 789 | 188 / 245 / 175 |
+
+In WPE, **the kept radar holds about 800 MB of the GPU buffers** (presumably its loop's frame textures; not broken
+down further) and saves only 25–35 ms
+on the Weather switch, which is 140–150 ms without it. That is under the 150 ms limit, but only just. The sky and
+the bank together hold about 5 MB, and the sky saves about 300 ms on every switch to Network. Chromium's figures
+don't add up per scene in a single round: its extra ~190 MB appears only with all three kept. The default stays
+"all three kept", as measured in the final pass. Releasing the radar's frames on hide is the owner's choice: about
+800 MB of GPU memory against a Weather switch at the limit. A middle way for later is to keep the radar's context
+and shaders, drop its frame textures on hide, and reload them on show.
+
+- **WPE stays under 400 MB PSS both ways** (352–362 kept). Keeping costs it ~10 MB of PSS but ~825 MB of GPU
+  buffers, almost all of it the radar's, which PSS doesn't count. WPE passes the 400 MB number only because §8
+  counts PSS. On the 16 GB bench that memory is affordable; the van Pi's RAM decides whether it is there.
+- **Chromium's PSS is 187 MB higher with all three scenes kept** (not with any one or two of them, in one round
+  each), which puts it far over 400 MB. It was at 410 MB with dispose-on-hide.
+- **Tauri** is over 400 MB both ways (405–415 here, 457 in the full pass).
+
+### 4.2 Home at 60 fps
+
+**Cause.** The energy flow's running dots were a CSS `stroke-dashoffset` animation on SVG paths. That made the
+engine repaint the whole diagram (text, icons, rings) every frame, so Home cost 50–85 % of a core. A workstation
+trace (Chrome, all edges running) showed 13 ms/s of paint and 60 ms/s of raster for it.
+
+**Change** (`pages/home/Flow.tsx`, `styles/app.css`). The edges are now drawn on a canvas under the SVG: each frame,
+six strokes and about a hundred dots, at the same positions, sizes, colours, speeds and fade. The SVG keeps the
+nodes, the inverter and the hub. The `.f-edge` paths stay (hidden) as the edges' state. The same trace afterwards
+shows no paint, no raster, and 6.6 ms/s of script. The look is unchanged; the screenshot differences are
+anti-aliasing along the outlines (the diagram's layers are composited now) and the dots' animation phase. A new
+spec checks that the dots run while an edge carries power, stop when none does, and are there at once on returning
+to Home. One attempt that did not work was one SVG layer per edge group: Chrome repainted the whole promoted layer,
+doubling the raster.
+
+**Before / after** (Home idle, one core = 100 %). *Before* is HEAD's UI with today's bench module, run the same night
+in the same session (`harness/out/uibench/r3/before-home/`); *after* is the final pass:
+
+| runtime | CPU, nothing captured | CPU, ticker on | page rAF, nothing captured: fps (frames over 33 ms) | presented fps, ticker only |
+|---|---|---|---|---|
+| WPE | 43 → **22 %** | 54 → 26 % | 62.5 (0) → 62.5 (0) | 61.3 → 61.6 |
+| Tauri | 63 → **37 %** | 67 → 50 % | 58.8 (1) → 58.8 (0) | 59.4 → 58.6 |
+| Chromium | 81 → **34 %** | 78 → 42 % | 62.5 (0) → 62.5 (0) | 60.9 → 61.0 |
+
+With the instrument's cost taken out (§3), **Home already held its frame rate before the change on all three**:
+the page's rAF ran at refresh, and the frames presented with only the ticker were 59–61 a second. The first pass's
+miss (32–37 ms steps, 40–50 content fps) was the four bands' cost on a busy page. What the canvas changes is the
+cost of holding that rate: half the CPU or less. Content fps under the bands is still lower (Tauri 40, Chromium 39)
+and is not a verdict.
+
+### 4.3 Press feedback ≤ 50 ms
+
+**Where the time goes.** `lib/press.ts` sets `.pressed` in the pointerdown event itself, and the pressed style has
+no transition. The page's handler runs 0–2 ms after the injection on every runtime (the bench module reports it),
+so input delivery is not the delay. The rest is the runtime presenting the frame. In WPE on Switches, the first frame
+WebKit presents after the touch is already the pressed one, about 52 ms later. On Climate the same happens after
+about 31 ms. So WebKit takes two to three refreshes to present any change after an input on an idle page. The Switches
+target is the first switch tile on the board (`.sw[data-sw]`, switch `32.2`). The runner measured it at 331×27 px:
+with the bench's simulated switch list, the board lays its tiles out much flatter than the free-standing tile's
+214 px. That layout may deserve a look of its own.
+
+**Before / after** (all pages, p50 / p95 ms): WPE 36.5 / 54.0 → 35.4 / 54.5; Tauri 41.7 / 69.8 → 38.8 / 64.1;
+Chromium 26.9 / 95.5 (2 of 48 presses not seen) → 21.8 / 96.9 (none of 96 missed). Per page, see §5. Chromium's
+Home (97 / 143) and Network (63 / 77) figures are partly the instrument's: for 8 and 7 of their 12 presses, the
+compositor presented a frame that the patch stream skipped before the detection. Those are upper bounds. On its
+other pages Chromium shows the press in 13–30 ms.
+
+**Two experiments** (WPE and Tauri, 15 presses per page, the final bundle; URL switches in the bench module only):
+
+| page | runtime | as is | every target on its own layer (`&press=promote`) | no brightness filter (`&press=nofilter`) |
+|---|---|---|---|---|
+| Home | WPE | 45 / 47 | 45 / 47 | 46 / 47 |
+| Home | Tauri | 59 / 72 | 63 / 70 | 64 / 70 |
+| Climate | WPE | 31 / 35 | 30 / 35 | 31 / 34 |
+| Climate | Tauri | 34 / 37 | 32 / 34 | 33 / 42 |
+| Switches | WPE | 52 / 54 | 60 / 64 | 53 / 55 |
+| Switches | Tauri | 55 / 58 | 62 / 66 | 51 / 55 |
+
+Neither helps. Pre-promoting every target makes Switches slower, and the filter costs nothing measurable. The
+pressed style is not what costs; WebKit's frame pipeline is. **No change was adopted for this item, and it still
+fails** on every runtime: WPE on one control (the switch tile, p95 56 ms), Tauri on three, and Chromium on Home and
+Network. On the real panel, scanout adds up to one refresh to every figure. Next steps for a later pass: find why
+the switch tile needs a third frame in WebKit (its page, not its style), and confirm Chromium's Home figure with
+nothing but the press patch on screen.
+
+### 4.4 The Weather radar loop
+
+The scene "never changed" in the first pass because the radar loop does not play by itself. As in the reference UI
+(`web/app.js` `rvPlay`), it starts on Play and stops when the page is hidden. Nothing in the UI was wrong. The
+runner now presses Play before measuring the scene (a UI-local control), checks from the page's report that the
+loop really started (`#wx-tl.playing`, frames loaded), and presses Play again afterwards. Measured with the loop
+playing (scene fps, a lower bound, §2): **WPE 32, Tauri 39, Chromium 29 fps**. The loop draws up to 60 fps with
+interpolated in-between images (`RADAR_MAX_FPS`), so the true rate is at or above these. The scene patch sees no
+change where the radar shows no echo.
+
+### 4.5 Tauri's white first frame
+
+`panel/tauri/src/main.rs` now sets the window and webview background to the panel's page colour (#0b0c0f,
+`--page`) from the first frame. Before, the first frame had luminance 245 of 255, 240 ms after launch. After, no
+frame before the UI is lighter than 12 of 255, and the cold start is the same as before (usable at 903 ms; 904
+before).
+
+## 5. Final results (headless 1920×1200)
+
+Final bundle `0bb37c08214f`, 2026-11-23 23:22 – 00:01 bench time, all five in one pass, then `perturb.sh` per
+runtime (§3). Results: `harness/out/uibench/r3/final/` (gitignored), summary from `harness/uibench/summarize.py`.
+
+| runtime | tap → pressed p50 / p95 ms | switch → content p50 / p95 ms (warm, all pages) | first visit, worst ms | page rAF fps, nothing captured: Home / Climate / Switches | scene fps: Network / Weather | cold start → usable ms | PSS after boot / after every page MB | processes |
+|---|---|---|---|---|---|---|---|---|
+| WPE | 35 / 55 | 73 / 118 | 678 (Weather) | 62 / 62 / 62 | 61 / 32 | 684 | 242 / 358 | 8 |
+| Tauri | 39 / 64 | 90 / 125 | 730 (Weather) | 59 / 62 / 62 | 56 / 39 | 903 | 287 / 457 | 3 |
+| Chromium | 22 / 97 | 114 / 384 | 1479 (Weather) | 62 / 60 / 60 | 60 / 29 | 1584 | 326 / 586 | 11 |
+| Python UI, live | 178 / 232 (73 of 108 not seen) | 296 / 406 | 2314 (Network) | 62 / 60 / 60 | 30 / – | 1662 | 316 / 642 | 11 |
+| Python UI, static | 180 / 227 (73 of 108 not seen) | 296 / 362 | 2340 (Network) | 62 / 60 / 60 | 29 / – | 1591 | 313 / 621 | 11 |
+
+The Energy page has no idle animation: its battery bank moves only when touched, so it has no scene fps. Every
+runtime renders on the V3D: the render node is open in the GPU-rendering process, with no llvmpipe threads anywhere.
+Chromium's WebGL reports `ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1)`; WebKit masks its renderer string as
+"Apple GPU", hence the process check.
+
+**Warm page switches**, from the release to the new page complete, p50 / p95 ms over 3 rounds (p95 of three is their
+maximum); in brackets, the same switches with the page's scene left out where that differs. Last row: the slowest
+first visit (lazy chunk, first render, WebGL set-up).
+
+| page | WPE | Tauri | Chromium | Python UI, live | Python UI, static |
+|---|---|---|---|---|---|
+| Home | 56 / 63 | 61 / 68 | 85 / 120 (101 / 120) | 232 / 270 (270 / 281) | 241 / 277 (277 / 294) |
+| Energy | 83 / 83 | 98 / 136 (129 / 136) | 383 / 438 (400 / 438) | 346 / 417 | 338 / 362 |
+| Climate | 47 / 50 | 46 / 49 | 62 / 67 | 199 / 210 | 177 / 195 (195 / 226) |
+| Weather | 106 / 117 (74 / 85) | 106 / 118 (73 / 86) | 178 / 225 (161 / 190) | 340 / 348 (235 / 270) | 356 / 581 (234 / 339) |
+| Switches | 77 / 85 | 80 / 87 | 84 / 98 | 305 / 406 | 342 / 349 |
+| Network | 108 / 164 (100 / 108) | 105 / 106 | 139 / 153 (90 / 105) | 306 / 343 (306 / 327) | 303 / 327 (332 / 343) |
+| Alerts | 84 / 103 | 109 / 125 | 144 / 266 | 240 / 247 | 228 / 241 |
+| Systems | 61 / 63 | 62 / 77 | 114 / 125 | 249 / 299 | 231 / 255 |
+| Settings | 72 / 88 | 95 / 97 | 88 / 96 | 298 / 330 | 296 / 305 |
+| first visit, worst | 678 (Weather) | 730 (Weather) | 1479 (Weather) | 2314 (Network) | 2340 (Network) |
+
+**Press → pressed state shown**, p50 / p95 ms (12 presses each; *not seen*: no change within the 300 ms hold). The
+control pressed on each page is in the last column; Systems has none that is safe to press.
+
+| page | WPE | Tauri | Chromium | Python UI, live | Python UI, static | target |
 |---|---|---|---|---|---|---|
-| python | **FAIL** | **FAIL** | **FAIL** | pass (1 of 3 measured) | **FAIL** | boot script (not run) |
-| python-static | **FAIL** | **FAIL** | **FAIL** | pass (1 of 3 measured) | **FAIL** | boot script (not run) |
-| wpe | **FAIL** | **FAIL** | **FAIL** | pass (1 of 3 measured) | pass | boot script (not run) |
-| tauri | **FAIL** | **FAIL** | **FAIL** | pass (1 of 3 measured) | at the limit (one run) | boot script (not run) |
-| chromium | **FAIL** | **FAIL** | **FAIL** | pass (1 of 3 measured) | at the limit (one run) | boot script (not run) |
+| Home | 46 / 47 | 56 / 63 | 97 / 143 | 222 / 277 (1 not seen) | 213 / 248 (1 not seen) | `.quick-btn[data-i]` |
+| Energy | 31 / 35 | 33 / 36 | 13 / 22 | – / – (12 not seen) | – / – (12 not seen) | `.seg button` |
+| Climate | 32 / 38 | 33 / 37 | 15 / 17 | – / – (12 not seen) | – / – (12 not seen) | `#range-temp button` |
+| Weather | 38 / 43 | 41 / 44 | 30 / 38 | 171 / 192 | 174 / 182 | `.wx-zoom button` |
+| Switches | 52 / 56 | 54 / 58 | 22 / 24 | 171 / 179 | 174 / 196 | `.sw[data-sw]` |
+| Network | 40 / 44 | 62 / 72 | 63 / 77 | – / – (12 not seen) | – / – (12 not seen) | `.seg button` |
+| Alerts | 28 / 32 | 31 / 33 | 17 / 20 | – / – (12 not seen) | – / – (12 not seen) | `#btn-sound` |
+| Systems | – | – | – | – / – (12 not seen) | – / – (12 not seen) | |
+| Settings | 36 / 39 | 39 / 40 | 15 / 23 | – / – (12 not seen) | – / – (12 not seen) | `.seg button` |
 
-### python (reference UI, live-fed; see the note above: contaminated, rerun pending)
+**Idle**: with nothing captured, the CPU of the runtime's process tree (% of one core) and the page's own rAF rate
+(fps; frames over 33 ms in brackets); then scene fps with one patch (a lower bound).
 
-WebGL: webgl2: ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1); slide-off check (no click from a moved touch): True  
-Cold start (launch → ms): first compositor frame 5, first paint 1597, page's data mark → frame 1684, content 1990, usable (settled) 2298; light frame before content: False (max mean luma 33)  
-Screen power off 6001 ms → on (1 tries): first frame after 130 ms, page responds afterwards: True  
-Processes (PSS MB): chromium 241, chromium 117, chromium 54, chromium 40, chromium 18, chromium 17; render node open in: chromium; software GL (llvmpipe threads) in: none  
+| page | WPE | Tauri | Chromium | Python UI, live | Python UI, static |
+|---|---|---|---|---|---|
+| Home | 22 %, 62 (0); scene 62 | 37 %, 59 (0); scene 53 | 34 %, 62 (0); scene 45 | 81 %, 62 (0); scene 49 | 79 %, 62 (0); scene 50 |
+| Energy | 2 %, 62 (0) | 2 %, 62 (1) | 4 %, 60 (0) | 15 %, 60 (0) | 13 %, 60 (0) |
+| Climate | 2 %, 62 (0) | 2 %, 62 (0) | 3 %, 60 (0) | 19 %, 60 (0) | 14 %, 60 (0) |
+| Weather | 4 %, 62 (0); scene 32 | 7 %, 62 (0); scene 39 | 4 %, 60 (0); scene 29 | 21 %, 60 (0) | 16 %, 60 (0) |
+| Switches | 3 %, 62 (1) | 2 %, 62 (1) | 3 %, 60 (0) | 23 %, 60 (2) | 16 %, 60 (1) |
+| Network | 61 %, 62 (1); scene 61 | 79 %, 62 (2); scene 56 | 58 %, 62 (0); scene 60 | 50 %, 60 (4); scene 30 | 42 %, 60 (0); scene 29 |
+| Alerts | 4 %, 62 (0) | 7 %, 62 (0) | 5 %, 60 (0) | 37 %, 60 (7) | 32 %, 60 (0) |
+| Systems | 9 %, 62 (0) | 12 %, 62 (0) | 6 %, 60 (0) | 40 %, 60 (8) | 30 %, 60 (0) |
+| Settings | 2 %, 62 (1) | 2 %, 62 (0) | 2 %, 60 (0) | 35 %, 60 (8) | 33 %, 60 (1) |
 
-| page | first visit content / settled ms | warm content p50 / p95 ms | warm settled p50 ms | ease-in step p95 ms | press p50 / p95 ms (n, miss, null+) | target | presented fps | content fps (idle) | scene fps, lower bound (dropped) | CPU runtime / sway % | PSS MB |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| home | – / – | 268.8 / 288.4 | 408 | 59.3 | 223.9 / 291.3 (8, 2, 0, 6 upper bound) | Cabin | 59.9 | 30.4 | 40.3 (24) | 82.5 / 6.2 | 304 |
-| energy | 429 / 429 | 394.0 / 399.6 | 401 | 48.6 | – / – (8, 8, 0) | 6 h | 2.0 | – | – (–) | 18.7 / 1.7 | 304 |
-| climate | 223 / 367 | 232.7 / 256.1 | 341 | 47.8 | – / – (8, 8, 0) | 24 h | 2.0 | – | – (0) | 23.6 / 1.3 | 313 |
-| weather | 1414 / 1414 | 380.6 / 384.9 | 430 | 72.6 | 171.8 / 201.8 (8, 0, 0) | wx-zin | 2.1 | – | – (0) | 23.9 / 1.3 | 427 |
-| switches | 312 / 444 | 371.4 / 408.7 | 462 | 57.1 | 170.7 / 179.0 (8, 0, 0) | 32.2 | 2.1 | – | – (–) | 25.6 / 1.3 | 444 |
-| network | 2300 / 2300 | 346.8 / 376.0 | 347 | – | – / – (8, 8, 0) | 6 h | 30.2 | 29.3 | 32.1 (97) | 58.0 / 4.0 | 484 |
-| alerts | 284 / 397 | 279.6 / 282.9 | 365 | 43.5 | – / – (8, 8, 0) | btn-sound | 2.1 | – | – (–) | 39.7 / 1.6 | 493 |
-| systems | 247 / 377 | 216.1 / 220.3 | 330 | 96.9 | – / – (8, 8, 0) | NMEA 2000 | 2.0 | – | – (–) | 42.7 / 1.2 | 500 |
-| settings | 305 / 305 | 287.2 / 307.2 | 287 | – | – / – (8, 8, 0) | 5 min | 2.0 | – | – (–) | 40.6 / 1.2 | 503 |
+**Cold start** (launch → ms; warm caches): first frame / first paint / usable. WPE 319 / 637 / 684, Tauri
+245 / 816 / 903, Chromium 1008 / 1135 / 1584, Python UI 981 / 981 / 1662. No runtime shows a light frame before the
+UI (largest mean luminance before the content: WPE 12, Tauri 12, Chromium 29 of 255).
 
-Load before: `1.16 1.26 1.44 2/361 79496`; alerts: `{('warning', False): 4}`
+**Screen power** off 6 s → on: every runtime kept running and recovered, with its first frame 31–121 ms after
+power-on. A page switch then completed and the WebSocket was live.
 
-### python-static (reference UI, frozen snapshot; contaminated, rerun pending)
+**Processes** (PSS MB after every page): WPE: WPEWebProcess 293, WPENetworkProcess 37, MiniBrowser 27, bwrap and
+xdg-dbus-proxy ~1. Tauri: WebKitWebProcess 334, the panel app 84, WebKitNetworkProcess 39. Chromium: 312, 117, 55, 40,
+18, 18 and smaller.
 
-WebGL: webgl2: ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1); slide-off check (no click from a moved touch): True  
-Cold start (launch → ms): first compositor frame 5, first paint 1575, page's data mark → frame 1787, content 1951, usable (settled) 2330; light frame before content: False (max mean luma 33)  
-Screen power off 6001 ms → on (1 tries): first frame after 133 ms, page responds afterwards: True  
-Processes (PSS MB): chromium 247, chromium 124, chromium 54, chromium 40, chromium 18, chromium 17; render node open in: chromium; software GL (llvmpipe threads) in: none  
+**The Python UI**, as the reference: presses show only through CSS `:active`, which Chromium applies to a touch
+late (170–220 ms). On 73 of 108 trials the control had no `:active` style at all, so nothing was seen within the
+300 ms hold. Its switches take 200–420 ms, and it uses 79–81 % of a core on Home.
 
-| page | first visit content / settled ms | warm content p50 / p95 ms | warm settled p50 ms | ease-in step p95 ms | press p50 / p95 ms (n, miss, null+) | target | presented fps | content fps (idle) | scene fps, lower bound (dropped) | CPU runtime / sway % | PSS MB |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| home | – / – | 300.6 / 320.3 | 381 | 48.1 | 226.6 / 240.8 (8, 2, 0, 6 upper bound) | Cabin | 60.9 | – | 41.1 (16) | 80.7 / 6.3 | 307 |
-| energy | 317 / 414 | 408.8 / 425.6 | 426 | 48.9 | – / – (8, 8, 0) | 6 h | 1.0 | – | – (–) | 15.7 / 1.4 | 302 |
-| climate | 215 / 376 | 174.4 / 260.5 | 359 | 60.0 | – / – (8, 8, 0) | 24 h | 1.0 | – | – (0) | 17.9 / 1.3 | 303 |
-| weather | 1204 / 1237 | 344.5 / 350.5 | 416 | 39.7 | 171.6 / 175.7 (8, 0, 0) | wx-zin | 1.0 | – | – (0) | 18.5 / 1.3 | 438 |
-| switches | 311 / 434 | 390.1 / 431.6 | 434 | 32.5 | 173.2 / 180.4 (8, 0, 0) | 32.2 | 1.0 | – | – (–) | 22.2 / 1.3 | 451 |
-| network | 2326 / 2326 | 336.7 / 344.4 | 356 | 32.6 | – / – (8, 8, 0) | 6 h | 30.2 | 28.8 | 31.6 (110) | 55.6 / 4.0 | 493 |
-| alerts | 238 / 389 | 265.6 / 286.6 | 359 | 16.7 | – / – (8, 8, 0) | btn-sound | 1.0 | – | – (–) | 33.0 / 1.3 | 504 |
-| systems | 298 / 376 | 234.5 / 278.0 | 343 | 32.6 | – / – (8, 8, 0) | NMEA 2000 | 1.0 | – | – (–) | 32.9 / 1.2 | 509 |
-| settings | 341 / 341 | 288.6 / 298.4 | 289 | – | – / – (8, 8, 0) | 5 min | 1.0 | – | – (–) | 33.7 / 1.2 | 515 |
+## 6. Against §8
 
-Load before: `2.76 2.05 1.70 2/367 80839`; alerts: `{('warning', False): 4}`
+Headless, by owner decision (above). *Pass* means the figure meets the number on this output; scanout on the real
+panel adds up to one refresh to the tap and switch figures (§2).
 
-### wpe
+| §8 number | WPE | Tauri | Chromium |
+|---|---|---|---|
+| tap → visible response ≤ 50 ms (p95) | **miss**: 55 ms overall. The switch tile on Switches 52 / 56 ms; every other page passes (Home 46 / 47) | **miss**: 64 ms. Home 56 / 63, Network 62 / 72, Switches 54 / 58 | **miss**: 97 ms. Home 97 / 143 (partly the instrument, §3), Network 63 / 77; the other six pages pass at 13–30 ms p50 |
+| page switch ≤ 150 ms (warm p95) | **pass**: 118 ms. Worst page Network, p50 108 ms, one of three switches at 164 ms | **pass**: 125 ms; every page ≤ 136 | **miss**: 384 ms. Energy 383 / 438, Alerts 144 / 266, Weather 178 / 225 |
+| 60 fps Home / Climate / Switches | **pass**: page rAF at refresh; at most one frame over 33 ms in a 5 s sample (Switches) | **pass**: Home 59 fps, none over 33 ms; one on Switches | **pass**: none over 33 ms |
+| ≥ 30 fps Energy / Network / Weather scenes | **pass**: Network 61, Weather ≥ 32; Energy has no idle animation | **pass**: 56, ≥ 39 | Network 60; **Weather not shown**: the lower bound is 29 fps, so it may or may not reach 30 |
+| memory ≤ 400 MB (PSS) | **pass**: 358 MB (plus ~825 MB of GPU buffers, almost all for the kept radar loop, which PSS doesn't count; §4.1) | **miss**: 457 MB | **miss**: 586 MB (410 with the scenes disposed) |
+| power-on ≤ 15 s (bench reboot, §8) | **at the limit, not shown to meet**: 15.6 s to the settled Home, 15.2 s to its first frame with data (both upper bounds; 21.3 s on the first reboot) | **at the limit, not shown**: 15.6 s | **at the limit, not shown**: 15.9 s (15.6 s to the first frame with data) |
 
-WebGL: webgl2: Apple GPU; slide-off check (no click from a moved touch): True  
-Cold start (launch → ms): first compositor frame 302, first paint 600, page's data mark → frame 600, content 600, usable (settled) 674; light frame before content: False (max mean luma 30)  
-Screen power off 6001 ms → on (1 tries): first frame after 53 ms, page responds afterwards: True  
-Processes (PSS MB): WPEWebProcess 301, WPENetworkProce 37, MiniBrowser 27, xdg-dbus-proxy 1, bwrap 0, bwrap 0; render node open in: WPEWebProcess; software GL (llvmpipe threads) in: none  
+Not measurable headless: the panel's scanout and response, and real touch feel (§10).
 
-| page | first visit content / settled ms | warm content p50 / p95 ms | warm settled p50 ms | ease-in step p95 ms | press p50 / p95 ms (n, miss, null+) | target | presented fps | content fps (idle) | scene fps, lower bound (dropped) | CPU runtime / sway % | PSS MB |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| home | – / – | 52.9 / 61.9 | 166 | 32.4 | 32.4 / 61.4 (6, 0, 0) | Cabin | 61.7 | 61.3 | 61.7 (0) | 50.5 / 4.2 | 239 |
-| energy | 150 / 150 | 89.4 / 89.7 | 154 | 16.3 | 30.4 / 33.9 (6, 0, 0) | 6 h | 0.0 | – | – (0) | 1.9 / 0.2 | 252 |
-| climate | 109 / 158 | 51.6 / 80.5 | 148 | 16.3 | 46.3 / 51.7 (6, 0, 0) | 24 h | 61.8 | – | – (0) | 10.5 / 3.5 | 264 |
-| weather | 828 / 1397 | 152.8 / 164.6 | 410 | 94.0 | 32.0 / 43.4 (6, 0, 0) | wx-zin | 1.3 | – | – (0) | 4.9 / 0.2 | 313 |
-| switches | 119 / 152 | 80.9 / 100.2 | 162 | 16.4 | 49.8 / 56.6 (6, 0, 0) | 32.2 | 0.0 | – | – (–) | 2.1 / 0.2 | 320 |
-| network | 514 / 2300 | 398.9 / 410.1 | 399 | – | 41.8 / 45.2 (6, 0, 0) | 6 h | 60.8 | 54.9 | 60.6 (4) | 71.0 / 4.1 | 343 |
-| alerts | 131 / 213 | 87.5 / 88.3 | 185 | 16.4 | 19.1 / 27.7 (6, 0, 0) | btn-sound | 19.5 | – | – (–) | 5.7 / 0.7 | 347 |
-| systems | 83 / 180 | 63.0 / 70.0 | 152 | 16.4 | – / – (0, 0, 0) | – | 17.5 | – | – (–) | 13.1 / 1.0 | 356 |
-| settings | 76 / 76 | 75.1 / 75.2 | 75 | – | 35.2 / 39.4 (6, 0, 0) | 5 min | 0.4 | – | – (–) | 2.0 / 0.2 | 358 |
-
-Load before: `0.64 1.33 1.66 1/264 85474`; alerts: `{('warning', False): 4}`
-
-### tauri
-
-WebGL: webgl2: Apple GPU; slide-off check (no click from a moved touch): True  
-Cold start (launch → ms): first compositor frame 240, first paint 240, page's data mark → frame 485, content 776, usable (settled) 904; light frame before content: True (max mean luma 245)  
-Screen power off 6001 ms → on (1 tries): first frame after 65 ms, page responds afterwards: True  
-Processes (PSS MB): WebKitWebProces 273, aetherrv-panel- 84, WebKitNetworkPr 39; render node open in: aetherrv-panel-, WebKitWebProces; software GL (llvmpipe threads) in: none  
-
-| page | first visit content / settled ms | warm content p50 / p95 ms | warm settled p50 ms | ease-in step p95 ms | press p50 / p95 ms (n, miss, null+) | target | presented fps | content fps (idle) | scene fps, lower bound (dropped) | CPU runtime / sway % | PSS MB |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| home | – / – | 56.6 / 60.2 | 171 | 37.1 | 41.7 / 68.6 (6, 0, 0) | Cabin | 60.0 | 49.9 | 59.3 (8) | 64.2 / 4.7 | 296 |
-| energy | 195 / 228 | 130.8 / 148.5 | 195 | 32.5 | 32.9 / 39.1 (6, 0, 0) | 6 h | 0.0 | – | – (0) | 2.1 / 0.0 | 311 |
-| climate | 111 / 175 | 55.0 / 57.0 | 166 | 32.7 | 51.2 / 64.3 (6, 0, 0) | 24 h | 59.9 | – | – (0) | 25.6 / 3.9 | 323 |
-| weather | 707 / 1221 | 201.7 / 211.2 | 560 | 98.5 | 40.3 / 77.9 (6, 0, 0) | wx-zin | 1.2 | – | – (0) | 3.6 / 0.7 | 349 |
-| switches | 122 / 171 | 115.1 / 115.8 | 164 | 16.4 | 51.3 / 59.5 (6, 0, 0) | 32.2 | 0.0 | – | – (–) | 2.2 / 0.3 | 358 |
-| network | 563 / 2376 | 413.3 / 444.6 | 413 | – | 64.0 / 71.4 (6, 0, 0) | 6 h | 57.8 | 44.5 | 55.4 (23) | 92.3 / 5.0 | 397 |
-| alerts | 153 / 218 | 108.0 / 109.6 | 190 | 32.5 | 29.2 / 32.6 (6, 0, 0) | btn-sound | 19.3 | – | – (–) | 10.6 / 1.6 | 384 |
-| systems | 84 / 170 | 60.7 / 64.7 | 174 | 32.6 | – / – (0, 0, 0) | – | 17.4 | – | – (–) | 17.4 / 1.5 | 396 |
-| settings | 85 / 85 | 92.6 / 98.9 | 93 | – | 37.5 / 41.6 (6, 0, 0) | 5 min | 0.0 | – | – (–) | 1.8 / 0.2 | 398 |
-
-Load before: `2.35 2.16 1.95 1/257 84904`; alerts: `{('warning', False): 4}`
-
-### chromium
-
-WebGL: webgl2: ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1); slide-off check (no click from a moved touch): True  
-Cold start (launch → ms): first compositor frame 1020, first paint 1020, page's data mark → frame 1020, content 1392, usable (settled) 1450; light frame before content: False (max mean luma 22)  
-Screen power off 6001 ms → on (1 tries): first frame after 141 ms, page responds afterwards: True  
-Processes (PSS MB): chromium 142, chromium 110, chromium 54, chromium 40, chromium 18, chromium 17; render node open in: chromium; software GL (llvmpipe threads) in: none  
-
-| page | first visit content / settled ms | warm content p50 / p95 ms | warm settled p50 ms | ease-in step p95 ms | press p50 / p95 ms (n, miss, null+) | target | presented fps | content fps (idle) | scene fps, lower bound (dropped) | CPU runtime / sway % | PSS MB |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| home | – / – | 77.0 / 114.0 | 202 | 36.5 | 114.8 / 195.5 (6, 2, 0, 4 upper bound) | Cabin | 58.2 | 40.0 | 48.1 (7) | 85.5 / 5.6 | 351 |
-| energy | 501 / 501 | 274.6 / 366.5 | 356 | 16.4 | 12.7 / 26.9 (6, 0, 0) | 6 h | 0.4 | – | – (0) | 3.7 / 0.1 | 368 |
-| climate | 153 / 225 | 62.1 / 63.6 | 191 | 16.5 | 61.9 / 63.8 (6, 0, 0) | 24 h | 61.4 | – | – (0) | 28.6 / 4.9 | 316 |
-| weather | 1497 / 1497 | 260.7 / 827.7 | 266 | – | 31.1 / 36.8 (6, 0, 0) | wx-zin | 0.0 | – | – (0) | 7.0 / 0.4 | 416 |
-| switches | 180 / 246 | 88.5 / 88.7 | 203 | 16.4 | 22.1 / 32.1 (6, 0, 0) | 32.2 | 0.0 | – | – (–) | 4.6 / 0.0 | 375 |
-| network | 770 / 2357 | 439.6 / 483.4 | 603 | 32.6 | 58.5 / 95.5 (6, 0, 0) | 6 h | 61.0 | 50.6 | 61.0 (1) | 72.5 / 4.8 | 400 |
-| alerts | 151 / 217 | 139.4 / 160.5 | 226 | 16.4 | 18.0 / 26.6 (6, 0, 0) | btn-sound | 0.2 | – | – (–) | 2.1 / 0.1 | 391 |
-| systems | 69 / 254 | 52.6 / 55.6 | 167 | 16.4 | – / – (0, 0, 0) | – | 3.4 | – | – (–) | 7.1 / 0.3 | 387 |
-| settings | 79 / 79 | 97.2 / 98.7 | 97 | – | 14.3 / 21.1 (6, 0, 0) | 5 min | 0.0 | – | – (–) | 2.3 / 0.0 | 385 |
-
-Load before: `1.38 1.20 1.51 1/267 86305`; alerts: `{('warning', False): 4}`
-
-### What the numbers say
-
-- **Press feedback.** Chromium is fastest on light pages (Switches 22 / 32 ms, Alerts 18 / 27 ms, p50 / p95). WPE
-  and Tauri take ~50 / 57–60 ms on Switches, and there the press shows in the first or second frame the runtime
-  presents after the touch (`frames_to_detect` 0–1): WebKit simply presents nothing for ~50 ms. On Home every
-  runtime reads slower (WPE 32 / 61, Tauri 42 / 69, Chromium 115 / 196 with 2 of 6 presses never seen), and those
-  figures include the instrument's cost (caveat 2). The Python UI shows a pressed state only through CSS
-  `:active`, which Chromium applies to a touch late (Home ~225 ms, Switches ~172 ms), and on 50 of 72 trials
-  (controls with no `:active` style) not at all within the 300 ms hold.
-- **Event Timing cross-check (Chromium).** The page's own `pointerdown` durations (to the next paint, 8 ms
-  granularity) agree with the compositor's press times on every page but Home: Switches ~24 ms (compositor 22),
-  Energy 16–40 (13–27), Climate 56–64 (62), Weather 32–48 (31–37), Alerts 16–40 (18–27), Network 48–96 (59–96).
-  On Home they are mostly 56–80 ms (two at 224 and 376) where the compositor reads 87–195 ms: the instrument
-  inflates Home, and Chromium's true press response there is about 60–80 ms, still over 50.
-- **Page switches** (warm, from the release, new page complete): 50–140 ms on most pages for all three; exceptions
-  are **Network ~380–480 ms** on every runtime, **Weather** 150–260 ms, and Chromium's **Energy** 275 / 367 ms.
-  The Network page's sky (`ui/src/pages/network/Sky.tsx`) disposes its renderer, textures and WebGL context
-  whenever the page is hidden and builds them again when it is shown, which fits a ~400 ms switch on all three
-  runtimes; the measurement itself has not isolated that cause (the next run masks the scene from the bands, so
-  that a slowly moving sky cannot delay the "complete" test). First visits (lazy chunk, first render, WebGL set-up)
-  are 0.5–1.5 s for Weather and Network. The Python UI is 230–400 ms on every page.
-- **Motion.** The page-switch ease-in moves in 16 ms steps on Climate and Switches everywhere. On Home it reads 32–37
-  ms on all three, the same as the instrument's own cost on that page (rAF p95 34.9 ms with the bands), so Home's
-  ease-in is **not measurable** with this instrument yet. The Network sky changes 55–61 times a second on all
-  three (lower bound); the Home energy flow 61 (WPE), 50 (Tauri), 40–48 (Chromium). The Weather scene did not change
-  at all during its measurement window, on any runtime (why is not established: whether recorded radar frames
-  were playing was not checked), and the Energy page had no animated scene in this bundle: **1 of the 3 scenes is
-  measured.**
-- **Idle CPU** (one core = 100 %): Home WPE 50 %, Tauri 64 %, Chromium 85 %, Python 82 %; Network 71 / 92 / 73 %;
-  Climate 10 / 26 / 29 % (something small there presents 60 frames a second; the bands saw no change, so it is
-  outside them); static pages 2–7 %.
-- **Memory** after every page was shown (PSS of the whole tree, one five-minute run each): WPE **366 MB** (8
-  processes, 3 of them bwrap / dbus-proxy at ~1 MB), Tauri **396 MB** (3 processes), Chromium **407 MB** (11),
-  Python UI 512–526 MB. Tauri and Chromium are within 3 % of the 400 MB limit after one run: at the limit, not a
-  verdict. This is not a long-run figure: the van's 1.15 GB for the Python UI is after days of uptime, and a soak of
-  the chosen runtime is the way to see growth. At boot (Home only): 237 / 285 / 330 / 303–307 MB.
-- **Cold start** (warm caches, launch → first usable frame): WPE **0.67 s**, Tauri 0.90 s, Chromium 1.45 s,
-  Python UI 2.3 s. **Tauri shows a light frame first** (mean luminance 245 of 255 at 240 ms, its GTK window's
-  default background) before the dark UI: a white flash at the splash hand-off (§4). WPE and Chromium do not.
-- **Screen power off/on**: every runtime kept running and recovered (first frame 53–141 ms after power-on, a page
-  switch completed, WebSocket live).
-- **GPU**: every runtime renders on the V3D (the render node is open in the GPU-rendering process, no llvmpipe
-  threads anywhere). Chromium's WebGL reports `ANGLE (Broadcom, V3D 7.1.10.2, OpenGL ES 3.1)`; WebKit masks its
-  renderer string as "Apple GPU", hence the process check.
-
-## 4. Screen power and the boot splash
+## 7. Screen power and the boot splash
 
 **Screen power.** Today sway turns the panel off and on (`swaymsg output <name> power off|on`, through the screen
 helper, `services/screen` in the Rust system). The runtime never sees it: sway stops sending it frame callbacks
-while the output is off, and the page keeps running (WebSocket, timers). Each run turns the output off for 6 s,
-back on as the helper does (by name, repeated until the connector reports on), then checks that a page switch
-still completes and that the page reports its WebSocket live. Results per runtime are in §3 ("screen power"). On
-the headless output this proves the runtime side only: the Pi 5's HDMI behaviour (the first power-on after an off
-being ignored, which the helper works around) and the van panel's backlight need the real screen and the van.
-Not exercised: the page's own screen-off button, which calls the helper over HTTP on 127.0.0.1:8091 (a
-cross-origin `fetch` from the page). The helper was not running in the benchmark session, so the page did not
-offer the button. Whether WPE's and WebKitGTK's fetch to it works as Chromium's does is still to check.
+while the output is off, and the page keeps running (WebSocket, timers). Each run turned the output off for 6 s and
+back on as the helper does (by name, repeated until the connector reports on). It then checked that a page switch
+still completes and that the page reports its WebSocket live. All five passed (§5). On the headless output this
+proves the runtime side only. The Pi 5's HDMI behaviour (the first power-on after an off is ignored, which the helper
+works around) and the van panel's backlight need the real screen. Not exercised: the page's own screen-off button,
+which calls the helper over HTTP on 127.0.0.1:8091 (a cross-origin `fetch` from the page). The helper was not running
+in the benchmark session, so the page did not offer the button. Whether WPE's and WebKitGTK's fetch to it works as
+Chromium's does is still to check.
 
 **Boot splash hand-off.** As on the Python kiosk, `aetherrv-panel.service` orders itself after Plymouth and runs
 `plymouth quit --retain-splash` before starting sway. The splash's last frame stays in the display's framebuffer
-until sway's first frame replaces it, which is sway's own background (`output * bg #000000 solid_color`), and the
-runtime's first paint follows. So for every runtime the sequence is splash → black → UI. The black gap is the
-runtime's launch → first paint (§3, cold start), plus sway's own start (not measured). None of the three runtimes needs
-anything runtime-specific for the hand-off, since sway owns the display:
+until sway's first frame replaces it. That frame is sway's own background (`output * bg #000000 solid_color`), and
+the runtime's first paint follows. So for every runtime the sequence is splash → black → UI. The black gap is the
+runtime's launch → first paint (§5: WPE 0.64 s, Tauri 0.82 s, Chromium 1.14 s), plus sway's own start (§8). None of
+the three runtimes needs anything runtime-specific for the hand-off, since sway owns the display:
 
-- the cold start checks every frame before the UI's content for a light frame (mean luminance). WPE (≤ 30 of
-  255) and Chromium (≤ 22) show none: their first frame is the page's dark background. **Tauri shows a white
-  frame first** (luminance 245, 240 ms after launch, ~0.5 s before the UI), its GTK window's default background:
-  at the hand-off that is a white flash between the splash and the UI. The Tauri app must set its window and
-  webview background to black before it could be used;
-- WPE's MiniBrowser defaults to a white view background too (`--bg-color`); it did not show here because the page
-  painted first, but a WPE launcher should set black as well, so that a slow first paint can never flash;
+- no runtime shows a light frame before the UI (§5). Tauri did until its window and webview background were set to
+  the page colour (§4.5);
+- WPE's MiniBrowser defaults to a white view background (`--bg-color`). It did not show here because the page
+  painted first, but a WPE launcher should set the page colour as well, so that a slow first paint can never flash;
 - to keep the splash on screen until the UI paints (no black gap at all), give sway the splash as its background
   (`output * bg /usr/share/plymouth/themes/aetherrv/splash.png center #000000`, which needs the `swaybg` package).
   This is independent of the runtime.
@@ -339,103 +459,137 @@ anything runtime-specific for the hand-off, since sway owns the display:
 Plymouth is not installed on the bench, so this is reasoned from the units and the measured first frames, not
 watched. The shutdown splash's ordering (`aetherrv-plymouth-after-panel.conf`) is unaffected by the runtime.
 
-## 5. Power-on to usable UI (§8: ≤ 15 s)
+## 8. Power-on to usable UI (§8: ≤ 15 s)
 
-Not measured yet: it needs a reboot of the bench, which the isolation tests and the soak did not allow, and the
-monitor (sway needs an output). What is known without rebooting:
+**Measured by rebooting the bench** four times (2026-11-24 00:53–00:57 bench time; `harness/uibench/boot-time.sh`
+from the workstation, `boot-measure.sh` on the bench). Before each reboot, `boot-measure.sh arm <runtime>` enables
+a one-shot unit, `uibench-boot.service`. It is ordered like `aetherrv-panel.service`: after the gateway, waiting for
+it on :8080. It starts sway with the kiosk config on a headless 1920×1200 output, and sway's one exec line starts
+the runtime under `aetherrv-uibench`. The runner records the runtime's launch and the first frame of the settled
+Home page on CLOCK_MONOTONIC, so every figure is time since the kernel started. Then:
 
-| stage | bench figure | source |
-|---|---|---|
-| firmware (Pi 5 bootloader, until the kernel starts) | not visible to Linux | measured by `boot-measure.sh` (estimate) or a stopwatch |
-| kernel | 0.77 s | `systemd-analyze` (this boot) |
-| userspace to `graphical.target` | 4.53 s | `systemd-analyze` (this boot; the aetherrv units were not enabled at boot, so the gateway is not in it) |
-| sway start → runtime launched | not measured | `boot-measure.sh` reports it |
-| runtime launch → usable frame | see §3, "boot → usable" | the cold-start scenario (a used profile, warm page cache: a lower bound for a real boot) |
+- **the firmware part** (the Pi 5 bootloader, which Linux cannot see) runs from the previous boot's last journal
+  entry (`Journal stopped`, late in the shutdown) to the new kernel's start (the bench's wall clock minus its
+  uptime). Both are on the bench's own clock. It is an upper bound: the last steps of the shutdown (unmounting, the
+  reboot call) run after the journal stops. For these four runs it was read by hand after each boot
+  (`journalctl -b -1 -o short-unix -n 1`). `boot-time.sh` now reads it itself, but that addition has not run yet;
+- **from the workstation**, the script pings the bench's wired address every ~0.1 s while it answers and every
+  ~0.15 s while it doesn't. It then polls the gateway on that address every ~0.05 s. The bench's figures are placed
+  on the workstation's clock with an offset taken over ssh (best of five round trips, 0.12 s). This cross-checks
+  the split: in every run the kernel started between the last ping reply before the reboot and the first after it.
+  The last ping reply came 0.1 s before the journal stopped.
 
-`harness/uibench/boot-measure.sh` measures the whole chain by a reboot: `arm <runtime>` installs
-`uibench-boot.service`, `aetherrv-panel.service`'s twin on tty1 (same ordering after the gateway, same wait for
-:8080, same `plymouth quit --retain-splash`), whose sway session launches the runtime under `aetherrv-uibench`.
-After `sudo reboot`, `report` prints firmware (estimated from the previous boot's last journal entry, so slightly
-high), kernel, userspace, gateway serving, panel started, runtime launched and first usable frame, all on the
-kernel's clock, and the total. `disarm` removes it. A cold power-on adds the power supply's and the bootloader's
-cold path: time it once with a stopwatch to compare.
+| run | firmware (journal stopped → kernel) | kernel → bus started | → gateway serving | → panel unit started | → runtime launched | → first frame with data | → **usable** (settled Home) | **firmware + kernel → usable** |
+|---|---|---|---|---|---|---|---|---|
+| WPE, 1st | 11.14 s | 3.64 | 5.10 | 5.37 | 6.22 | 7.35 | **10.17** | **21.3 s** |
+| Tauri | 8.54 s | 3.23 | 4.70 | 4.97 | 5.80 | – | **7.07** | **15.6 s** |
+| Chromium | 8.22 s | 2.89 | 4.72 | 4.97 | 5.81 | 7.42 | **7.65** | **15.9 s** |
+| WPE, 2nd | 8.57 s | 3.06 | 4.86 | 5.11 | 5.95 | 6.60 | **7.06** | **15.6 s** |
 
-## 6. Recommendation (provisional)
+(Times after the kernel started, in s. Tauri's page reported its data mark too late to place.)
 
-Provisional, from headless numbers with the caveats in §3; the owner confirms the choice after the acceptance run.
+- **15.6–15.9 s from the end of the shutdown to a usable UI with any runtime** (15.2 s to WPE's first frame with
+  data). These are upper bounds at the 15 s limit, so the bench does not show the budget met. The
+  firmware is the largest part: 8.2–8.6 s, and 11.1 s on the first reboot after 13 h of uptime (cause not
+  established). The bootloader is the Pi 5's (2025-12-08, `BOOT_ORDER=0xf416`, NVMe first, `BOOT_UART=1`).
+- Linux takes about 5 s to the panel unit. The kernel takes 0.75–1.1 s, and userspace reaches the default target
+  at 5.0–5.4 s; the gateway serves at 4.7–5.1 s and the panel unit follows it.
+- **The runtime's part is 1.1–1.8 s** from its launch to a usable Home: WPE 1.11 s on its second boot (0.65 s to
+  its first frame with data), Tauri 1.27 s, Chromium 1.84 s. From the panel unit's start it is 2.0–2.7 s, which
+  includes sway's start (~0.3 s) and the runner's capture set-up. On WPE's first boot the Home page settled 2.8 s
+  after its first frame with data (cause not established).
+- Seen from the workstation, the bench stopped answering 0.7–0.8 s after the reboot command. It answered ping
+  again 17.3–17.5 s later (20.1 s the first time), and its gateway answered on the LAN 0.04–0.07 s after that. The
+  wired network came up 8.6–8.8 s after the kernel started, later than the UI. So "the gateway answers" from
+  outside is not the UI's critical path.
 
-**WPE WebKit is the lightest, and nothing measured so far puts it behind the others where it matters.** Lowest
-memory (366 MB after every page, the only one clearly under the 400 MB limit; Tauri 396, Chromium 407), lowest CPU on
-the animated pages (Home 50 % of a core against 64 % and 85 %), fastest cold start (0.67 s against 0.90 and 1.45 s),
-and page switches as fast as the others or faster. Chromium shows the pressed state fastest on light pages (20–30 ms
-against ~50 ms) but is the heaviest on Home and over the memory limit. Tauri sits between the two, adds a native
-binary to build and maintain, and flashes white at start-up until its background is fixed.
+**Caveats.** The bench booted without its simulators: they are transient units, started by
+`harness/bench/bench-up.sh`, and do not come back after a reboot. So the services started with no devices. There
+was no Plymouth and no display: the headless output has no modeset, and the panel unit's `plymouth quit` was not
+there. The runtime loaded the gateway's installed bundle (`181a8efb6420`), not the final pass's. A cold power-on
+skips the shutdown but adds the power supply's ramp and the PMIC's start, which a reboot doesn't show.
 
-**No runtime meets every §8 number yet, and most of what fails is the same on all three:**
+**What would bring it under 15 s:** the firmware is the lever (the bootloader's configuration on the van: no UART
+logging, no other boot devices tried). Next are the services the panel unit waits for: it starts only once the
+gateway serves, at about 5 s. The runtime choice moves the total by about 0.6 s, with WPE fastest. The van's own
+figure is a van check (§10).
 
-| §8 number | status (headless) | what decides it |
-|---|---|---|
-| tap ≤ 50 ms | fails on Home everywhere (Chromium ~60–80 ms by Event Timing; the compositor figures are inflated there); WPE/Tauri ~57–60 ms p95 on Switches; Chromium passes on light pages | Home's energy flow; on Switches, WebKit presents no frame for ~50 ms after a touch |
-| page switch ≤ 150 ms | fails everywhere on Network (~380–480 ms) and Weather (150–260 ms), and on Chromium's Energy (275 / 367 ms); the other pages pass | the Network sky disposes its WebGL context when hidden and rebuilds it when shown (from its source; not isolated by measurement); the Weather map |
-| 60 fps Home / Climate / Switches | Climate and Switches pass; Home not measurable yet (its 32–37 ms equals the instrument's cost there) | the instrument (§9), then Home's energy flow at 50–85 % of a core |
-| ≥ 30 fps scenes | 1 of 3 measured: Network passes on all (55–61 fps) | the Weather scene did not change during the run (cause not established); the Energy WebGL bank is not in the bundle yet |
-| memory ≤ 400 MB | WPE 366 MB; Tauri 396 and Chromium 407 are within 3 % of the limit after one five-minute run each | a soak of the chosen runtime for growth |
-| power-on ≤ 15 s | not measured (needs a reboot and the monitor) | `boot-measure.sh` |
+## 9. Recommendation
 
-The runtime differences on Home rest on Chromium-only perturbation data (§3, caveat 2), so they are provisional.
-The next steps are in the UI as much as in the runtime choice: make the Network sky (and probably the Weather map)
-survive a page switch, and lighten the Home energy flow. Then rerun on the real screen (§9) and pick by those
-numbers. If the owner prefers the most familiar engine over the lightest, Chromium is the van's runtime today and
-works, but at about 85 % of a core on Home and at the memory limit.
+**WPE WebKit.** Run it fullscreen on sway as today, through MiniBrowser or a few-line WPEPlatform launcher in place
+of cog (§1).
 
-## 7. What the bench cannot prove
+- **It is the only runtime that meets the switch, frame-rate and memory numbers together.** Warm switches are
+  118 ms p95 over all pages, with the page's rAF at refresh on Home, Climate and Switches. The Network sky runs at
+  61 fps and the Weather loop at ≥ 32. It uses 358 MB PSS after every page, and reaches a usable UI 7.1 s after the
+  kernel starts. Its misses are the tap budget, by about 6 ms on one control (a switch tile, p95 56 ms; §4.3),
+  and power-on is at the limit: 15.6 s on the bench (15.2 s to the first frame with data), with every runtime
+  within 0.3 s of that and most of it the Pi's firmware (§8).
+- **It is the lightest.** It uses 22 % of a core on Home and at most 9 % on the static pages (Tauri 37 %, Chromium
+  34 %, the Python UI 81 % on Home). It has the fastest cold start: 0.68 s from launch to a usable Home, against
+  0.90 s for Tauri and 1.58 s for Chromium.
+- **Its numbers should hold best on the real panel.** One capture patch does not disturb it, and it had the least
+  GPU work pending behind each frame (§3; an inference until scanout is measured).
+- **What it costs.** The kept radar loop holds about 800 MB of GPU buffers (§4.1), outside the PSS figure.
+  Releasing it on hide puts the Weather switch at 140–150 ms; that choice is the owner's. MiniBrowser is not a
+  kiosk shell, so the launcher must set the view background to the page colour, and the panel unit must restart it
+  if it crashes. Still to check in WebKit: the page's cross-origin call to the screen helper (§7).
 
-- Real touch feel and the Waveshare panel's own touch latency (the injected touchscreen starts at the kernel's
-  input layer).
-- The panel's scanout and response time; on the bench monitor, its own processing (game mode or not).
-- Hold-to-dim on a real dimmer, and screen power control and wake-on-touch on the van's panel (the bench monitor
-  has no touch, and its HDMI power behaviour differs).
-- Plymouth: not installed on the bench, so the splash → sway → runtime hand-off is reasoned from the panel unit and
-  the measured first frames, not watched.
+**Tauri** runs the same engine (WebKitGTK) with about 100 MB more (457 MB, over the limit), more CPU on Home, slower
+presses (Home 56 / 63, Network 62 / 72 ms) and a slower start (0.90 s). It also adds a native app to build and
+maintain, and nothing in the UI needs one: the page only talks to the gateway over HTTP and the WebSocket.
+
+**Chromium**, the van's runtime today, shows a press fastest on light pages (13–30 ms). It misses the switch number
+(Energy 383 / 438 ms, Alerts 266, Weather 225 p95) and memory (586 MB with the scenes kept), and its Weather frame
+rate was not shown to reach 30 fps (lower bound 29). It also had the most GPU work pending behind its frames
+(57–198 ms median during switches), which suggests that its real-panel times are later than measured. Disposing the
+scenes on hide (`?keepgl=0`) brings its memory back to 410 MB, but its Network and Weather switches back to 480–770
+ms. In this benchmark it did not meet the memory and switch numbers at once, though the bands do stall it by 100–300
+ms at times (§3).
+
+**Open whichever runtime is chosen:** the tap budget (§4.3, the next UI task), the van checks (§10), and a soak of
+the chosen runtime for memory growth.
+
+## 10. What the bench cannot show (van checks)
+
+- **The panel itself**: scanout (up to one refresh after the commit times measured here, plus whatever GPU work is
+  still pending, §3), the Waveshare panel's touch controller and its response time, and real touch feel. The injected
+  touchscreen starts at the kernel's input layer.
+- **Power-on on the van**: the van's firmware and boot order with the CAN HATs, its own NVMe and the real panel.
+  The bench's figure (§8) has no Plymouth and no display to bring up.
+- Hold-to-dim on a real dimmer; screen power control and wake-on-touch on the van's panel. Headless only proves
+  that the runtime survives the output going off and on.
+- Plymouth: not installed on the bench, so the splash → sway → runtime hand-off is reasoned from the units and the
+  measured first frames (§7), not watched.
+- Long-run memory: each figure here is after one pass (about eight minutes). The van's 1.15 GB for the Python UI is
+  after days of uptime. A soak of the chosen runtime is the way to see growth.
 
 These go into `docs/CUTOVER.md` as checks on the van.
 
-## 8. Reproducing
+## 11. Reproducing
 
 ```sh
-harness/uibench/full.sh headless            # development numbers (no monitor needed)
-harness/uibench/full.sh screen              # acceptance: 1920x1200 custom mode on the bench monitor
-harness/uibench/full.sh screen-fallback     # if the monitor rejects it: 1920x1080, plus native 2560x1440
+UIBENCH_HOST=<bench> harness/uibench/full.sh               # all five at 1920x1200, plus perturb.sh per runtime
+UIBENCH_HOST=<bench> harness/uibench/full.sh 2560x1440     # the same at another size
+UIBENCH_HOST=<bench> harness/uibench/boot-time.sh wpe      # reboots the bench: power-on to usable (§8)
 ```
 
 `full.sh` builds the bundle, installs it on the bench gateway (`/opt/aetherrv-rs/ui` only), builds the tool and the
-Tauri app natively on the Pi, runs `run.sh all` there, and copies the results to `harness/out/uibench/`
-(gitignored). On the bench, `harness/uibench/run.sh <runtime|all> <headless|screen> [WxH]` runs one runtime.
-`boot-measure.sh` measures power-on to usable by a reboot (§5). `calibrate.sh <0|30|60> [frames options]` repeats the
-calibration of §2 and `perturb.sh [page…]` the cost check of §3; `aetherrv-uibench frames`, `globals` and
-`touch-test` are the tool's own diagnostics. Everything refuses to run on a host with `hat0`/`hat1` (the van).
-Run so far as written: `session.sh` (headless), `run.sh` (headless), `aetherrv-uibench run/frames/globals/
-touch-test`, `summarize.py`, `serve_ref.py`, `perturb.sh` (Chromium). Not yet run as written: `full.sh`,
-`prepare.sh` (its steps were done by hand), `calibrate.sh` (the calibration used the same commands from a
-scratch script), `boot-measure.sh`, the `screen` branch of `session.sh`/`run.sh`, and the runner with
-`--pages home` (the boot measurement's settings).
+Tauri app natively on the Pi, runs `run.sh all headless` there and `perturb.sh` for each runtime, and copies the
+results to `harness/out/uibench/` (gitignored). To measure a bundle without installing it, as the final pass did,
+start `serve_bundle.py <dir>` on the bench and run `run.sh` with `UIBENCH_URL=http://127.0.0.1:18082/?bench=1`
+and `UIBENCH_BUNDLE_DIR=<dir>`, and `perturb.sh` with `UIBENCH_BASE=http://127.0.0.1:18082`. On the bench,
+`harness/uibench/run.sh <runtime|all> headless [WxH]` runs one runtime. `calibrate.sh <0|30|60> [frames options]`
+repeats the calibration of §2, and `perturb.sh [--runtime …] [page…]` the cost check of §3. `boot-measure.sh
+arm|report|disarm` is the bench side of `boot-time.sh`. `aetherrv-uibench frames`, `globals` and `touch-test` are
+the tool's own diagnostics. Everything refuses to run on a host with `hat0`/`hat1` (the van). URL switches for
+experiments: `?keepgl=0` or `?keepgl=sky,radar,bank` (which WebGL scenes stay alive on hide), `?sky=2d`,
+`?skyfps=N`, and `&press=promote|nofilter` (bench module only, §4.3).
 
-## 9. Acceptance run on the real screen
-
-The monitor was not detected while this draft was written (`/sys/class/drm/card1-HDMI-A-*/status` =
-`disconnected`). When it is back:
-
-1. **Improve the frame clock first.** On the DRM backend the kernel knows when each frame is actually scanned out.
-   The `drm_vblank_event` tracepoint (tracefs, read by the root helper) gives the flip time of every frame sway
-   presents at no cost to sway. It replaces the screencopy ticker, whose cost on GPU-heavy pages is caveat 2 in §3.
-   Pixel patches stay only where a frame's content must be identified (presses, page switches), and
-   `perturb.sh` reports their cost per page. Not built yet: it needs the monitor to develop against.
-2. **Mode.** `harness/uibench/full.sh screen` asks sway for a custom 1920×1200 @ 60 Hz mode and records what the
-   display controller actually drives (sway's mode and the KMS state from debugfs, in each run's `session.txt` and
-   label). A screenshot is no proof that the monitor shows it, so the owner looks at the screen once. If the
-   monitor rejects the mode: `full.sh screen-fallback` runs 1920×1080, which §8 then judges, and native 2560×1440 as
-   the headroom check. The results say which case applied.
-3. **Clean Python baseline**: `run.sh python screen …` and `run.sh python-static screen …` (both are in `all`).
-4. **Power-on**: `boot-measure.sh arm <chosen runtime>`, `sudo reboot`, `boot-measure.sh report`, `disarm`.
-5. **Pages still to come**: rerun once the Energy page's WebGL battery bank has landed, and with recorded radar
-   frames playing on Weather, so that both WebGL scenes are measured.
+**How the final pass was actually run, and what has not run as written.** The final pass, the memory runs (§4.1),
+the per-scene runs, the press experiments (§4.3) and the before-Home run (§4.2) were driven by a scratch script
+outside the repo. It called `run.sh` and `perturb.sh` with the URL and bundle overrides above, against
+`serve_bundle.py`, and the commands are as given in each section. The power-on runs used `boot-time.sh` as
+committed, except its journal-based firmware figure, which was added afterwards (§8). Not run as written:
+`full.sh` and `prepare.sh` since their headless rewrite, and `calibrate.sh` (the calibration used the same
+commands). The 2560×1440 size was not run.
