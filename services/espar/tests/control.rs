@@ -382,3 +382,61 @@ fn suspended_sends_nothing() {
     r.step();
     assert_eq!(r.bus.sent.len(), n, "SIGTERM: stop transmitting, no OFF");
 }
+
+/// The van, 2026-11-24: the Victron service restarting reported the Cerbo disconnected for a moment, the controller
+/// switched to the heater's intake sensor (about 40 °C while burning) as the room value, and the heater stopped
+/// burning. Owner: during a heat run, hold the last cabin reading instead (up to CABIN_HOLD_S); the intake sensor only
+/// after that, or when the heater isn't heating.
+#[test]
+fn a_cabin_dropout_mid_run_holds_the_last_cabin_value_not_the_intake() {
+    use aetherrv_espar::control::CABIN_HOLD_S;
+    let room_word = |c: f64| (((c + 50.0) * 10.0).round() as u16).to_le_bytes();
+    let mut r = heating_run();
+    assert_eq!(r.c.room_src.as_deref(), Some("cabin Ruuvi"));
+    let hot = |r: &mut Rig| {
+        let now = r.now;
+        r.a.diag.insert("temps".into(), (json!({"flame_c": 185.0, "intake_c": 41.2, "outlet_c": 86.0}), now));
+    };
+    // the dropout: Victron reports the Cerbo disconnected (a service restart); the intake reads hot
+    r.inp.victron_connected = Some(false);
+    let sent_before = r.bus.cmds().len();
+    for _ in 0..50 {
+        r.now += 0.1;
+        hot(&mut r);
+        r.step();
+        r.heater_says("090400001C020000");
+    }
+    let during: Vec<Vec<u8>> = r.bus.cmds()[sent_before..].to_vec();
+    assert!(!during.is_empty());
+    assert!(during.iter().all(|d| d[4..6] == room_word(18.0)), "the last cabin value (18.0 °C), held");
+    assert!(during.iter().all(|d| d[4..6] != room_word(41.2)), "never the hot intake mid-run");
+    assert_eq!(r.c.room_src.as_deref(), Some("cabin Ruuvi (last reading, held)"));
+    assert!(r.c.active && r.c.mode == "heat", "still heating");
+    // the Ruuvi back: live again
+    r.inp.victron_connected = Some(true);
+    r.inp.cabin = Some((18.4, 1.0));
+    r.now += 0.1;
+    r.step();
+    assert_eq!(r.c.room_src.as_deref(), Some("cabin Ruuvi"));
+    assert_eq!(r.c.last_room, Some(18.4));
+    // a long outage: after the hold, the intake (as before; the heater then turns itself down)
+    r.inp.victron_connected = Some(false);
+    let until = r.now + CABIN_HOLD_S + 1.0;
+    while r.now < until {
+        r.now += 1.0;
+        hot(&mut r);
+        r.step();
+        r.heater_says("090400001C020000");
+        if r.now < until - 2.0 {
+            assert_eq!(r.c.room_src.as_deref(), Some("cabin Ruuvi (last reading, held)"));
+        }
+    }
+    assert!(r.c.active && r.c.mode == "heat");
+    assert_eq!(r.c.room_src.as_deref(), Some("heater intake sensor"));
+    assert_eq!(r.c.last_room, Some(41.2));
+    // not heating (a fresh controller, nothing running): the intake at once, as before
+    let mut idle = rig(true, false);
+    idle.a.diag.insert("temps".into(), (json!({"intake_c": 12.5}), idle.now));
+    let (room, src) = idle.c.room(&idle.a, &idle.inp, idle.now);
+    assert_eq!((room, src.as_deref()), (Some(12.5), Some("heater intake sensor")));
+}

@@ -30,6 +30,10 @@ use serde_json::{Value, json};
 pub const DEVICE: &str = "espar";
 /// The cabin Ruuvi is stale after 15 min of silence (the Cerbo republishes it only on change; climate.py).
 pub const FRONT_STALE: f64 = 15.0 * 60.0;
+/// During a heat run, a cabin reading that drops out (the Victron service restarting reports the Cerbo disconnected
+/// for a moment) is held this long before the heater's intake sensor is used: the intake reads 40 °C and more while
+/// the heater burns, and sent as the room value it stops the burn (van, 2026-11-24; owner: hold the last cabin value).
+pub const CABIN_HOLD_S: f64 = 5.0 * 60.0;
 pub const SETPOINT_RANGE: (f64, f64) = (10.0, 30.0);
 pub const RUN_STATE_VERSION: u32 = 1;
 
@@ -167,6 +171,8 @@ pub struct Control {
     pub reset_requested: bool,
     /// The room value saved before a restart: the last fallback after a resume, until live sources are back.
     saved_room: Option<(f64, f64)>,
+    /// The last cabin Ruuvi reading used, and when: held during a heat run while the Ruuvi drops out ([`CABIN_HOLD_S`]).
+    last_cabin: Option<(f64, f64)>,
     pub resumes: Vec<f64>,
     /// Last broker contact (`CLOCK_BOOTTIME`), carried across restarts.
     pub last_contact: Option<f64>,
@@ -203,6 +209,7 @@ impl Control {
             tick: 0,
             reset_requested: false,
             saved_room: None,
+            last_cabin: None,
             resumes: vec![],
             last_contact: None,
             suspended: false,
@@ -222,6 +229,19 @@ impl Control {
             && inp.victron_connected != Some(false)
         {
             return (Some(t), Some("cabin Ruuvi".into()));
+        }
+        // heating: never the intake sensor while a recent cabin value exists (it reads the heater's own warm air)
+        if self.active && self.mode == "heat" {
+            if let Some((t, at)) = self.last_cabin
+                && now - at < CABIN_HOLD_S
+            {
+                return (Some(t), Some("cabin Ruuvi (last reading, held)".into()));
+            }
+            if let Some((t, at)) = self.saved_room
+                && now - at < CABIN_HOLD_S
+            {
+                return (Some(t), Some("saved before the restart".into()));
+            }
         }
         if let Some(t) = dec.intake_c(now) {
             return (Some(t), Some("heater intake sensor".into()));
@@ -314,6 +334,9 @@ impl Control {
         }
         if room.is_some() {
             self.room_t = Some(now);
+        }
+        if let (Some(t), Some("cabin Ruuvi")) = (room, src.as_deref()) {
+            self.last_cabin = Some((t, now));
         }
         self.last_room = room;
         self.room_src = src;
