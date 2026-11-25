@@ -30,7 +30,7 @@ rm -f "$DEST"/bin/*.d
 install -m 644 "$SRC"/packaging/etc/mosquitto.conf "$SRC"/packaging/etc/mosquitto.acl "$DEST/etc/"
 install -d -m 755 "$DEST/panel"
 install -m 644 "$SRC"/packaging/panel/sway.conf "$DEST/panel/"
-install -m 755 "$SRC"/packaging/panel/launch.sh "$SRC"/packaging/panel/screen.sh "$DEST/panel/"
+install -m 755 "$SRC"/packaging/panel/launch.sh "$SRC"/packaging/panel/screen.sh "$SRC"/packaging/panel/wait-hdmi.sh "$DEST/panel/"
 # the WPE kiosk launcher (panel/wpe), built here where WPE's headers are; launch.sh falls back to MiniBrowser without it
 if pkg-config --exists wpe-webkit-2.0 2>/dev/null && command -v cc >/dev/null; then
   # built beside the running one and renamed over it, so a panel running the old launcher is not disturbed

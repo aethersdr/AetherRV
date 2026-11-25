@@ -31,9 +31,10 @@ Environment=XCURSOR_PATH=/usr/share/aetherrv/cursors XCURSOR_THEME=default XCURS
 EnvironmentFile=-/etc/aetherrv/panel.env
 # Wait (up to 60 s) for the gateway so the runtime doesn't land on an error page; the UI shows skeletons at once.
 ExecStartPre=/bin/bash -c 'for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/8080) 2>/dev/null && exit 0; sleep 0.25; done; exit 0'
-# Started early now (not after network.target): wait (up to 5 s) for the display driver's connectors, so sway never
-# starts before KMS is there and loses RestartSec to a failed start.
-ExecStartPre=/bin/bash -c 'for i in $(seq 50); do ls /sys/class/drm | grep -qE "^card[0-9]+-" && exit 0; sleep 0.1; done; exit 0'
+# Started early now (not after network.target): wait until the HDMI display reads connected and steady for 2 s (at most
+# 20 s; packaging/panel/wait-hdmi.sh). In the van sway started at 4 s found no display and the panel stayed dark
+# (2026-11-24); the splash stays up while this waits.
+ExecStartPre=/bin/bash /opt/aetherrv-rs/panel/wait-hdmi.sh
 ExecStartPre=-+/usr/bin/plymouth quit --retain-splash
 ExecStartPre=-/usr/bin/pkill -u kiosk -f /opt/aetherrv-rs/panel/screen.sh
 ExecStartPre=-/usr/bin/pkill -u kiosk -x aetherrv-screen
