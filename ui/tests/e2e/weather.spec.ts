@@ -223,6 +223,17 @@ test("map mode cycles Auto → Dark → Light; Auto without a position follows n
   await noLeaks(s);
 });
 
+test("the dark map filters the basemap with CSS filter functions (WebKit drops url() filters on Leaflet's tiles)", async ({ page }) => {
+  await stub(page);
+  await expect(page.locator(".wx-base").first()).toBeAttached();
+  await page.click("#wx-dark");                                             // daytime: Auto → Dark
+  await expect(page.locator("#wx-dark")).toHaveText("Map: Dark");
+  const f = await page.locator(".wx-base").first().evaluate(e => getComputedStyle(e).filter);
+  expect(f).toContain("invert(1)");
+  expect(f).not.toContain("url(");
+  await expect(page.locator("#wx-dark-filter")).toHaveCount(0);
+});
+
 test("radar opacity: the slider sets it in 5 % steps and remembers it", async ({ page }) => {
   const s = await stub(page);
   await expect(page.locator("#wx-opac")).toHaveAttribute("aria-valuenow", "85");

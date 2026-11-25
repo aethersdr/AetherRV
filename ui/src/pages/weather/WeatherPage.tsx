@@ -292,10 +292,7 @@ export default function WeatherPage() {
         <h2>Weather radar</h2><WxLoc /><WxSub />
         <MapModeBtn mode={mode} dark={dark} onCycle={cycle} />
       </div>
-      {/* AetherMap's dark basemap (AetherSDR BasemapStyle::darkImage): reversed luminance ramped from
-          color.map.darkDetail (#c8d8e8) to color.map.darkBackground (#18212b); radar is not filtered. */}
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true"><filter id="wx-dark-filter" colorInterpolationFilters="sRGB">
-        <feColorMatrix type="matrix" values="-0.14674 -0.49363 -0.04983 0 0.78431  -0.15257 -0.51326 -0.05181 0 0.84706  -0.15757 -0.53009 -0.05351 0 0.90980  0 0 0 1 0" /></filter></svg>
+      {/* the dark basemap is a CSS filter on .wx-base (styles/app.css: "Dark map toggle") */}
       <div className="wx-body">
         <MapArea dark={dark} pick={pick} onPick={onPick} />
         <ForecastFor pick={pick} />

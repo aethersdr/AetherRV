@@ -696,8 +696,12 @@ html.kiosk, html.kiosk * { cursor: none !important; }
 .wx-base { filter: saturate(.8) brightness(.95); }
 .wx-radar-gl { pointer-events: none; }
 
-/* Dark map toggle */
-.wx-wrap.dark-map .wx-base { filter: url(#wx-dark-filter); }
+/* Dark map toggle. AetherMap's dark basemap (AetherSDR BasemapStyle::darkImage): reversed luminance ramped from
+   color.map.darkDetail (#c8d8e8) to color.map.darkBackground (#18212b); radar is not filtered. Built from CSS filter
+   functions, not an SVG url() filter: WebKit (the panel's WPE) ignores url() filters on composited layers, and
+   Leaflet moves every tile with translate3d, so the van's dark map stayed light (2026-11-24). This chain is fitted to
+   the original matrix: within 7/255 per channel (white → #1f2225 for #18212b, black → #c4d8ec for #c8d8e8). */
+.wx-wrap.dark-map .wx-base { filter: grayscale(1) brightness(0.877) invert(1) contrast(0.927) brightness(0.803) sepia(0.369) hue-rotate(169.6deg) saturate(1.269); }
 .wx-wrap.dark-map .wx-base.sat { filter: brightness(.62) saturate(.85); }   /* imagery: dimmed, not inverted */
 .wx-wrap.dark-map #wx-map, .wx-wrap.dark-map .leaflet-container { background: #18212b; }
 #wx-dark.on { background: color-mix(in srgb, var(--c-batt) 25%, var(--surface-2)); border-color: var(--c-batt); color: var(--ink); }
