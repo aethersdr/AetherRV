@@ -884,3 +884,8 @@ as `aetherrv-uibench` subcommands and jq, each diffed against its original befor
 The README screenshots are now the Rust UI (`harness/ui-reference/screenshots.sh`): the van's state and history
 copied read-only, sanitized (`sanitize-state.jq`: Denver, "Campground Wi-Fi", Batt 1-4, serials/MACs/private IPs
 replaced), rendered against a stub gateway that refuses every command.
+
+On the bench, 20be112 installed with `cross-push.sh` (the new `aetherrv-update.service` in place, outside
+`units.txt`), then `rollback-test.sh` against the bench's own Python install: 36 ok, 0 failed, as before. The test's
+Python install step puts the Python update unit back, so the bench's was restored afterwards. The uibench scripts
+have not been run end to end on the bench yet.
