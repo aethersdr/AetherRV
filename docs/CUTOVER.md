@@ -2,7 +2,8 @@
 
 > **Done 2026-11-24; kept as the record.** The van runs the Rust system. The Python code left the repo on
 > 2026-11-25 (tag `python-final`) and the rollback with it (`packaging/rollback.sh`, owner): §9 below no longer
-> applies. `packaging/cutover.sh` stays for staged transmit (read-only, then one device at a time, then full).
+> applies, and the van's Python install was removed the same day. `packaging/cutover.sh` stays for staged transmit
+> (read-only, then one device at a time, then full).
 
 **Do not start without the owner present.** Every step that changes what a device is sent is the owner's call, in
 person, one device at a time. The rollback is one command and can be run at any point (§9).

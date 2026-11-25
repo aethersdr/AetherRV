@@ -889,3 +889,12 @@ On the bench, 20be112 installed with `cross-push.sh` (the new `aetherrv-update.s
 `units.txt`), then `rollback-test.sh` against the bench's own Python install: 36 ok, 0 failed, as before. The test's
 Python install step puts the Python update unit back, so the bench's was restored afterwards. The uibench scripts
 have not been run end to end on the bench yet.
+
+Later the same day the owner chose to drop the rollback at once rather than after two weeks: `packaging/rollback.sh`
+and `harness/bench/rollback-test.sh` were deleted, and `cutover.sh` lost its Python half (it keeps staged transmit;
+`--read-only` now restarts a running system after the heater check, tested on the bench). Then, with the owner's yes,
+the van: 773090c deployed (cross-compiled; installs only: the new update unit and `aetherrv-setup`), a full backup of
+the Python install taken to the workstation (verified), and `/opt/aetherrv`, the `aetherrv`/`-kiosk`/`-admin` units,
+`/usr/local/lib/aetherrv`, the kiosk PAM file and its shutdown-splash drop-ins deleted, then a daemon-reload. No
+service restarted (the same PIDs before and after; the Rixens was burning throughout), no unit failed, the gateway
+and the panel kept running. The services still run 493935c/d8f3adf binaries until their next restart.

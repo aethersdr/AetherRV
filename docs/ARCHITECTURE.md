@@ -431,8 +431,8 @@ enforcement points follow that one switch.
   cutover runbook.
 - `packaging/`: systemd units, `aetherrv.target`, the Mosquitto config, `install.sh`, and `push.sh`, which has **no
   default host** (it never reads `packaging/local.env`, whose host is the van). The van's installed Python tree
-  (`/opt/aetherrv`) stays until it is removed with the owner's OK; the repo no longer carries it (tag
-  `python-final`), nor the rollback (removed 2026-11-25). Until the cutover, `push.sh` and `install.sh` **refuse a host that has `hat0` or `hat1`**, i.e. the
+  (`/opt/aetherrv`) was removed with the owner's OK on 2026-11-25, as were the rollback and the Python code in the
+  repo (tag `python-final`). Until the cutover, `push.sh` and `install.sh` **refuse a host that has `hat0` or `hat1`**, i.e. the
   van; the bench Pi has no CAN HAT. The cutover script lifts that guard explicitly.
 - All services run as the one `aetherrv` user, as today, so the admin helper's caller check is unchanged.
   Per-service users would tighten the broker ACL and the admin verbs per caller, at the cost of a shared group for
@@ -565,3 +565,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-24 | The Espar's diagnostics go into the history database, logged like the rest: every 30 s, kept 30 days, pruned hourly (D23; first asked as a rolling 30-min buffer, then changed by the owner), to look back at heater events such as a power dip mid-run | owner |
 | 2026-11-25 | `rust` merged into `main`; the Python code removed from the repo (last version tagged `python-final`). What the Rust system still used moved to `packaging/` (network, iwd, boot splash, the system update without its Python environment check); the Python tools became `aetherrv-setup peplink-rw-client` / `store-secrets` and jq scripts. The van's `/opt/aetherrv` and `packaging/rollback.sh` stay for the rollback window | owner |
 | 2026-11-25 (later) | The rollback removed now, not after two weeks: `packaging/rollback.sh`, `harness/bench/rollback-test.sh` and `cutover.sh`'s Python half (it keeps staged transmit; `--read-only` restarts a running system after the heater check). The van's Python install goes in a separate step with the owner's OK | owner |
+| 2026-11-25 (later) | The van's Python install removed (owner): first 773090c deployed (the new update unit and `aetherrv-setup`; installs only), a full backup taken off the van, then `/opt/aetherrv`, the `aetherrv`/`-kiosk`/`-admin` units, `/usr/local/lib/aetherrv`, the kiosk PAM file and its shutdown-splash drop-ins deleted and systemd reloaded; no service restarted (same PIDs before and after) | owner |
