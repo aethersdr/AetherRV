@@ -1,8 +1,7 @@
 # AetherRV
 
 A touchscreen console for a camper van, running on a Raspberry Pi 5: power, heat, climate, network and switching on
-one screen, with chrome from the [AetherSDR](https://aethersdr.com) project. The same pages work in a browser on a
-phone or laptop.
+one screen. The same pages work in a browser on a phone or laptop.
 
 ![AetherRV home screen on the van's 10.1" touchscreen](docs/screenshots/home.png)
 
