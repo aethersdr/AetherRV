@@ -833,6 +833,13 @@ after a long sleep is still untested (it may drop off HDMI when it sleeps, and t
 longer has). The touchscreen's own commands were confirmed
 that evening (client `kiosk`: the MultiPlus, the MCS7 setpoint, an Espar heat run).
 
+**The dark weather map stayed light on the panel** (same evening). The map's dark mode was an SVG `url()` filter,
+which WebKit (WPE) ignores on composited layers, and Leaflet moves every tile with `translate3d`; Chromium (Python's
+kiosk, and the UI tests) applied it. Now CSS filter functions fitted to the same matrix (within 7/255 per channel),
+checked in WPE on the bench (the map's mean luminance 0.19 against 0.90) and confirmed dark on the van by the owner.
+Installed with `packaging/push.sh --cutover` at 3bde579 (with the panel's HDMI wait in the unit itself now; the
+`/etc` drop-in duplicates it and can go).
+
 Still to do (`docs/CUTOVER.md` §8): ~~a command from the touchscreen itself~~ (done, see above) (all of the day's commands came from a
 browser on the LAN; a tap the owner made on the panel left no command in `command_log`, so it was not seen to
 switch through AetherRV), the boot splash watched and power-on by stopwatch, the panel's memory after a day and
