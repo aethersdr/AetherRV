@@ -1,12 +1,10 @@
+# leftovers of the Python system in a local checkout
 .venv/
 __pycache__/
-*.pyc
 captures/
-.pytest_cache/
 deploy/network-backups/
 VERSION
 # local, user-specific (never published): deploy target, real config
-deploy/local.env
 config/aetherrv.toml
 config/*.local.toml
 # private, never published: the unsanitized build log

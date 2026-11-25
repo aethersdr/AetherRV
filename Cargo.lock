@@ -336,6 +336,8 @@ dependencies = [
 name = "aetherrv-setup"
 version = "0.1.0"
 dependencies = [
+ "aetherrv-core",
+ "aetherrv-sim",
  "anyhow",
  "libc",
  "reqwest",

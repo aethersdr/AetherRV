@@ -1,6 +1,6 @@
 #!/bin/bash
-# The OS pieces a Rust-only AetherRV needs (a fresh build, docs/BUILD-GUIDE.md §5): what the Python installer
-# (deploy/install.sh) used to set up, without Python. Run ON THE PI as root: packaging/install.sh --system runs it.
+# The OS pieces AetherRV needs on a fresh console (docs/BUILD-GUIDE.md §5): users, network files, PAM, cursor,
+# package holds and the boot splash. Run ON THE PI as root: packaging/install.sh --system runs it.
 # Idempotent. Never touches /boot (the boot splash's one-time /boot setup is tools/install_boot_splash.sh).
 set -euo pipefail
 SRC=${SRC:-/opt/aetherrv-rs/src}
@@ -8,14 +8,13 @@ cd "$SRC"
 id aetherrv &>/dev/null || useradd --system --home-dir /var/lib/aetherrv --shell /usr/bin/nologin aetherrv
 id kiosk    &>/dev/null || useradd --system --create-home --home-dir /home/kiosk --shell /usr/bin/nologin -G video,input,render kiosk
 # CAN: the HATs' stable names and listen-only ports are set up by hand in BUILD-GUIDE §4; these are the vcans
-install -m 644 deploy/network/05-vcan*.netdev deploy/network/05-vcan*.network /etc/systemd/network/
-install -m 644 deploy/network/25-wireless.network /etc/systemd/network/
+install -m 644 packaging/network/05-vcan*.netdev packaging/network/05-vcan*.network /etc/systemd/network/
+install -m 644 packaging/network/25-wireless.network /etc/systemd/network/
 if pacman -Q iwd &>/dev/null; then
-  install -d -m 755 /etc/iwd && install -m 644 deploy/iwd/main.conf /etc/iwd/main.conf
+  install -d -m 755 /etc/iwd && install -m 644 packaging/iwd/main.conf /etc/iwd/main.conf
   systemctl enable --now iwd.service
 fi
-install -m 644 deploy/pam/aetherrv-kiosk /etc/pam.d/aetherrv-kiosk
-install -m 644 packaging/pam/aetherrv-panel /etc/pam.d/aetherrv-panel     # the Rust panel's own stack (user-light)
+install -m 644 packaging/pam/aetherrv-panel /etc/pam.d/aetherrv-panel     # the panel session's stack (user-light)
 # hold the kernel/boot packages (custom kernel; linux-rpi owns the /boot dtbs/overlays it boots with)
 for pkg in linux-rpi raspberrypi-bootloader firmware-raspberrypi; do
   grep -qE "^IgnorePkg.*\b$pkg\b" /etc/pacman.conf || {
@@ -24,7 +23,7 @@ for pkg in linux-rpi raspberrypi-bootloader firmware-raspberrypi; do
     else sed -i "s/^#IgnorePkg.*/IgnorePkg = $pkg/" /etc/pacman.conf; fi
   }
 done
-# an invisible Xcursor theme for the touch-only panel (tools/make_blank_cursor.py, in bash): a 1x1 transparent image
+# an invisible Xcursor theme for the touch-only panel: a 1x1 transparent image for every cursor name
 le32() { printf "\\\\x%02x\\\\x%02x\\\\x%02x\\\\x%02x" $(($1 & 255)) $((($1 >> 8) & 255)) $((($1 >> 16) & 255)) $((($1 >> 24) & 255)); }
 blank_cursor() {
   printf 'Xcur'
@@ -39,13 +38,12 @@ printf '[Icon Theme]\nName=AetherRV blank\nComment=Invisible pointer for the tou
 # boot splash theme (when Plymouth is installed)
 if pacman -Q plymouth &>/dev/null; then
   install -d -m 755 /usr/share/plymouth/themes/aetherrv
-  install -m 644 deploy/boot/plymouth/aetherrv/* /usr/share/plymouth/themes/aetherrv/
+  install -m 644 packaging/boot/plymouth/aetherrv/* /usr/share/plymouth/themes/aetherrv/
   for u in plymouth-reboot plymouth-poweroff plymouth-halt; do
     install -d -m 755 /etc/systemd/system/$u.service.d
-    install -m 644 deploy/boot/systemd/aetherrv-plymouth-after-kiosk.conf /etc/systemd/system/$u.service.d/aetherrv.conf
     install -m 644 packaging/boot/aetherrv-plymouth-after-panel.conf /etc/systemd/system/$u.service.d/aetherrv-panel.conf
   done
-  install -m 644 deploy/boot/systemd/aetherrv-splash-hold.service /etc/systemd/system/
+  install -m 644 packaging/boot/aetherrv-splash-hold.service /etc/systemd/system/
   systemctl daemon-reload
   systemctl enable aetherrv-splash-hold.service
 fi

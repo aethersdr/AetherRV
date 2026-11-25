@@ -18,9 +18,10 @@ When you create a new crate directory, write `src/lib.rs` (even empty) **before*
 
 ## Rules
 
-- **The Python module is the specification.** Same rules, timings, state keys (names, JSON types, order), detail
-  texts, command-log rows (`aetherrv_core::cmdlog::CommandLog`, which writes the Python `str(value)` form) and log
-  messages. Where you can't be identical, say so in the report (and in `ARCHITECTURE.md` §13a once accepted).
+- **The Python module was the specification** (tag `python-final`) for every ported service: same rules, timings,
+  state keys (names, JSON types, order), detail texts, command-log rows (`aetherrv_core::cmdlog::CommandLog`, which
+  writes the Python `str(value)` form) and log messages. Where a service differs, the report says so (and
+  `ARCHITECTURE.md` §13a once accepted).
 - **Logic is testable without I/O.** Time comes in as `now: f64` (Unix seconds, Python `time.time()`) or
   `CLOCK_BOOTTIME` where a loop must survive wall-clock jumps. State reads go through
   `aetherrv_core::state::StateView` (`StateExt` gives `num`, `is_true`, `list`, …), so tests use a `StateStore` and

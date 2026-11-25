@@ -407,8 +407,9 @@ enforcement points follow that one switch.
   echoes and never loses an ACK. The real MCP2515 behaviour is a van check in `docs/CUTOVER.md`.
 - **A two-socket vcan test** shows that a second socket sees the first one's frames, which is why one service owns
   each port.
-- **Golden parity**: the Python reference (from `main`) and the Rust system are fed the same replayed captures and
-  simulator inputs; `harness/parity/parity.py` diffs `/api/state` key by key. Owner rule (Q-P2): fields that depend
+- **Golden parity** (until the Python code was removed, 2026-11-25; tag `python-final`): the Python reference and
+  the Rust system were fed the same replayed captures and simulator inputs; `harness/parity/parity.py` diffed
+  `/api/state` key by key. Owner rule (Q-P2): fields that depend
   on when each system sampled or started (ages, `since`/`t` times within 1.5 s, CAN frame rates, alert raise times
   skewed by the start-time difference) compare as equal within that tolerance; every other key must match exactly.
 - **Isolation tests** (`tools/isolation`): the full system on simulators; kill and restart each service and the
@@ -429,8 +430,8 @@ enforcement points follow that one switch.
   `push.sh` does. It refuses a host with `hat0`/`hat1`: **the van's deploys stay native**, through `push.sh` and the
   cutover runbook.
 - `packaging/`: systemd units, `aetherrv.target`, the Mosquitto config, `install.sh`, and `push.sh`, which has **no
-  default host** (it never reads `deploy/local.env`, whose host is the van). Python's `deploy/` stays as it is for
-  the rollback. Until the cutover, `push.sh` and `install.sh` **refuse a host that has `hat0` or `hat1`**, i.e. the
+  default host** (it never reads `packaging/local.env`, whose host is the van). The van's installed Python tree
+  (`/opt/aetherrv`) stays for the rollback; the repo no longer carries it (tag `python-final`). Until the cutover, `push.sh` and `install.sh` **refuse a host that has `hat0` or `hat1`**, i.e. the
   van; the bench Pi has no CAN HAT. The cutover script lifts that guard explicitly.
 - All services run as the one `aetherrv` user, as today, so the admin helper's caller check is unchanged.
   Per-service users would tighten the broker ACL and the admin verbs per caller, at the cost of a shared group for
@@ -560,3 +561,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-24 | Cutover in the van: read-only 30 min, then transmit allowed one device at a time with the owner's yes for each (n2k, rixens_http, victron, espar_diag, espar), then `--full` (the config's `tx_enabled` decides; Starlink and Peplink control on without a control test, the runbook's read-only verification) | owner |
 | 2026-11-24 | The Espar's controller-loss tolerance measured in FAN: 15.2 s (not while burning); the resume timings are kept: `resume_listen_s` 1 s, `RestartSec=100ms` (van gaps 0.5 s and 1.6 s, bench watchdog case 3.3 s) | owner |
 | 2026-11-24 | The Espar's diagnostics go into the history database, logged like the rest: every 30 s, kept 30 days, pruned hourly (D23; first asked as a rolling 30-min buffer, then changed by the owner), to look back at heater events such as a power dip mid-run | owner |
+| 2026-11-25 | `rust` merged into `main`; the Python code removed from the repo (last version tagged `python-final`). What the Rust system still used moved to `packaging/` (network, iwd, boot splash, the system update without its Python environment check); the Python tools became `aetherrv-setup peplink-rw-client` / `store-secrets` and jq scripts. The van's `/opt/aetherrv` and `packaging/rollback.sh` stay for the rollback window | owner |

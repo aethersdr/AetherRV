@@ -24,9 +24,10 @@ screen, with chrome from the [AetherSDR](https://aethersdr.com) project.
   screen off with touch-to-wake, and a Plymouth boot/shutdown splash. The same React app works in Safari, Chrome
   and Firefox on phones and laptops.
 
-This branch (`rust`) is the Rust rewrite: one small service per device plus a few core services, talking over a
-local MQTT broker, with a React + TypeScript UI. The Python system on `main` is the reference it was tested
-against (197 ported tests, golden-parity replays of real CAN captures). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+AetherRV is written in Rust: one small service per device plus a few core services, talking over a local MQTT
+broker, with a React + TypeScript UI. It replaced the original Python system, which was the reference it was tested
+against (197 ported tests, golden-parity replays of real CAN captures); that system is in the git history (tag
+`python-final`). See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Safety model
 
@@ -60,11 +61,11 @@ against (197 ported tests, golden-parity replays of real CAN captures). See [`do
 | `services/` | One binary per device or core function: `espar`, `n2k`, `rixens`, `victron`, `batteries-ble`, `starlink`, `peplink`, `gps`, `weather`, `netmon`, `can-aux`, `power-guard`, `alerts`, `history`, `derive`, `settings`, `gateway` (web + WebSocket), `screen`, and `admind` (the root helper) |
 | `ui/` | The React + TypeScript touch UI (Vite; Leaflet and three.js bundled, no CDN) |
 | `sims/` | Simulator binaries for the bench: heater, CLMD16 + keypads, MCS7, Cerbo, Starlink, Peplink, GPS, CAN capture replay |
-| `utils/` | `aetherrv-ctl` (bus client), `aetherrv-migrate` (checks config, secrets, history and settings), `aetherrv-setup` (Victron pairing), the isolation and soak tools |
-| `packaging/` | systemd units, the panel session, Mosquitto config, installer, `push.sh`, cutover and rollback scripts |
-| `harness/` | Test harnesses: golden parity, the bench scripts, the UI reference screenshots, the runtime benchmark |
-| `config/aetherrv.example.toml` | **Sample** configuration (shared with the Python system). Copy it and fill in your devices |
-| `src/`, `web/`, `deploy/`, `tests/` | The Python reference system and its 197 tests (kept for parity testing and rollback) |
+| `utils/` | `aetherrv-ctl` (bus client), `aetherrv-migrate` (checks config, secrets, history and settings), `aetherrv-setup` (Victron pairing, the Peplink read-write API client, secrets writes), the isolation and soak tools |
+| `packaging/` | systemd units, the panel session, Mosquitto config, network/PAM/boot-splash files, the system update, installer, `push.sh`, cutover and rollback scripts |
+| `harness/` | Test harnesses: the bench scripts, UI screenshots, the runtime benchmark, the licence list (`crates.sh`) |
+| `tools/` | Laptop-side setup (Peplink API clients, the TomTom key), the boot splash, the N2K table generator, read-only van access |
+| `config/aetherrv.example.toml` | **Sample** configuration. Copy it and fill in your devices |
 
 ## Install (on the Pi)
 
@@ -76,12 +77,12 @@ when your equipment differs.
 packaging/push.sh <your-pi> --system     # rsync, native cargo build on the Pi, install, enable and start
 ```
 
-`push.sh` never has a default host. `--system` is for a console without the Python system; a console that runs
-the Python system switches with the runbook in [`docs/CUTOVER.md`](docs/CUTOVER.md) (read-only first, then one
+`push.sh` never has a default host. `--system` is for a fresh console; a console that still runs the old Python
+system switches with the runbook in [`docs/CUTOVER.md`](docs/CUTOVER.md) (read-only first, then one
 device at a time) and can go back with one command (`packaging/rollback.sh`).
 
 The installer creates `/etc/aetherrv/aetherrv.toml` from the sample only if it's missing. Edit it on the Pi with
-your devices' addresses. Secrets (Victron MQTT token, Peplink read-only credentials) go in
+your devices' addresses. Secrets (Victron MQTT token, Peplink API clients and read-only login, TomTom key) go in
 `/etc/aetherrv/secrets.toml` (root:aetherrv 0640), written by `aetherrv-setup` and the tools in `tools/`, never into
 the repo. The boot splash changes `/boot` and is a separate, one-time step: `sudo tools/install_boot_splash.sh`.
 
@@ -94,8 +95,8 @@ cargo test --workspace                    # Rust: unit, integration and process 
 ```
 
 No containers: everything runs as plain processes. The simulators let the whole system run on a Pi with no van
-attached (`harness/bench/bench-up.sh`). [`docs/TEST-PARITY.md`](docs/TEST-PARITY.md) maps each Python test to its Rust
-or UI equivalent, and [`docs/STATUS.md`](docs/STATUS.md) holds the evidence for the conversion.
+attached (`harness/bench/bench-up.sh`). [`docs/TEST-PARITY.md`](docs/TEST-PARITY.md) maps each test of the Python
+system to its Rust or UI equivalent, and [`docs/STATUS.md`](docs/STATUS.md) holds the evidence for the conversion.
 
 `INTEGRATION_PLAN.md` is the (sanitized) build log: protocol findings, decisions and verification notes.
 

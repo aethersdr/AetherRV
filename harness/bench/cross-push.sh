@@ -67,7 +67,7 @@ push|build)
   [ "$1" = build ] && exit 0
   # the source as push.sh syncs it, then the binaries where install.sh looks for them
   ssh "$H" "sudo mkdir -p /opt/aetherrv-rs/src"   # (rsync makes only the last level)
-  rsync -a --delete --exclude target --exclude .git --exclude ui/node_modules --exclude harness/out --exclude deploy/local.env \
+  rsync -a --delete --exclude target --exclude .git --exclude ui/node_modules --exclude harness/out \
     --exclude packaging/local.env --exclude '.venv' --exclude __pycache__ --exclude docs/private \
     --rsync-path="sudo rsync" "$W/export/" "$H":/opt/aetherrv-rs/src/
   ssh "$H" "sudo mkdir -p /opt/aetherrv-rs/src/target/release && sudo find /opt/aetherrv-rs/src/target/release -maxdepth 1 -name 'aetherrv-*' -delete"

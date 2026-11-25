@@ -1,6 +1,6 @@
-// AetherRV React UI. `npx vite` serves it on :5173 and proxies /ws and /api to a backend: by default the
-// workstation-only snapshot server (harness/ui-reference/serve_snapshot.py, port 18080, no device controls).
-// Point it elsewhere with AETHERRV_BACKEND=http://host:port (never at a live van while testing taps).
+// AetherRV React UI. `npx vite` serves it on :5173 and proxies /ws and /api to the backend named by
+// AETHERRV_BACKEND=http://host:port (default 127.0.0.1:18080, where nothing listens unless you start a backend
+// there, e.g. a gateway on the workstation with the simulators). Never point it at a live van while testing taps.
 /// <reference types="vitest/config" />
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";

@@ -1,7 +1,7 @@
 # Third-party licences
 
 AetherRV is GPL-3.0. Everything below is linked into the binaries or shipped in the UI bundle, and every
-licence is GPL-3.0-compatible (permissive). Regenerate with `python3 harness/crates.py`; dev-only tools
+licence is GPL-3.0-compatible (permissive). Regenerate with `harness/crates.sh`; dev-only tools
 (test frameworks, the bundler) are not listed.
 
 ## Rust: 310 crates

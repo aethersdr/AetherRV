@@ -17,11 +17,11 @@
 #   tools/van-read.sh boot                     the boot path's timings (firewall, network.target, user sessions, the
 #                                              kiosk), the bootloader's configuration, and how sound is played
 #
-# There is deliberately no generic "run" subcommand. The host comes from deploy/local.env (AETHERRV_HOST).
+# There is deliberately no generic "run" subcommand. The host comes from packaging/local.env (AETHERRV_HOST).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-. deploy/local.env
-HOST=${AETHERRV_HOST:?AETHERRV_HOST missing in deploy/local.env}
+. packaging/local.env
+HOST=${AETHERRV_HOST:?AETHERRV_HOST missing in packaging/local.env}
 LOG=harness/out/van-access.log
 mkdir -p harness/out
 

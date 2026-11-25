@@ -367,7 +367,7 @@ the tools below write them to `/etc/aetherrv/secrets.toml`, readable only by roo
 | Ruuvi / temperature sensors on the GX | `[device.victron]` `cabin_temp`, `outside_temp`, `fridge_temp`, `freezer_temp`: the sensors' names on the GX. |
 | Rixens MCS7 | `[device.rixens_http]`: `host` = the MCS7's address on your LAN, `enabled = true`. |
 | Starlink | `[device.starlink]`: `enabled = true`; `target` is the dish's gRPC address (usually `192.168.100.1:9200`, reachable through the router). |
-| Peplink | `[device.peplink]`: `host` = the router, `enabled = true`. Create the read-only API user with `tools/peplink_install_readonly_user.sh` and `tools/peplink_create_api_client.sh` (run from your computer; they prompt for passwords). |
+| Peplink | `[device.peplink]`: `host` = the router, `enabled = true`. Create the read-only API user with `tools/peplink_install_readonly_user.sh` and `tools/peplink_create_api_client.sh` (run from your computer; they prompt for passwords, need `jq`). For WAN priority control, also create the read-write API client on the Pi: `sudo /opt/aetherrv-rs/bin/aetherrv-setup peplink-rw-client <router-address>` (asks for the router's admin login, used once and never stored). |
 | Batteries over Bluetooth | `[device.epoch_ble]` (commented out in the sample) with one `[[device.epoch_ble.battery]]` per battery: its Bluetooth address and a name. `bluetoothctl scan on` lists them. |
 | NMEA 2000 switching | `[device.n2k]`: the bus, then one `[[device.n2k.switch]]` per channel (name, icon, group, Home position). |
 | Espar heater | `[device.espar]`: the bus (`hat1`). Leave `tx_enabled = false` until step 8. |

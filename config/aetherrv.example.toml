@@ -117,7 +117,7 @@ tx_enabled = false
 [device.victron]
 kind = "victron"
 host = "venus.local"   # ← yours: Cerbo GX hostname or IP
-port = 1883            # 8883 with tls = true after Venus OS >= 3.80 pairing (tools/victron_pair.py)
+port = 1883            # 8883 with tls = true after Venus OS >= 3.80 pairing (aetherrv-setup victron-pair)
 tls = false
 enabled = false        # true = use the real Cerbo even while demo data is on (demo then yields victron.*)
 # Temperatures from the Cerbo's temperature services (e.g. Ruuvi tags).
@@ -210,7 +210,7 @@ starlink_offline_s = 180  # how long the dish may be offline/obstructed before a
 kind = "demo"
 enabled = false
 
-# Clean power-off before the house battery runs out (src/aetherrv/lowbatt.py). SoC from the Victron shunt, else the
+# Clean power-off before the house battery runs out (aetherrv-power-guard). SoC from the Victron shunt, else the
 # Bluetooth batteries. Charging cancels it. A Pi 5 stays off until power is cycled or its button is pressed.
 [power]
 auto_shutdown = false

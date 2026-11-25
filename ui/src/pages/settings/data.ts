@@ -22,7 +22,7 @@ export interface Tailscale {
 export interface Pkg { name: string; old: string; new: string }
 export interface Update {
   ok?: boolean; error?: string;
-  state?: { status?: string; restart?: string; venv?: string };
+  state?: { status?: string; restart?: string };
   log?: string[]; check?: { updates: Pkg[]; held: Pkg[]; checked: number } | null;
   last?: { finished?: string | number; status?: string };
 }

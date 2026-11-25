@@ -4,7 +4,8 @@
 //! marker `SECRET`, so a test can grep everything published for it.
 //!
 //! Auth as the router: API clients (`auth.token.grant`, scopes `api.read-only` / `api`, `?accessToken=`), web users
-//! (`login`, cookie `bauth`, permission GET or GET+POST). `config.wan.connection.priority` answers 401 to read-only
+//! (`login` / `logout`, cookie `bauth`, permission GET or GET+POST), and `auth.client`, through which a write session
+//! adds or removes API clients (`auth.token.revoke` drops a token). `config.wan.connection.priority` answers 401 to read-only
 //! credentials; its POST (cookie sessions need `X-Requested-With`) changes the WAN priority/enable config, which
 //! `status.wan.connection` then reports.
 
@@ -102,6 +103,8 @@ pub struct RouterState {
     pub ignore_posts: bool,
     /// Function → how many calls to answer with stat "fail" (code 500).
     pub fail: BTreeMap<String, u32>,
+    /// API clients created through `auth.client` (as `aetherrv-setup peplink-rw-client` does).
+    pub api_clients: Vec<SimClient>,
     serial: u64,
     started: std::time::Instant,
 }
@@ -208,6 +211,7 @@ impl RouterState {
             calls: BTreeMap::new(),
             ignore_posts: false,
             fail: BTreeMap::new(),
+            api_clients: Vec::new(),
             serial: 0,
             started: std::time::Instant::now(),
         }
@@ -486,7 +490,7 @@ async fn api(State(inner): State<Arc<Inner>>, method: Method, uri: Uri, headers:
             st.grants += 1;
             let b = json_body();
             let s = |k: &str| b.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-            let Some(c) = cfg.clients.iter().find(|c| c.id == s("clientId") && c.secret == s("clientSecret")) else {
+            let Some(c) = cfg.clients.iter().chain(&st.api_clients).find(|c| c.id == s("clientId") && c.secret == s("clientSecret")) else {
                 return fail(401, "Unauthorized");
             };
             let want = s("scope");
@@ -513,6 +517,41 @@ async fn api(State(inner): State<Arc<Inner>>, method: Method, uri: Uri, headers:
             let c = format!("bauth={sess}; Path=/; HttpOnly{}", if cfg.tls { "; Secure" } else { "" });
             r.headers_mut().insert(header::SET_COOKIE, HeaderValue::from_str(&c).unwrap());
             r
+        }
+        ("POST", "logout") => {
+            if let Some(s) = cookie(&headers, "bauth") {
+                st.sessions.remove(&s);
+            }
+            reply(json!({"stat": "ok"}))
+        }
+        ("POST", "auth.client") => {
+            // a web-admin session with write permission only, as the router
+            if cookie(&headers, "bauth").and_then(|s| st.sessions.get(&s).map(|(_, w)| *w)) != Some(true) {
+                return fail(401, "Unauthorized");
+            }
+            let b = json_body();
+            let s = |k: &str| b.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+            match s("action").as_str() {
+                "add" => {
+                    st.serial += 1;
+                    let c = SimClient { id: format!("simclient{:04}", st.serial), secret: format!("simsecret{:04}", st.serial), scope: s("scope") };
+                    let r = json!({"clientId": c.id, "clientSecret": c.secret, "name": s("name"), "scope": c.scope});
+                    st.api_clients.push(c);
+                    reply(json!({"stat": "ok", "response": r}))
+                }
+                "remove" => {
+                    st.api_clients.retain(|c| c.id != s("clientId"));
+                    reply(json!({"stat": "ok"}))
+                }
+                _ => fail(400, "Invalid action"),
+            }
+        }
+        ("POST", "auth.token.revoke") => {
+            let b = json_body();
+            if let Some(t) = b.get("accessToken").and_then(Value::as_str) {
+                st.tokens.remove(t);
+            }
+            reply(json!({"stat": "ok"}))
         }
         ("POST", "config.wan.connection.priority") => {
             let write = authorized(&st, &q, &headers);

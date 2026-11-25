@@ -1,6 +1,6 @@
 #!/bin/bash
 # One-time (idempotent) boot-splash setup for AetherRV, run ON THE PI as root:
-#   sudo /opt/aetherrv/tools/install_boot_splash.sh
+#   sudo /opt/aetherrv-rs/src/tools/install_boot_splash.sh
 # Installs Plymouth + the AetherRV theme, quiets the kernel/systemd console and moves it off the touchscreen
 # (tty1 → tty3; the serial console is untouched), and hides the firmware rainbow. Backs up both /boot files
 # once (*.pre-aetherrv). Only adds what's missing, so re-running changes nothing. (Owner-approved 2026-11-20.)
@@ -17,7 +17,7 @@ CMD=/boot/${PREFIX}cmdline.txt
 
 pacman -S --needed --noconfirm plymouth
 install -d -m 755 /usr/share/plymouth/themes/aetherrv
-install -m 644 "$SRC"/deploy/boot/plymouth/aetherrv/* /usr/share/plymouth/themes/aetherrv/
+install -m 644 "$SRC"/packaging/boot/plymouth/aetherrv/* /usr/share/plymouth/themes/aetherrv/
 plymouth-set-default-theme aetherrv            # no initramfs on this Pi: Plymouth starts from the root fs
 
 line=$(tr -d '\n' < $CMD)

@@ -1,5 +1,0 @@
-# PAM stack for the cage kiosk session (gives it a logind seat for DRM/input access).
-auth     required pam_permit.so
-account  required pam_unix.so
-session  required pam_unix.so
-session  required pam_systemd.so

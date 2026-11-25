@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-const FIXTURE: &str = include_str!("../../../tests/fixtures/mcs7_status_hw1_1.208.xml");
+const FIXTURE: &str = include_str!("../../../crates/proto-mcs7/tests/fixtures/mcs7_status_hw1_1.208.xml");
 
 #[derive(Clone)]
 struct Fake {

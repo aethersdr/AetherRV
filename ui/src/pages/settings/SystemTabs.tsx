@@ -251,6 +251,5 @@ export const UpdatesTab = memo(function UpdatesTab({ info }: { info: SettingsInf
     {!running && st.status === "done" && st.restart === "suggested" && (
       <div className="set-actions"><span className="set-p">Updated. A reboot is recommended so everything uses the new versions.</span>
         <button className="ctl-pill warn" data-act="reboot" disabled={!ctl} onClick={() => systemAction("reboot")}>Reboot now</button></div>)}
-    {st.venv === "broken" && <div className="set-p" style={{ color: "#ff8a80" }}>AetherRV&apos;s Python environment couldn&apos;t be rebuilt after the update — reinstall with deploy/push.sh.</div>}
   </>;
 });

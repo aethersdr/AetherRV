@@ -1,5 +1,5 @@
 //! `aetherrv-sim-mcs7 [--port N] [--toggle] [--log FILE]`: a Rixens MCS7 local HTTP API on 127.0.0.1, serving the
-//! real status.xml fixture (tests/fixtures/mcs7_status_hw1_1.208.xml) and applying `interface.cgi?act=N&val=V` to it
+//! real status.xml fixture (crates/proto-mcs7/tests/fixtures/mcs7_status_hw1_1.208.xml) and applying `interface.cgi?act=N&val=V` to it
 //! like the controller (setpoint, fan, the three sources, hot water, pre-heat, thermostat). Every command is logged
 //! (JSON lines), so a test can assert what the MCS7 was sent. Loopback only.
 
@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 
-const FIXTURE: &str = include_str!("../../../tests/fixtures/mcs7_status_hw1_1.208.xml");
+const FIXTURE: &str = include_str!("../../../crates/proto-mcs7/tests/fixtures/mcs7_status_hw1_1.208.xml");
 
 #[derive(Clone)]
 struct Sim {

@@ -6,7 +6,7 @@ use proto_mcs7::{FanSpeed, xml};
 use serde_json::{Value, json};
 
 fn fixture() -> String {
-    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures/mcs7_status_hw1_1.208.xml");
+    let p = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/mcs7_status_hw1_1.208.xml");
     std::fs::read_to_string(p).expect("fixture")
 }
 

@@ -61,6 +61,11 @@ install -m 644 "$SRC"/packaging/pam/aetherrv-panel /etc/pam.d/aetherrv-panel
 # the exact list of Rust units: cutover.sh and rollback.sh act on these and nothing else (the Python system's
 # units share the aetherrv- prefix: aetherrv-kiosk, aetherrv-admin, aetherrv-update, aetherrv-splash-hold)
 (cd "$SRC"/packaging/systemd && ls *.service *.socket *.target) > "$DEST/units.txt"
+# Settings → Updates (admind starts aetherrv-update.service): outside units.txt, so the cutover never enables it and
+# a rollback never stops a running update. Replaces the Python install's unit of the same name, whose script checks
+# the Python environment and would fail every update once /opt/aetherrv is gone.
+install -m 755 "$SRC"/packaging/update/aetherrv-update.sh "$DEST/bin/"
+install -m 644 "$SRC"/packaging/update/aetherrv-update.service /etc/systemd/system/
 # the shutdown splash waits for the panel to release the display (as it does for the Python kiosk)
 for u in plymouth-reboot plymouth-poweroff plymouth-halt; do
   if [ -d /etc/systemd/system/$u.service.d ] || [ "$MODE" = "--system" ]; then
