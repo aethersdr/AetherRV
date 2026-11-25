@@ -898,3 +898,7 @@ the Python install taken to the workstation (verified), and `/opt/aetherrv`, the
 `/usr/local/lib/aetherrv`, the kiosk PAM file and its shutdown-splash drop-ins deleted, then a daemon-reload. No
 service restarted (the same PIDs before and after; the Rixens was burning throughout), no unit failed, the gateway
 and the panel kept running. The services still run 493935c/d8f3adf binaries until their next restart.
+
+The same day (owner: "deploy to the van and restart the services"), with both heaters idle: d29284c deployed
+(cross-compiled; the binaries equal 773090c's) and all 18 services restarted onto it, the Espar's last (it stayed off and
+asleep; nothing sent). All active, no failed unit, no warnings. Not restarted: the broker, the on-demand admind, the panel.
