@@ -851,6 +851,15 @@ and the 32 were cleared from the broker. The first deploy cross-compiled for the
 --cutover`, owner), so the Pi wasn't loaded for 17 min during a burn. The Espar's diagnostics are in the history
 database too (every 30 s, 30 days, D23).
 
+**A service restart stopped an Espar burn** (same evening; my restart, with the owner's go-ahead). Restarting the
+services onto a new build mid-run: the Victron service reported the Cerbo disconnected for a moment, and the Espar
+service switched its room value from the cabin Ruuvi to the heater's intake sensor, which reads about 40 °C while the
+heater burns. It sent 39.4 °C, the heater stopped burning (no fault; two events in its log), cooled for about 5 min
+and relit by itself. Fix 493935c (owner): during a heat run the last cabin reading is held for up to 5 min
+(`CABIN_HOLD_S`), then the intake sensor as before; tested with a Victron restart mid-run on the bench and installed
+in the van. Lesson: a restart of any service the Espar reads (the Victron service carries the cabin Ruuvi) can
+affect a burn; ask before restarting services during a heat run.
+
 Still to do (`docs/CUTOVER.md` §8): ~~a command from the touchscreen itself~~ (done, see above) (all of the day's commands came from a
 browser on the LAN; a tap the owner made on the panel left no command in `command_log`, so it was not seen to
 switch through AetherRV), the boot splash watched and power-on by stopwatch, the panel's memory after a day and
