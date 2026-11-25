@@ -1,6 +1,6 @@
 # AetherRV system update (aetherrv-update.sh), started from Settings → Updates through aetherrv-admind.
-# Not enabled: runs only when asked, once at a time. Kept out of packaging/systemd/ (units.txt): the cutover enables
-# and the rollback stops every unit listed there, and neither may touch an update.
+# Not enabled: runs only when asked, once at a time. Kept out of packaging/systemd/ (units.txt): cutover.sh enables
+# and restarts every unit listed there, and must not touch an update.
 [Unit]
 Description=AetherRV system update (pacman -Syu, kernel/boot packages held)
 After=network-online.target

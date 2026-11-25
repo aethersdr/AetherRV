@@ -1,9 +1,10 @@
 #!/bin/bash
 # Run ON THE PI as root, from the synced tree: sudo /opt/aetherrv-rs/src/packaging/install.sh [--cutover | --system]
-#   (none)      install NEXT TO the Python system (/opt/aetherrv is left alone), start nothing: the bench
-#   --cutover   the same, on a console that runs the Python system (docs/CUTOVER.md does the switch)
-#   --system    a fresh Rust-only console (docs/BUILD-GUIDE.md §5): the OS pieces too, then enable and start it;
-#               refused where a Python system is installed (that one goes through the cutover)
+#   (none)      install, start nothing: the bench
+#   --cutover   the same on a console (the van): installs next to what runs, starts nothing (the name is from the
+#               cutover; the van's deploys use it since)
+#   --system    a fresh console (docs/BUILD-GUIDE.md §5): the OS pieces too, then enable and start it; refused where
+#               the old Python system is installed (that one goes through the cutover, docs/CUTOVER.md)
 # Idempotent. Without --cutover/--system it refuses a host with hat0/hat1 (a console, not the bench).
 set -euo pipefail
 SRC=$(cd "$(dirname "$0")/.." && pwd)
@@ -58,12 +59,12 @@ install -d -o aetherrv -g aetherrv -m 750 /var/lib/aetherrv
 install -m 644 "$SRC"/packaging/systemd/*.service "$SRC"/packaging/systemd/*.socket "$SRC"/packaging/systemd/*.target /etc/systemd/system/
 # the panel unit's PAM stack (PAMName=aetherrv-panel): here too, as the cutover doesn't run system-setup.sh
 install -m 644 "$SRC"/packaging/pam/aetherrv-panel /etc/pam.d/aetherrv-panel
-# the exact list of Rust units: cutover.sh and rollback.sh act on these and nothing else (the Python system's
-# units share the aetherrv- prefix: aetherrv-kiosk, aetherrv-admin, aetherrv-update, aetherrv-splash-hold)
+# the exact list of the system's units: cutover.sh acts on these and nothing else (other units share the aetherrv-
+# prefix: aetherrv-update and aetherrv-splash-hold, and the old Python system's aetherrv, -kiosk and -admin)
 (cd "$SRC"/packaging/systemd && ls *.service *.socket *.target) > "$DEST/units.txt"
-# Settings → Updates (admind starts aetherrv-update.service): outside units.txt, so the cutover never enables it and
-# a rollback never stops a running update. Replaces the Python install's unit of the same name, whose script checks
-# the Python environment and would fail every update once /opt/aetherrv is gone.
+# Settings → Updates (admind starts aetherrv-update.service): outside units.txt, so cutover.sh never enables or
+# restarts it. Replaces the Python install's unit of the same name, whose script checks the Python environment and
+# would fail every update once /opt/aetherrv is gone.
 install -m 755 "$SRC"/packaging/update/aetherrv-update.sh "$DEST/bin/"
 install -m 644 "$SRC"/packaging/update/aetherrv-update.service /etc/systemd/system/
 # the shutdown splash waits for the panel to release the display (as it does for the Python kiosk)

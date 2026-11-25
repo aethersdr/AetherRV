@@ -1,6 +1,6 @@
 [Unit]
 Description=AetherRV (Rust services)
-# The Python backend and its kiosk/admin helper: one system at a time (cutover/rollback swap them).
+# The old Python system's backend and kiosk/admin helper, should they still be installed: never both at once.
 Conflicts=aetherrv.service aetherrv-kiosk.service aetherrv-admin.socket
 Wants=aetherrv-bus.service aetherrv-admind.socket
 

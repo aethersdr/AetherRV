@@ -1,8 +1,8 @@
 #!/bin/bash
-# The van cutover (docs/CUTOVER.md). Run ON THE PI as root, with the owner present.
-#   cutover.sh --read-only        stop the Python system, start the Rust one with EVERY transmit permission off
+# Staged transmit for the Rust system (how the van was cut over, docs/CUTOVER.md). Run ON THE PI as root.
+#   cutover.sh --read-only        (re)start the Rust system with EVERY transmit permission off
 #   cutover.sh --allow dev[,dev]  allow transmit for these devices too (each must also have tx_enabled in the config)
-#   cutover.sh --full             drop the allowlist: the config's tx_enabled decides, as in Python
+#   cutover.sh --full             drop the allowlist: the config's tx_enabled decides
 #   add --force to skip the "heaters idle" check (not recommended)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -16,17 +16,17 @@ write_allow() {
 }
 case "$MODE" in
   --read-only)
-    if systemctl is-active -q aetherrv.service && [ $FORCE = 0 ]; then ./heaters-idle.sh; fi
+    # a running system restarts to take the empty allowlist, and restarting the Espar's service must not stop a burn
+    if systemctl is-active -q aetherrv.target && [ $FORCE = 0 ]; then ./heaters-idle.sh; fi
     write_allow ""
     systemctl daemon-reload
-    systemctl disable --now aetherrv-kiosk.service aetherrv.service aetherrv-admin.socket aetherrv-admin.service 2>/dev/null || true
     systemctl enable --now aetherrv-admind.socket
     UNITS=/opt/aetherrv-rs/units.txt
     [ -s "$UNITS" ] || { echo "no $UNITS: run install.sh first" >&2; exit 4; }
     # every Rust service except the socket-activated helper, the can-aux template and the panel (enabled below)
     systemctl enable aetherrv.target $(grep -E '\.service$' "$UNITS" | grep -vE '^aetherrv-(admind|can-aux@|panel)\.service$')
     for b in $(/opt/aetherrv-rs/bin/aetherrv-can-aux -c /etc/aetherrv/aetherrv.toml --list); do systemctl enable "aetherrv-can-aux@$b.service"; done
-    systemctl start aetherrv.target
+    if systemctl is-active -q aetherrv.target; then systemctl restart aetherrv.target; else systemctl start aetherrv.target; fi
     [ -f /etc/systemd/system/aetherrv-panel.service ] && systemctl enable --now aetherrv-panel.service
     echo "Rust system running READ-ONLY (no device may transmit). Compare for a while, then: cutover.sh --allow <device>"
     ;;

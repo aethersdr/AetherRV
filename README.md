@@ -62,7 +62,7 @@ against (197 ported tests, golden-parity replays of real CAN captures); that sys
 | `ui/` | The React + TypeScript touch UI (Vite; Leaflet and three.js bundled, no CDN) |
 | `sims/` | Simulator binaries for the bench: heater, CLMD16 + keypads, MCS7, Cerbo, Starlink, Peplink, GPS, CAN capture replay |
 | `utils/` | `aetherrv-ctl` (bus client), `aetherrv-migrate` (checks config, secrets, history and settings), `aetherrv-setup` (Victron pairing, the Peplink read-write API client, secrets writes), the isolation and soak tools |
-| `packaging/` | systemd units, the panel session, Mosquitto config, network/PAM/boot-splash files, the system update, installer, `push.sh`, cutover and rollback scripts |
+| `packaging/` | systemd units, the panel session, Mosquitto config, network/PAM/boot-splash files, the system update, installer, `push.sh`, staged transmit (`cutover.sh`) |
 | `harness/` | Test harnesses: the bench scripts, UI screenshots, the runtime benchmark, the licence list (`crates.sh`) |
 | `tools/` | Laptop-side setup (Peplink API clients, the TomTom key), the boot splash, the N2K table generator, read-only van access |
 | `config/aetherrv.example.toml` | **Sample** configuration. Copy it and fill in your devices |
@@ -79,7 +79,7 @@ packaging/push.sh <your-pi> --system     # rsync, native cargo build on the Pi, 
 
 `push.sh` never has a default host. `--system` is for a fresh console; a console that still runs the old Python
 system switches with the runbook in [`docs/CUTOVER.md`](docs/CUTOVER.md) (read-only first, then one
-device at a time) and can go back with one command (`packaging/rollback.sh`).
+device at a time).
 
 The installer creates `/etc/aetherrv/aetherrv.toml` from the sample only if it's missing. Edit it on the Pi with
 your devices' addresses. Secrets (Victron MQTT token, Peplink API clients and read-only login, TomTom key) go in
