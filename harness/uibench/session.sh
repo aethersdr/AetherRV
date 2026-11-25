@@ -1,6 +1,6 @@
 #!/bin/bash
-# The benchmark's sway session on the BENCH Pi (never the van). Started like the van's kiosk unit
-# (deploy/systemd/aetherrv-kiosk.service): a transient system unit with a PAM session on a VT, so logind gives sway
+# The benchmark's sway session on the BENCH Pi (never the van). Started like the van's panel unit
+# (packaging/systemd/aetherrv-panel.service): a transient system unit with a PAM session on a VT, so logind gives sway
 # its seat (DRM + libinput) exactly as on the van. It uses VT 8, not tty1, and runs as the calling user.
 #
 #   session.sh start headless [WxH]    WLR headless output (+ libinput for the injected touchscreen); not acceptance
