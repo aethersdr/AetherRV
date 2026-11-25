@@ -72,7 +72,7 @@ async fn main() -> anyhow::Result<()> {
         .filter(|s| s != "bus")
         .collect();
 
-    let bus = Bus::start(BusOptions::new("soak"), Arc::new(StateStore::new()));
+    let bus = Bus::start(BusOptions::new("soak").tool(), Arc::new(StateStore::new()));
     bus.subscribe_all_state().await;
     tokio::time::sleep(Duration::from_secs(3)).await;
     let t0 = Instant::now();

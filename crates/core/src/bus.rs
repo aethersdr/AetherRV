@@ -49,6 +49,9 @@ pub struct BusOptions {
     pub version: String,
     /// After the first connect, clear our own retained keys that this process hasn't set within this long.
     pub clear_unset_after: Duration,
+    /// A service announces itself: a retained status (and a last will), a heartbeat. A tool (`aetherrv-ctl`, the bench's
+    /// isolation and soak runners) doesn't, so it never shows as a module, up or down, once it has exited.
+    pub announce: bool,
 }
 
 impl BusOptions {
@@ -58,10 +61,16 @@ impl BusOptions {
             service: service.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             clear_unset_after: Duration::from_secs(10),
+            announce: true,
         }
     }
     pub fn socket(mut self, p: impl Into<PathBuf>) -> Self {
         self.socket = p.into();
+        self
+    }
+    /// A tool, not a service: no status, last will or heartbeat on the bus ([`BusOptions::announce`]).
+    pub fn tool(mut self) -> Self {
+        self.announce = false;
         self
     }
 }
@@ -272,8 +281,10 @@ impl Bus {
         mo.set_keep_alive(Duration::from_secs(5));
         mo.set_clean_start(true);
         mo.set_connect_properties(ConnectProperties { max_packet_size: Some(16 << 20), ..Default::default() });
-        let will = serde_json::to_vec(&json!({"up": false, "t": crate::clock::now_ms()})).unwrap();
-        mo.set_last_will(LastWill::new(format!("{PREFIX}/svc/{svc}/status"), will, QoS::AtLeastOnce, true, None));
+        if opts.announce {
+            let will = serde_json::to_vec(&json!({"up": false, "t": crate::clock::now_ms()})).unwrap();
+            mo.set_last_will(LastWill::new(format!("{PREFIX}/svc/{svc}/status"), will, QoS::AtLeastOnce, true, None));
+        }
         let (client, eventloop) = AsyncClient::new(mo, 4096);
         let (updates, _) = broadcast::channel(8192);
         let inner = Arc::new(Inner {
@@ -403,10 +414,12 @@ impl Bus {
         let _ = self.inner.client.publish(t, QoS::AtMostOnce, false, serde_json::to_vec(payload).unwrap()).await;
     }
 
-    /// Clean shutdown: mark this service down and disconnect.
+    /// Clean shutdown: mark this service down (a tool: nothing to mark) and disconnect.
     pub async fn shutdown(&self) {
-        let body = serde_json::to_vec(&json!({"up": false, "t": crate::clock::now_ms()})).unwrap();
-        let _ = self.inner.client.publish(format!("{PREFIX}/svc/{}/status", self.service()), QoS::AtLeastOnce, true, body).await;
+        if self.inner.opts.announce {
+            let body = serde_json::to_vec(&json!({"up": false, "t": crate::clock::now_ms()})).unwrap();
+            let _ = self.inner.client.publish(format!("{PREFIX}/svc/{}/status", self.service()), QoS::AtLeastOnce, true, body).await;
+        }
         tokio::time::sleep(Duration::from_millis(100)).await;
         let _ = self.inner.client.disconnect().await;
     }
@@ -457,11 +470,13 @@ impl Bus {
         for f in filters {
             let _ = c.subscribe(f, QoS::AtLeastOnce).await;
         }
-        let status = json!({"up": true, "pid": std::process::id(), "version": self.inner.opts.version,
-                            "started": self.inner.started_ms, "t": crate::clock::now_ms()});
-        let _ = c
-            .publish(format!("{PREFIX}/svc/{}/status", self.service()), QoS::AtLeastOnce, true, serde_json::to_vec(&status).unwrap())
-            .await;
+        if self.inner.opts.announce {
+            let status = json!({"up": true, "pid": std::process::id(), "version": self.inner.opts.version,
+                                "started": self.inner.started_ms, "t": crate::clock::now_ms()});
+            let _ = c
+                .publish(format!("{PREFIX}/svc/{}/status", self.service()), QoS::AtLeastOnce, true, serde_json::to_vec(&status).unwrap())
+                .await;
+        }
         self.inner.connected.store(true, Ordering::SeqCst);
         self.inner.state.mark_all_dirty();
         self.beat(0).await;
@@ -597,6 +612,9 @@ impl Bus {
     }
 
     async fn beat(&self, seq: u64) {
+        if !self.inner.opts.announce {
+            return; // a tool has no heartbeat
+        }
         let body = serde_json::to_vec(&json!({"t": crate::clock::now_ms(), "seq": seq})).unwrap();
         let _ = self.inner.client.publish(format!("{PREFIX}/svc/{}/hb", self.service()), QoS::AtLeastOnce, true, body).await;
     }

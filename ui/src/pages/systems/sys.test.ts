@@ -68,6 +68,11 @@ describe("status cards", () => {
       { name: "espar", up: false, down: "< 1 min" }, { name: "victron", up: false, down: "2 min" }, { name: "n2k", up: true, down: "" }]);
     expect(modules(["victron.connected"], getter({}))).toEqual([]);
   });
+  it("modules: the tools' old retained statuses (ctl-<pid>, isolation, soak) are not modules", () => {
+    const s = { "svc.n2k.up": true, "svc.ctl-459212.up": false, "svc.ctl-459212.age_s": 900, "svc.isolation.up": false, "svc.soak.up": false,
+      "svc.ctl-tool.up": false };
+    expect(modules(Object.keys(s), getter(s)).map(m => m.name)).toEqual(["ctl-tool", "n2k"]);
+  });
 });
 
 describe("NMEA 2000 devices and the inspector", () => {

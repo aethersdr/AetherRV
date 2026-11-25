@@ -17,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
     let a: Vec<String> = std::env::args().skip(1).collect();
     let flag = |n: &str| a.iter().position(|x| x == n).and_then(|i| a.get(i + 1)).cloned();
     let user = std::env::var("USER").unwrap_or_else(|_| "unknown".into());
-    let bus = Bus::start(BusOptions::new(&format!("ctl-{}", std::process::id())), Arc::new(StateStore::new()));
+    let bus = Bus::start(BusOptions::new(&format!("ctl-{}", std::process::id())).tool(), Arc::new(StateStore::new()));
     bus.subscribe_all_state().await;
     for _ in 0..50 {
         if bus.connected() {

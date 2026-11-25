@@ -74,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     let heater = flag("--heater-report").unwrap_or_else(|| "/run/aetherrv-sim-espar.json".into());
     let mcs7 = flag("--mcs7-log").unwrap_or_else(|| "/var/tmp/sim-mcs7.jsonl".into());
     let out = flag("--out").unwrap_or_else(|| "/var/tmp/isolation-report.json".into());
-    let bus = Bus::start(BusOptions::new("isolation"), Arc::new(StateStore::new()));
+    let bus = Bus::start(BusOptions::new("isolation").tool(), Arc::new(StateStore::new()));
     bus.subscribe_all_state().await;
     tokio::time::sleep(Duration::from_secs(2)).await;
     let s30 = Duration::from_secs(30);

@@ -157,3 +157,29 @@ async fn acl_keeps_each_service_in_its_own_namespace() {
     let r = g.request("espar", "set", json!({}), "kiosk", 3000, S).await;
     assert_eq!(r.result, ResultKind::Ok, "{r:?}");
 }
+
+/// A tool (`aetherrv-ctl`, the isolation and soak runners) sends commands and reads state like anything else, but
+/// never shows as a module: no status, no heartbeat, nothing retained after it exits.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_tool_is_never_listed_as_a_module() {
+    let b = Broker::start(false);
+    let g = bus(&b, "gateway");
+    g.subscribe_all_state().await;
+    let es = bus(&b, "espar");
+    es.serve("espar", Arc::new(Counter(AtomicU32::new(0))), None).await;
+    let t = Bus::start(BusOptions::new("ctl-4242").socket(&b.socket).tool(), Arc::new(StateStore::new()));
+    assert!(eventually(S, || g.remote().owners().iter().any(|(n, up, _)| n == "espar" && *up)).await);
+    assert!(eventually(S, || t.connected() && t.remote().owner_ok("espar")).await, "a tool sees the services' health");
+    let r = t.request("espar", "set", json!({"mode": "off"}), "kiosk", 3000, S).await;
+    assert_eq!(r.result, ResultKind::Ok, "a tool's command is answered");
+    assert!(!g.remote().owners().iter().any(|(n, _, _)| n == "ctl-4242"), "not a module while it runs");
+    t.shutdown().await;
+    drop(t);
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    assert!(!g.remote().owners().iter().any(|(n, _, _)| n == "ctl-4242"), "nothing left behind once it has gone");
+    let late = bus(&b, "late-observer");
+    late.subscribe_all_state().await;
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    assert!(!late.remote().owners().iter().any(|(n, _, _)| n == "ctl-4242"), "no retained status for a newcomer either");
+    assert!(late.remote().owners().iter().any(|(n, _, _)| n == "espar"));
+}

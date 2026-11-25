@@ -32,6 +32,7 @@ export function modules(keys: readonly string[], get: Get): Mod[] {
   for (const k of keys) {
     if (!k.startsWith("svc.") || !k.endsWith(".up")) continue;
     const name = k.slice(4, -3);
+    if (/^ctl-\d+$|^(isolation|soak)$/.test(name)) continue;   // tools, not modules (their old retained statuses)
     const up = get(k) !== false;
     const age = get<number | null>(`svc.${name}.age_s`);
     out.push({ name, up, down: up ? "" : age == null ? "" : age < 60 ? "< 1 min" : `${Math.round(age / 60)} min` });
