@@ -813,11 +813,19 @@ Surprises, all handled on the day:
 - The Espar reports "heating" (2C4 state 09) from the first second of a HEAT run, so "heating" does not mean burning;
   the first resume test therefore ran during the glow-plug preheat. Burning is the pump and power from the
   diagnostics.
-- The heater's stored codes P000307, P000129 and P000440 date from 2026-11-22 (all inactive).
+- The heater's stored codes P000307, P000129 and P000440 date from 2026-11-22 (all inactive). AetherRV only reads
+  them (UDS 0x22/0x19); clearing them needs the owner's own Espar tool.
+- The owner kept the resume timings (`resume_listen_s` 1 s, `RestartSec=100ms`).
+- **The first boot of the Rust system** (a reboot, heaters idle first): no failed unit, all 18 services up, Python's
+  units off, the gateway 2.6 s and the panel 4.0 s after the kernel started, N2K address 150 claimed again, the four
+  batteries back within minutes. Three services logged "network unreachable" until the network came up, then
+  connected (they no longer wait for it).
 
 Still to do (`docs/CUTOVER.md` §8): a command from the touchscreen itself (all of the day's commands came from a
-browser on the LAN), the alert chime heard, the boot splash and power-on by stopwatch (a reboot), the panel's memory
-after a day and after several days, the §8 UI numbers on the real panel, and the Cerbo failover only if wanted.
+browser on the LAN; a tap the owner made on the panel left no command in `command_log`, so it was not seen to
+switch through AetherRV), the boot splash watched and power-on by stopwatch, the panel's memory after a day and
+after several days, the §8 UI numbers on the real panel, and the Cerbo failover only if wanted. The alert chime was
+heard (the owner).
 Cosmetic, for later: exited `aetherrv-ctl` runs stay listed as DOWN in `aetherrv-ctl health`; the Espar service clears
 its retained diagnostics keys about 10 s after a restart until its next read; a stopping service logs one
 "bus: disconnected" warning; `aetherrv-espar.service` sets `RestartSec` twice (the later 100 ms applies).

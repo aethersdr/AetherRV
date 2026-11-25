@@ -276,7 +276,7 @@ continues uninterrupted. Every timing below is configurable and gets recomputed 
   stopped (no OFF sent), the heater kept fanning for **15.2 s**, then went idle (no fault in its 2C4) and slept
   1.6 s later. The resume gaps measured in the van in the same session: 0.5 s (`systemctl restart`, glow-plug
   preheat) and 1.6 s (`kill -9` while burning at 37 % power); the bench's watchdog case was 3.3 s. All well inside
-  15.2 s, so `resume_listen_s = 1` and `RestartSec=100ms` stand.
+  15.2 s, so `resume_listen_s = 1` and `RestartSec=100ms` are kept (owner, 2026-11-24).
 - The heater simulator's controller-loss timeout is a parameter (default 15 s, the one observation so far), and
   the isolation tests run it at several values.
 
@@ -555,4 +555,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-24 | The cutover started (`docs/CUTOVER.md`) with the owner at the van: §2–§6 now, then control one device at a time (§7) with the owner's yes for each | owner |
 | 2026-11-24 | The van's packages for the cutover installed from its current package database (no `-Syu`): `clang rustup mosquitto wpewebkit gst-plugins-base gst-plugins-good jq`, and Rust 1.100.0 (minimal profile) for the native build | owner |
 | 2026-11-24 | Cutover in the van: read-only 30 min, then transmit allowed one device at a time with the owner's yes for each (n2k, rixens_http, victron, espar_diag, espar), then `--full` (the config's `tx_enabled` decides; Starlink and Peplink control on without a control test, the runbook's read-only verification) | owner |
-| 2026-11-24 | The Espar's controller-loss tolerance measured in FAN: 15.2 s; the resume timings stand (gaps 0.5 s and 1.6 s in the van) | owner (the measurement), van result |
+| 2026-11-24 | The Espar's controller-loss tolerance measured in FAN: 15.2 s (not while burning); the resume timings are kept: `resume_listen_s` 1 s, `RestartSec=100ms` (van gaps 0.5 s and 1.6 s, bench watchdog case 3.3 s) | owner |

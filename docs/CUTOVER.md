@@ -34,7 +34,7 @@ systemctl list-unit-files 'aetherrv*' > /root/aetherrv-units-pre-rust-$ts.txt
 ## 3. Install next to Python (nothing starts)
 
 From the workstation: `packaging/push.sh <van-host> --cutover`. It syncs the source to `/opt/aetherrv-rs/src`, builds
-natively (about 6 minutes on a Pi 5), installs the binaries, units and Mosquitto config, and **starts nothing**.
+natively (about 17 minutes on the van's Pi 5: 16 min 42 s on 2026-11-24), installs the binaries, units and Mosquitto config, and **starts nothing**.
 The Python system keeps running. Install the packages the Rust system needs if missing, before the push (the build
 and the panel need them):
 
@@ -114,6 +114,13 @@ stand (`docs/ARCHITECTURE.md` §7.2).
 Then `sudo packaging/cutover.sh --full` (the config's `tx_enabled` decides, as in Python).
 
 ## 8. Checks the bench could not do
+
+**Status after the cutover (2026-11-24, `INTEGRATION_PLAN.md` §49).** Done: touch feel, page switches, screen off/on and
+touch-to-wake (the owner), the batteries on real BlueZ, the Espar's controller-loss tolerance (15.2 s in FAN), the
+chime heard (the owner), and the first boot of the Rust system (a reboot: no failed unit, everything up, the panel
+4.0 s after the kernel started). Open: a command from the touchscreen itself (every command that day came from a
+browser on the LAN), hold-to-dim by finger, the boot splash watched, power-on by stopwatch, the §8 UI numbers on the
+panel, the memory after days, the TX-echo guard under a fault, the Cerbo failover.
 
 - Real touch feel on the Waveshare panel, its own latency, hold-to-dim by finger, screen power off/on and touch-to-wake
   on that panel.

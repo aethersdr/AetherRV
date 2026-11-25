@@ -80,6 +80,10 @@ and no earlier figure includes it. Every figure above is from the pass with the 
 
 ## What the bench could not show
 
+Checked in the van at the cutover (2026-11-24, `INTEGRATION_PLAN.md` §49): the Bluetooth batteries on real BlueZ, the
+Espar's controller-loss tolerance (15.2 s in FAN), and, by the owner, touch, screen off/on and the alert chime. The
+rest stays on the list.
+
 On the van's list (`docs/CUTOVER.md` §8):
 
 - real touch feel and the panel's own latency;
