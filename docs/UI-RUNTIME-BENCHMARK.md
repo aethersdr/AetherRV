@@ -10,6 +10,11 @@ config and runtimes the van uses. No monitor was used. With no scanout, no figur
 latency. Frame times are the compositor's commit times (§2). The power-on time was measured by rebooting the bench
 into a headless kiosk session (§8).
 
+**The Python helpers named below were removed with the Python code (2026-11-25, tag `python-final`).** The figures
+stand as measured. To rerun: `serve_bundle.py` is now `aetherrv-uibench serve`, `summarize.py` is
+`aetherrv-uibench summarize`, and the scripts' inline Python became `aetherrv-uibench` subcommands or jq. The *python*
+and *python-static* reference runtimes (`serve_ref.py`, `page/ref-bench.js`) are gone along with the Python UI.
+
 **In short:** WPE WebKit, through the panel's own kiosk launcher, meets the §8 numbers for taps (at p95 on every
 page; 4 of 436 presses over 50 ms), page switches, frame rate and memory (375 MB PSS; plus 1382 MB of GPU buffers
 that PSS doesn't count). Power-on is not met on every boot: median 14.74 s, max 15.16 s, 1 of 10 boots over 15.0 s,

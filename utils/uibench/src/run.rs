@@ -17,6 +17,7 @@
 use crate::analysis::{self, MosaicRef, SwitchParams, ref_patches, timeline};
 use crate::capture::{Patch, Recorder, Rect, Update};
 use crate::helper::Helper;
+use crate::pyfmt::Py;
 use crate::report::Reports;
 use crate::{arg, flag, mono_ns, real_minus_mono, sway};
 use anyhow::{Context, Result, anyhow, bail};
@@ -306,17 +307,57 @@ fn window_offset() -> (i32, i32) {
     find(&t).unwrap_or((0, 0))
 }
 
+/// The gateway's state: how many keys (as a string, "" when it doesn't answer)
+fn gateway_keys(state: &Py) -> String {
+    match state {
+        Py::Dict(v) => v.len().to_string(),
+        Py::List(v) => v.len().to_string(),
+        Py::Str(s) => s.chars().count().to_string(),
+        _ => String::new(),
+    }
+}
+
+/// The active alerts counted by (severity, acked), in the form summaries have always shown:
+/// `{('warning', False): 2, ('critical', True): 1}`, first seen first; "" when the state can't be read
+fn alert_severities(state: &Py) -> String {
+    let Py::Dict(_) = state else { return String::new() };
+    let a = state.at("alerts.active");
+    let alerts = match a {
+        Py::List(v) => v.as_slice(),
+        _ if !a.truthy() => &[],
+        _ => return String::new(),
+    };
+    // keys compare as Python's do: 1 == 1.0 == True
+    let same = |x: &Py, y: &Py| match (x.num(), y.num()) {
+        (Some(p), Some(q)) => p == q,
+        _ => x == y,
+    };
+    let mut n: Vec<((&Py, &Py), usize)> = vec![];
+    for x in alerts {
+        let (Py::Dict(_), sev, acked) = (x, x.at("severity"), x.at("acked")) else { return String::new() };
+        if [sev, acked].iter().any(|v| matches!(v, Py::List(_) | Py::Dict(_))) {
+            return String::new();
+        }
+        match n.iter_mut().find(|((s, k), _)| same(s, sev) && same(k, acked)) {
+            Some(e) => e.1 += 1,
+            None => n.push(((sev, acked), 1)),
+        }
+    }
+    format!("{{{}}}", n.iter().map(|((s, k), c)| format!("({}, {}): {c}", s.repr(), k.repr())).collect::<Vec<_>>().join(", "))
+}
+
 fn meta() -> Value {
     let sh = |c: &str| std::process::Command::new("sh").args(["-c", c]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    let state = Py::parse(&sh("curl -s -m 2 127.0.0.1:8080/api/state")).unwrap_or(Py::None);
     json!({
         "kernel": sh("uname -r"), "model": sh("tr -d '\\0' < /proc/device-tree/model"),
         "loadavg": sh("cat /proc/loadavg"), "sway": sh("sway --version"),
         "outputs": serde_json::from_str::<Value>(&sway(&["-t", "get_outputs", "-r"])).ok().map(|o| o.as_array().map(|a| a.iter().map(|x| json!({
             "name": x["name"], "current_mode": x["current_mode"], "power": x["power"], "scale": x["scale"]})).collect::<Vec<_>>())),
         "bench_units_restarts": sh("systemctl show -p Id -p NRestarts -p ActiveState 'aetherrv-*' 2>/dev/null | paste -sd' ' | sed 's/Id=/\\n/g' | awk 'NF' | head -40"),
-        "gateway_keys": sh("curl -s -m 2 127.0.0.1:8080/api/state | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null"),
+        "gateway_keys": gateway_keys(&state),
         // a critical alert makes the whole page flash (body.flash-critical), which keeps every page at 60 fps
-        "alert_severities": sh("curl -s -m 2 127.0.0.1:8080/api/state | python3 -c 'import json,sys,collections; a=json.load(sys.stdin).get(\"alerts.active\") or []; print(dict(collections.Counter((x.get(\"severity\"), x.get(\"acked\")) for x in a)))' 2>/dev/null"),
+        "alert_severities": alert_severities(&state),
     })
 }
 
@@ -336,8 +377,8 @@ pub fn main(args: &[String]) -> Result<()> {
     let fps_secs: f64 = arg(opts, "--fps-secs").unwrap_or("8").parse()?;
     let port: u16 = arg(opts, "--port").unwrap_or("18099").parse()?;
     // --cold-only: the cold start and nothing else (the power-on measurement; works for a page with no bench
-    // module, e.g. the Python UI served by its own backend: then no page report ever comes, so wait only
-    // --report-wait-ms for one before taking the settled reference)
+    // module too: then no page report ever comes, so wait only --report-wait-ms for one before taking the settled
+    // reference)
     let cold_only = flag(opts, "--cold-only");
     // --no-scope: start the runtime as a plain child, not in its own `systemd-run --user` scope (a session with no
     // user service manager, pam_systemd class=user-light): no per-runtime memory or CPU figures then

@@ -1,4 +1,4 @@
-//! Reports from the page (`ui/src/bench/` with `?bench=1`, or the reference UI's injected script): a tiny HTTP
+//! Reports from the page (`ui/src/bench/` with `?bench=1`): a tiny HTTP
 //! listener on 127.0.0.1 that accepts `navigator.sendBeacon` POSTs (text/plain, no CORS preflight) and keeps each
 //! JSON body with its arrival time. Geometry (where the rail and the controls are), page marks and cross-check
 //! timings arrive this way; nothing here is used as a frame time.

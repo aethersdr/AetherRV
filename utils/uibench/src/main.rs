@@ -1,4 +1,5 @@
-//! `aetherrv-uibench`: the UI runtime benchmark (prompt §7/§8, docs/UI-RUNTIME-BENCHMARK.md). Bench Pi only.
+//! `aetherrv-uibench`: the UI runtime benchmark (prompt §7/§8, docs/UI-RUNTIME-BENCHMARK.md). Bench Pi only, but for
+//! boot-time (the workstation's side of a reboot) and the readings, which run anywhere.
 //!
 //! ```text
 //! aetherrv-uibench run --runtime <name> --url <url> --out <file.json> [options] -- <runtime command…>
@@ -13,14 +14,25 @@
 //!     create the touchscreen, show how sway sees it, tap once
 //! aetherrv-uibench helper
 //!     the root half (uinput, smaps_rollup); started by the others through `sudo -n`
+//! aetherrv-uibench serve <dir> [--port 18082] [--gateway URL | --no-proxy] [--log]
+//!     a bundle on 127.0.0.1 without installing it, /api and /ws passed to the gateway (serve.rs)
+//! aetherrv-uibench boot-report <result.json> [armed] | boot-time <host> <addr> <out.json> <0|1>
+//!     power-on → usable UI: the bench's figures after a reboot, and the reboot timed from the workstation (boot.rs)
+//! aetherrv-uibench summarize <result.json>… | digest <what> [args] | wav-level <file.wav>
+//!     the readings: summary.md, the harness scripts' one-line readings, a capture's level (summary.rs, digest.rs)
 //! ```
 //! Needs WAYLAND_DISPLAY (and SWAYSOCK) of the benchmark's sway session (harness/uibench/session.sh).
 
 mod analysis;
+mod boot;
 mod capture;
+mod digest;
 mod helper;
+mod pyfmt;
 mod report;
 mod run;
+mod serve;
+mod summary;
 mod uinput;
 
 use anyhow::{Result, bail};
@@ -138,8 +150,14 @@ fn main() -> Result<()> {
         Some("touch-test") => touch_test(&args[1..]),
         Some("globals") => capture::globals(),
         Some("run") => run::main(&args[1..]),
+        Some("serve") => serve::main(&args[1..]),
+        Some("boot-report") => boot::report(&args[1..]),
+        Some("boot-time") => boot::time(&args[1..]),
+        Some("summarize") => summary::main(&args[1..]),
+        Some("digest") => digest::main(&args[1..]),
+        Some("wav-level") => digest::wav_level(&args[1..]),
         _ => {
-            eprintln!("usage: aetherrv-uibench run|frames|touch-test|helper (see the source header)");
+            eprintln!("usage: aetherrv-uibench run|frames|globals|touch-test|helper|serve|boot-report|boot-time|summarize|digest|wav-level (see the source header)");
             std::process::exit(2);
         }
     }

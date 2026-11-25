@@ -14,7 +14,7 @@
 #   the session comes back after `systemctl restart` and after a kill -9 of the runtime.
 # The functional page comes from the gateway (:8080, a bundle with the bench module's "report" and "screen off|on":
 # the screen helper only answers that origin); the audio page from AUDIO_URL (a bundle with "chime" and the audio
-# state, e.g. serve_bundle.py on :18082).
+# state, e.g. `aetherrv-uibench serve` on :18082).
 #   light-session.sh install | remove                    the PAM test file
 #   light-session.sh check [wpe-launcher|chromium|tauri] [AUDIO_URL]
 set -uo pipefail
@@ -41,7 +41,7 @@ AUDIO_URL=${3:-http://127.0.0.1:18082/?bench=1}
 [ -f $PAMF ] || { echo "no $PAMF: run $0 install" >&2; exit 4; }
 for _ in $(seq 30); do loginctl list-sessions --no-legend | awk '{print $3}' | grep -qx $KU || break; sleep 0.5; done   # a previous run's
 loginctl list-sessions --no-legend | awk '{print $3}' | grep -qx $KU && { echo "refused: $KU already has a session" >&2; exit 5; }
-curl -sf -m 3 -o /dev/null "$AUDIO_URL" || { echo "refused: the audio page $AUDIO_URL does not answer (serve_bundle.py?)" >&2; exit 7; }
+curl -sf -m 3 -o /dev/null "$AUDIO_URL" || { echo "refused: the audio page $AUDIO_URL does not answer (aetherrv-uibench serve?)" >&2; exit 7; }
 grep -q Loopback /proc/asound/cards || { echo "no snd-aloop Loopback card: sudo modprobe snd-aloop" >&2; exit 6; }
 PASS=0; FAIL=0
 check() { if [ "$2" = "$3" ]; then echo "  ok   $1 ($2)"; PASS=$((PASS + 1)); else echo "  FAIL $1 (got $2, want $3)"; FAIL=$((FAIL + 1)); fi; }
@@ -73,27 +73,16 @@ start() {   # $1 = backends; the Loopback card is the default ALSA card for ever
   sudo chvt 8
 }
 page() {   # $1 = command for the page, or "" ; prints the last few page reports as JSON
-  "$BIN" frames --secs "${2:-4}" --no-capture ${1:+--cmd "$1"} | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-p = [x for x in d["page"] if x.get("kind") in ("page", "input")]
-print(json.dumps([{k: x.get(k) for k in ("kind", "why", "screen", "conn", "ready", "type", "audio")} for x in p[-4:]]))'
+  "$BIN" frames --secs "${2:-4}" --no-capture ${1:+--cmd "$1"} \
+    | jq -c '[.page[] | select(.kind == "page" or .kind == "input")] | .[-4:] | map({kind, why, screen, conn, ready, type, audio})'
 }
-last() { python3 -c 'import json,sys; p=[x for x in json.load(sys.stdin) if x["kind"]=="page" and (sys.argv[1]=="*" or x["why"]==sys.argv[1])]; print(p[-1].get(sys.argv[2]) if p else "no report")' "$@"; }
+last() {   # $1 = the report's reason, or * ; $2 = the field of the last such report
+  jq -r --arg why "$1" --arg k "$2" '[.[] | select(.kind == "page" and ($why == "*" or .why == $why))]
+    | if length > 0 then .[-1][$k] | if . == null then "None" else . end else "no report" end'
+}
 sid() { loginctl list-sessions --no-legend | awk -v u=$KU '$3 == u {print $1}' | head -1; }
 rms() {   # a capture file → "peak dBFS, loudest 50 ms RMS dBFS, non-silent 50 ms windows"
-  python3 - "$1" <<'PY'
-import math, struct, sys, wave
-w = wave.open(sys.argv[1]); n = w.getnframes(); ch = w.getnchannels(); rate = w.getframerate()
-s = struct.unpack("<%dh" % (n * ch), w.readframes(n))
-peak = max((abs(x) for x in s), default=0)
-win = rate // 20 * ch
-r = [math.sqrt(sum(x * x for x in s[i:i + win]) / win) for i in range(0, len(s) - win, win)]
-db = lambda v: "%.1f" % (20 * math.log10(v / 32768)) if v else "-inf"
-loud = [i for i, v in enumerate(r) if v > 100]
-print("peak %s dBFS, loudest RMS %s dBFS, %d non-silent 50 ms windows%s" % (db(peak), db(max(r, default=0)), len(loud),
-      (" (from %.2f s to %.2f s)" % (loud[0] / 20, loud[-1] / 20 + .05)) if loud else ""))
-PY
+  "$BIN" wav-level "$1"
 }
 
 echo "== 1. a user-light session for $KU (uid $KID) running $RT: headless output + libinput, helper, runtime"
@@ -106,7 +95,7 @@ check "XDG_RUNTIME_DIR $RUN owned by $KU" "$(stat -c %U $RUN 2>/dev/null)" $KU
 check "no user service manager for $KU" "$(systemctl is-active user@$KID.service)" inactive
 check "no session bus ($RUN/bus)" "$(sudo test -e $RUN/bus && echo present || echo absent)" absent
 check "sway runs" "$(pgrep -u $KU -x sway >/dev/null && echo yes || echo no)" yes
-check "sway has seat0's input (libinput)" "$(asroot swaymsg -t get_seats -r | python3 -c 'import json,sys; s=json.load(sys.stdin); print(s[0]["name"] if s else "none")')" seat0
+check "sway has seat0's input (libinput)" "$(asroot swaymsg -t get_seats -r | jq -r 'if length > 0 then .[0].name else "none" end')" seat0
 case $RT in
   wpe-launcher)   # xdg-dbus-proxy only runs when there is a session (a11y) bus to proxy
     check "WebKit sandbox up (bwrap, the web process)" "$(pgrep -u $KU -x bwrap >/dev/null && echo -n "bwrap "; pgrep -u $KU -x WPEWebProcess >/dev/null && echo -n web-process)" "bwrap web-process"
@@ -119,11 +108,10 @@ echo "  (the runtime's log, last lines:)"; sudo tail -2 $W/runtime.log | cut -c1
 sudo journalctl -u $U -b --since "-60s" --no-pager -o cat | grep -iE "a11y|at-spi|dbus|timeout" | head -3 | sed 's/^/  journal: /'
 echo "== 2. a tap reaches the page (uinput; on the page title, which has no handler)"
 out=$( { sleep 2; asroot "$BIN" touch-test 400 48 >/dev/null 2>&1; } & page "" 6 )
-check "pointerdown seen by the page" "$(echo "$out" | grep -c '"type": "pointerdown"' | awk '{print ($1 > 0) ? "yes" : "no"}')" yes
+check "pointerdown seen by the page" "$(echo "$out" | grep -c '"type":"pointerdown"' | awk '{print ($1 > 0) ? "yes" : "no"}')" yes
 echo "== 3. screen off/on through the page"
-pw() { asroot swaymsg -t get_outputs -r 2>/dev/null | python3 -c 'import json,sys
-try: print(str(json.load(sys.stdin)[0]["power"]).lower())
-except Exception: print("no sway")'; }
+pw() { asroot swaymsg -t get_outputs -r 2>/dev/null \
+  | jq -rn 'try (input | .[0] | if has("power") then .power | tostring | ascii_downcase else error end) catch "no sway"'; }
 page "screen off" 4 >/dev/null; check "output off after the page's POST /screen/off" "$(pw)" false
 sleep 2; page "screen on" 4 >/dev/null; check "output on after POST /screen/on" "$(pw)" true
 echo "== 4. the alert chime reaches ALSA (Loopback card as the session's default; the page from $AUDIO_URL)"

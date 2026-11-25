@@ -1,10 +1,10 @@
 #!/bin/bash
-# The whole UI runtime benchmark in one command, from the workstation: prepare, run the runtimes and the Python
-# baseline on the bench (headless sway output, owner decision 2026-11-23), measure the instrument's own cost per
-# runtime (perturb.sh), and fetch the results into harness/out/uibench/ (gitignored).
+# The whole UI runtime benchmark in one command, from the workstation: prepare, run the runtimes on the bench
+# (headless sway output, owner decision 2026-11-23), measure the instrument's own cost per runtime (perturb.sh), and
+# fetch the results into harness/out/uibench/ (gitignored).
 #   UIBENCH_HOST=<bench> harness/uibench/full.sh [WxH] [runtime...]
 #     WxH       default 1920x1200, the van panel's resolution
-#     runtime   default: python python-static wpe tauri chromium (run.sh's names; wpe-launcher is panel/wpe)
+#     runtime   default: wpe tauri chromium (run.sh's names; wpe-launcher is panel/wpe)
 #   UIBENCH_KEEP_BUNDLE=1   measure the bundle the bench's gateway already serves (a deploy put it there); otherwise
 #                           prepare.sh builds this tree's bundle and installs it in /opt/aetherrv-rs/ui
 #   UIBENCH_SKIP_PREPARE=1  skip prepare.sh entirely (harness and tools already on the bench)
@@ -15,7 +15,7 @@ HOST=${UIBENCH_HOST:?set UIBENCH_HOST to the ssh host of the bench Pi, never the
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 RES=1920x1200
 if [[ ${1:-} =~ ^[0-9]+x[0-9]+$ ]]; then RES=$1; shift; fi
-RTS=${*:-python python-static wpe tauri chromium}
+RTS=${*:-wpe tauri chromium}
 ARGS=${UIBENCH_ARGS:---warm-rounds 3 --press-reps 12 --null-reps 3 --fps-secs 5}
 if ! ssh -o BatchMode=yes "$HOST" '! ip -br link | grep -qE "^(hat0|hat1)\b"'; then echo "refused: $HOST has hat0/hat1, it is the van" >&2; exit 3; fi
 [ "${UIBENCH_SKIP_PREPARE:-0}" = 1 ] || "$ROOT/harness/uibench/prepare.sh"

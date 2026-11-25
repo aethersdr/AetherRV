@@ -2,7 +2,7 @@
 # Power-on → usable UI (prompt §8: ≤ 15 s) on the BENCH Pi, by a reboot, headless (owner decision 2026-11-23).
 # Driven from the workstation by boot-time.sh, which also times the part before the kernel; usable on its own too.
 #
-#   boot-measure.sh arm <wpe|tauri|chromium|python> [order]   install + enable uibench-boot.service (next boot runs it)
+#   boot-measure.sh arm <wpe|wpe-launcher|tauri|chromium> [order]   install + enable uibench-boot.service (next boot runs it)
 #   boot-measure.sh report                     after the reboot: the figures, as text and JSON (/var/tmp/uibench-boot/)
 #   boot-measure.sh disarm                     disable and remove the unit
 #
@@ -16,9 +16,6 @@
 #   rust-light  as rust, with the test file /etc/pam.d/uibench-light (light-session.sh install) instead of the
 #             installed aetherrv-panel stack (the same content)
 #   rust-old  the earlier panel unit: After=systemd-user-sessions aetherrv-gateway, PAM login
-#   python    deploy/systemd/aetherrv-kiosk.service (the Python kiosk): After=systemd-user-sessions aetherrv.service,
-#             PAM aetherrv-kiosk, its 1 s wait loop for :8080; the default for `python` (Chromium with the van's flags
-#             on the Python UI served by the Python backend: no bench module, so the cold start only)
 # Like the panel unit it waits for :8080, then runs sway on a headless 1920×1200 output with the benchmark's config
 # (sway.conf.in). Its one exec line starts aetherrv-uibench on the runtime, which records the runtime's launch and its
 # first usable frame (the settled Home page) on CLOCK_MONOTONIC, i.e. as time since the kernel started. No
@@ -36,8 +33,8 @@ URL="http://127.0.0.1:8080/?bench=1"
 
 case "${1:-}" in
 arm)
-  RT=${2:?runtime: wpe|wpe-launcher|tauri|chromium|python}
-  case $RT in wpe|wpe-launcher|tauri|chromium) ORDER=${3:-rust} ;; python) ORDER=${3:-python} ;; *) echo "runtime: wpe|wpe-launcher|tauri|chromium|python" >&2; exit 2 ;; esac
+  RT=${2:?runtime: wpe|wpe-launcher|tauri|chromium}
+  case $RT in wpe|wpe-launcher|tauri|chromium) ORDER=${3:-rust} ;; *) echo "runtime: wpe|wpe-launcher|tauri|chromium" >&2; exit 2 ;; esac
   DRMWAIT=""
   case $ORDER in
     rust|rust-kiosk|rust-light) AFTER="systemd-logind.service aetherrv-gateway.service"; WANTS=aetherrv-gateway.service; STEP=0.25; N=240
@@ -45,8 +42,7 @@ arm)
           # as the panel unit: wait (up to 5 s) for the display driver's connectors before sway starts
           DRMWAIT="ExecStartPre=/bin/bash -c 'for i in \$(seq 50); do ls /sys/class/drm | grep -qE \"^card[0-9]+-\" && exit 0; sleep 0.1; done; exit 0'" ;;
     rust-old) AFTER="systemd-user-sessions.service aetherrv-gateway.service"; WANTS=aetherrv-gateway.service; PAM=login; STEP=0.25; N=240 ;;
-    python) AFTER="systemd-user-sessions.service aetherrv.service"; WANTS=aetherrv.service; PAM=aetherrv-kiosk; STEP=1; N=60 ;;
-    *) echo "order: rust|rust-kiosk|rust-light|rust-old|python" >&2; exit 2 ;;
+    *) echo "order: rust|rust-kiosk|rust-light|rust-old" >&2; exit 2 ;;
   esac
   # a login stack with pam_nologin would be refused before systemd-user-sessions removes /run/nologin
   [ -f "/etc/pam.d/$PAM" ] || { echo "refused: /etc/pam.d/$PAM is missing (packaging/pam/aetherrv-panel, installed by install.sh; or deploy/pam/aetherrv-kiosk)" >&2; exit 4; }
@@ -87,10 +83,8 @@ _measure)   # inside the boot session (sway's exec)
     wpe) CMD=(env WPE_PLATFORM=wayland /usr/lib/wpe-webkit-2.0/MiniBrowser --fullscreen "$URL") ;;
     wpe-launcher) CMD=(env AETHERRV_PANEL_PROFILE="$HOME/uibench/profiles/wpe-launcher" "${UIBENCH_WPE_BIN:-$HOME/uibench/wpe/aetherrv-panel-wpe}" "$URL") ;;
     tauri) CMD=("$TAURI_BIN" "$URL") ;;
-    chromium|python)
+    chromium)
               prof=$HOME/uibench/profiles/chromium-$RT; mkdir -p "$prof"; rm -f "$prof"/Singleton*
-              # the Python kiosk opens the Python backend's own UI, which has no bench module
-              [ "$RT" = python ] && URL="http://127.0.0.1:8080/"
               # the van's flags (deploy/kiosk/chromium.sh, packaging/panel/launch.sh), as run.sh
               # shellcheck disable=SC2054
               CMD=(chromium --kiosk --ozone-platform=wayland --noerrdialogs --autoplay-policy=no-user-gesture-required
@@ -102,7 +96,7 @@ _measure)   # inside the boot session (sway's exec)
   BOOT=$(cut -c1-8 /proc/sys/kernel/random/boot_id)
   echo "$T_EXEC" > "$OUT/$RT-$BOOT.exec"
   # the cold start only: launch → first paint → the settled Home page (and the page's data mark where it has the
-  # bench module). The Python UI never reports, so its settled reference is taken 8 s + 4 s after the launch.
+  # bench module; a page that never reports has its settled reference taken 8 s + 4 s after the launch).
   # --launch-first: the runner starts the runtime before its own capture set-up, as launch.sh would start it.
   SCOPE=(); grep -qE " rust(-light)?$" "$DIR/armed" 2>/dev/null && SCOPE=(--no-scope)   # user-light: no systemd-run --user
   "$BIN" run --runtime "$RT" --mode headless --label "boot measurement ($(cat "$DIR/armed" 2>/dev/null))" --url "$URL" \
@@ -112,56 +106,7 @@ report)
   BOOT=$(cut -c1-8 /proc/sys/kernel/random/boot_id)
   f=$(ls -t "$OUT"/*-"$BOOT".json 2>/dev/null | head -1 || true)
   [ -n "$f" ] || { echo "no measurement for this boot in $OUT yet (journalctl -b -u $U)"; exit 1; }
-  python3 - "$f" "$(cat "$DIR/armed" 2>/dev/null)" <<'EOF'
-import json, subprocess, sys, time
-d = json.load(open(sys.argv[1]))
-armed = sys.argv[2].split()
-sh = lambda c: subprocess.run(c, shell=True, capture_output=True, text=True).stdout.strip()
-def mono_s(unit, prop):
-    v = sh(f"systemctl show -p {prop} --value {unit}")
-    return int(v) / 1e6 if v.isdigit() and int(v) > 0 else None
-def first_mono(unit, pat):
-    # unit None: the whole boot's journal (the wait loop runs in the PAM session's scope, not in the unit)
-    v = sh(f"journalctl -b -o short-monotonic {'-u ' + unit if unit else ''} --no-pager | grep -m1 '{pat}' | tr -d '[]' | awk '{{print $1}}'")
-    return float(v) if v else None
-c = d["cold_start"]
-launch = c.get("t_launch_since_kernel_ms")
-usable = (launch + c["settled_ms"]) / 1000 if launch is not None and c.get("settled_ms") is not None else None
-data = (launch + c["data_frame_ms"]) / 1000 if launch is not None and c.get("data_frame_ms") is not None else None
-uptime = float(open("/proc/uptime").read().split()[0])
-python = sh("systemctl is-active aetherrv.service") == "active"
-backend = "aetherrv.service" if python else "aetherrv-gateway.service"
-out = {
-    "runtime": d["runtime"], "order": armed[1] if len(armed) > 1 else None, "system": "python" if python else "rust",
-    "systemd_analyze": sh("systemd-analyze | head -1"),
-    "kernel_start_epoch": time.time() - uptime,                      # the wall clock when the kernel started
-    "logind_s": mono_s("systemd-logind.service", "ActiveEnterTimestampMonotonic"),
-    "network_target_s": mono_s("network.target", "ActiveEnterTimestampMonotonic"),
-    "user_sessions_s": mono_s("systemd-user-sessions.service", "ActiveEnterTimestampMonotonic"),
-    "default_target_s": mono_s("multi-user.target", "ActiveEnterTimestampMonotonic"),
-    "bus_started_s": None if python else mono_s("aetherrv-bus.service", "ActiveEnterTimestampMonotonic"),
-    "backend_started_s": mono_s(backend, "ExecMainStartTimestampMonotonic"),
-    "gateway_serving_s": first_mono(backend, "web UI on"),            # both systems log it when they listen
-    "wait_loop_started_s": first_mono(None, "uibench: wait loop started"),
-    "port_8080_answered_s": first_mono(None, "uibench: :8080 answers"),
-    "loopback_up_s": first_mono("systemd-networkd.service", " lo: Link UP"),
-    "panel_unit_started_s": mono_s("uibench-boot.service", "ExecMainStartTimestampMonotonic"),
-    "sway_exec_s": (lambda f: float(open(f).read()) if __import__("os").path.exists(f) else None)(sys.argv[1].replace(".json", ".exec")),
-    "runner_setup_ms": d.get("runner_setup_ms"),
-    "runtime_launched_s": launch / 1000 if launch is not None else None,
-    "first_data_frame_s": data, "first_usable_frame_s": usable,
-    "cold_start_ms": {k: c.get(k) for k in ("first_paint_ms", "data_frame_ms", "content_ms", "settled_ms", "white_flash")},
-}
-json.dump(out, open(sys.argv[1].replace(".json", "-boot.json"), "w"), indent=1)
-print(f"runtime {out['runtime']} on the {out['system']} system, ordered as {out['order']} ({sys.argv[1]}): {out['systemd_analyze']}")
-for k in ("logind_s", "bus_started_s", "backend_started_s", "gateway_serving_s", "loopback_up_s", "network_target_s", "user_sessions_s",
-          "wait_loop_started_s", "port_8080_answered_s", "panel_unit_started_s", "sway_exec_s", "runtime_launched_s", "first_data_frame_s", "first_usable_frame_s",
-          "default_target_s"):
-    v = out[k]
-    print(f"  {k:24s} {'–' if v is None else f'{v:.2f} s after the kernel started'}")
-print(f"  runner set-up (ms from the runner's start): {out['runner_setup_ms']}")
-print(json.dumps({"kernel_start_epoch": out["kernel_start_epoch"], "first_usable_frame_s": usable}))
-EOF
+  "$BIN" boot-report "$f" "$(cat "$DIR/armed" 2>/dev/null)"
   ;;
 disarm)
   sudo systemctl disable --now $U.service 2>/dev/null || true

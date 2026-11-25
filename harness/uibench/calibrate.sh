@@ -17,14 +17,7 @@ sleep 6
 for a in "${@:-}"; do
   echo "== hz=$HZ ${a:-ticker only}"
   # shellcheck disable=SC2086
-  "$BIN" frames --secs 5 $a | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-f, r = d.get("fps", {}), d.get("recorder", {})
-print("presented:", f.get("frames"), "frames, fps", f.get("fps_raw"), "interval", f.get("interval_ms"))
-print("recorder:", {k: r.get(k) for k in ("ticker", "fence_us_p50", "read_us_p50", "tick_delay_us_p50", "patch_updates")})
-pg = [p for p in d.get("page", []) if p.get("kind") == "calib"]
-print("page rAF/s:", [b["raf"] - a["raf"] for a, b in zip(pg, pg[1:])], "paints/s:", [b["paints"] - a["paints"] for a, b in zip(pg, pg[1:])])'
+  "$BIN" frames --secs 5 $a | "$BIN" digest calibrate
 done
 systemctl --user stop uibench-rt-calib.scope 2>/dev/null || true
 rm -rf "$prof"

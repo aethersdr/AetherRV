@@ -14,13 +14,7 @@ L=${UIBENCH_WPE_BIN:-$HOME/uibench/wpe/aetherrv-panel-wpe}
 URL=${1:-http://127.0.0.1:18082/?bench=1}
 grep -q Loopback /proc/asound/cards || { echo "no snd-aloop Loopback card" >&2; exit 6; }
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-level() { python3 - "$1" <<'PY'
-import math, struct, sys, wave
-w = wave.open(sys.argv[1]); n = w.getnframes(); s = struct.unpack("<%dh" % (n * w.getnchannels()), w.readframes(n))
-peak = max((abs(x) for x in s), default=0)
-print("peak %s dBFS" % ("%.1f" % (20 * math.log10(peak / 32768)) if peak else "-inf"))
-PY
-}
+level() { "$BIN" wav-level "$1" | cut -d, -f1; }   # "peak X dBFS"
 for set in "gstreamer:gst-plugins-base:gst-plugins-good" "gstreamer:gst-plugins-base" "gstreamer:gst-plugins-good"; do
   echo "== plugins from: ${set//:/, }"
   echo "  autoaudiosink: $(GST_PLUGIN_LOADING_WHITELIST=$set GST_REGISTRY=$T/r.bin gst-inspect-1.0 autoaudiosink >/dev/null 2>&1 && echo yes || echo no), alsasink: $(GST_PLUGIN_LOADING_WHITELIST=$set GST_REGISTRY=$T/r.bin gst-inspect-1.0 alsasink >/dev/null 2>&1 && echo yes || echo no)"
@@ -30,7 +24,8 @@ for set in "gstreamer:gst-plugins-base:gst-plugins-good" "gstreamer:gst-plugins-
   env ALSA_CARD=Loopback GST_PLUGIN_LOADING_WHITELIST="$set" GST_REGISTRY=/tmp/uibench-gst-registry.bin \
     AETHERRV_PANEL_PROFILE="$T/prof" "$L" "$URL" > "$T/l.log" 2>&1 &
   lp=$!; sleep 9
-  st=$("$BIN" frames --secs 4 --no-capture --cmd chime | python3 -c 'import json,sys; p=[x for x in json.load(sys.stdin)["page"] if x.get("why")=="chime"]; print(p[-1].get("audio") if p else "no report")')
+  st=$("$BIN" frames --secs 4 --no-capture --cmd chime \
+    | jq -r '[.page[] | select(.why == "chime")] | if length > 0 then .[-1].audio | if . == null then "None" else . end else "no report" end')
   wait $rec; kill $lp 2>/dev/null; wait $lp 2>/dev/null
   echo "  capture: $(level "$T/cap.wav"); AudioContext after the chime: $st"
   grep -iE "gstreamer|autoaudiosink|alsasink|audio" "$T/l.log" | sort -u | head -3 | cut -c1-140 | sed 's/^/  log: /'

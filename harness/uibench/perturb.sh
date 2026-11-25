@@ -30,15 +30,7 @@ for page in $PAGES; do
   sleep 10
   for mode in none bands patch; do
     case $mode in none) a=(--no-capture) ;; bands) a=("${BANDS[@]}") ;; patch) a=("${PATCH[@]}") ;; esac
-    "$BIN" frames --secs 12 "${a[@]}" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-iv = [x for p in d["page"] if p.get("why") == "raf" for x in (p.get("raf") or {}).get("iv", [])]
-iv.sort()
-q = lambda p: iv[min(len(iv) - 1, round(p / 100 * (len(iv) - 1)))] if iv else None
-fps = (d.get("fps") or {}).get("fps_raw", "-")
-print("%-8s %-6s page rAF: n=%d p50=%.1f p95=%.1f max=%.1f ms | presented fps %s" % (sys.argv[1], sys.argv[2], len(iv), q(50) or 0, q(95) or 0, q(100) or 0, fps))
-' "$page" "$mode"
+    "$BIN" frames --secs 12 "${a[@]}" | "$BIN" digest perturb "$page" "$mode"
   done
   systemctl --user stop "uibench-rt-perturb-$page.scope" 2>/dev/null || true
   rm -rf "$prof"

@@ -2,14 +2,13 @@
 # UI runtime benchmark driver, on the BENCH Pi (prompt §7/§8, docs/UI-RUNTIME-BENCHMARK.md).
 #
 #   run.sh <runtime|all> <headless|screen> [WxH[@Hz]] [-- extra aetherrv-uibench run options]
-#     runtime: wpe (MiniBrowser) | wpe-launcher (panel/wpe, the panel's own WPE kiosk launcher) | tauri | chromium |
-#              python (reference UI, live-fed) | python-static (one frozen snapshot)
-#     all = python python-static wpe tauri chromium (wpe-launcher only when named)
+#     runtime: wpe (MiniBrowser) | wpe-launcher (panel/wpe, the panel's own WPE kiosk launcher) | tauri | chromium
+#     all = wpe tauri chromium (wpe-launcher only when named)
 #
 # Every runtime shows the same production bundle (/opt/aetherrv-rs/ui via the gateway on 127.0.0.1:8080, with
-# ?bench=1) fullscreen in the same sway session (session.sh); the reference UI is served by serve_ref.py on
-# 127.0.0.1:18080 with no device controls. Results: one JSON per runtime plus summary.md in $UIBENCH_OUT
-# (default ~/uibench/out/<date>-<mode>-<WxH>). Headless is the benchmark's mode by owner decision (2026-11-23).
+# ?bench=1) fullscreen in the same sway session (session.sh). Results: one JSON per runtime plus summary.md in
+# $UIBENCH_OUT (default ~/uibench/out/<date>-<mode>-<WxH>). Headless is the benchmark's mode by owner decision
+# (2026-11-23).
 #
 # It never stops, restarts or reconfigures an aetherrv-* unit and never edits /etc/aetherrv: it only reads
 # /api/state and points browsers at the gateway, whose devices are all simulators on the bench.
@@ -24,14 +23,10 @@ EXTRA=("$@")
 BIN=${UIBENCH_BIN:-$HOME/uibench/crate/target/release/aetherrv-uibench}
 TAURI_BIN=${UIBENCH_TAURI_BIN:-$HOME/uibench/tauri/target/release/aetherrv-panel-tauri}
 WPE_BIN=${UIBENCH_WPE_BIN:-$HOME/uibench/wpe/aetherrv-panel-wpe}
-VENV=${UIBENCH_VENV:-$HOME/uibench/venv}
-REF=${UIBENCH_REF:-$HOME/uibench/ref}
 URL=${UIBENCH_URL:-http://127.0.0.1:8080/?bench=1}
-REF_URL="http://127.0.0.1:18080/?bench=1"
 OUT=${UIBENCH_OUT:-$HOME/uibench/out/$(date +%Y%m%d-%H%M)-$MODE-${RES%@*}}
 mkdir -p "$OUT"
-# the reference UI first (most exposed to the bench's other tests), both ways: live-fed and the frozen snapshot
-[ "$WHICH" = all ] && WHICH="python python-static wpe tauri chromium"
+[ "$WHICH" = all ] && WHICH="wpe tauri chromium"
 
 curl -sf -m 3 -o /dev/null http://127.0.0.1:8080/ || { echo "gateway on 127.0.0.1:8080 does not serve the UI (install the bundle: prepare.sh)" >&2; exit 4; }
 
@@ -47,7 +42,8 @@ else
 fi
 set -a; # shellcheck disable=SC1090
 . "$ENVF"; set +a
-OUTMODE=$(swaymsg -t get_outputs -r | python3 -c 'import json,sys; o=[x for x in json.load(sys.stdin) if x["name"]==sys.argv[1]][0]; m=o["current_mode"]; print("%dx%d@%.3fHz" % (m["width"], m["height"], m["refresh"] / 1000))' "$OUTPUT")
+read -r OW OH MHZ < <(swaymsg -t get_outputs -r | jq -r --arg o "$OUTPUT" 'first(.[] | select(.name == $o)) | .current_mode | "\(.width) \(.height) \(.refresh)"')
+OUTMODE=$(printf '%dx%d@%d.%03dHz' "$OW" "$OH" $((MHZ / 1000)) $((MHZ % 1000)))   # sway's refresh is in mHz
 if [ "$MODE" = screen ]; then
   CONN=$(cat /sys/class/drm/card*-"$OUTPUT"/status 2>/dev/null | head -1)
   # what the display controller actually drives (a custom mode the monitor rejects still "succeeds" in sway)
@@ -68,7 +64,7 @@ export UIBENCH_BUNDLE=$BUNDLE
 # loaded fails as a whole, so each leftover unit is stopped on its own, then checked)
 stop_leftovers() {
   local u
-  for u in $(systemctl --user list-units --plain --no-legend --all 'uibench-rt-*' 'uibench-ref*' | awk '{print $1}'); do
+  for u in $(systemctl --user list-units --plain --no-legend --all 'uibench-rt-*' | awk '{print $1}'); do
     systemctl --user stop "$u" 2>/dev/null || true
   done
   if systemctl --user list-units --plain --no-legend 'uibench-rt-*' | grep -q .; then
@@ -85,11 +81,10 @@ CHROMIUM_FLAGS=(--kiosk --ozone-platform=wayland --noerrdialogs --autoplay-polic
 
 set_cmd() {   # runtime → CMD array (persistent profile, like the van's kiosk)
   case $1 in
-    chromium|python|python-static)
+    chromium)
       local prof=$HOME/uibench/profiles/chromium-$1
       mkdir -p "$prof"; rm -f "$prof"/Singleton*
-      local u=$URL; [ "$1" != chromium ] && u=$REF_URL
-      CMD=(chromium "${CHROMIUM_FLAGS[@]}" --user-data-dir="$prof" "$u") ;;
+      CMD=(chromium "${CHROMIUM_FLAGS[@]}" --user-data-dir="$prof" "$URL") ;;
     wpe) CMD=(env WPE_PLATFORM=wayland /usr/lib/wpe-webkit-2.0/MiniBrowser --fullscreen "$URL") ;;
     wpe-launcher) CMD=(env AETHERRV_PANEL_PROFILE="$HOME/uibench/profiles/wpe-launcher" "$WPE_BIN" "$URL") ;;
     tauri) CMD=("$TAURI_BIN" "$URL") ;;
@@ -97,35 +92,22 @@ set_cmd() {   # runtime → CMD array (persistent profile, like the van's kiosk)
   esac
 }
 
-start_ref() {   # $1 = live|static
-  local snap=$OUT/ref-snapshot.json
-  [ -s "$snap" ] || curl -sf -m 5 http://127.0.0.1:8080/api/state > "$snap"   # simulator state, read-only
-  local live=(); [ "$1" = live ] && live=(--live http://127.0.0.1:8080/api/state --every 1.0)
-  systemd-run --user --quiet --collect --unit=uibench-ref "$VENV/bin/python" "$H/serve_ref.py" "$snap" --port 18080 \
-    --web "$REF/web" --src "$REF/src" "${live[@]}"
-  for _ in $(seq 50); do curl -sf -m 1 -o /dev/null "http://127.0.0.1:18080/" && return 0; sleep 0.2; done
-  echo "reference server did not start: journalctl --user -u uibench-ref" >&2; return 1
-}
-
 for rt in $WHICH; do
   case $rt in
     tauri) [ -x "$TAURI_BIN" ] || { echo "skip tauri: $TAURI_BIN not built" >&2; continue; } ;;
     wpe-launcher) [ -x "$WPE_BIN" ] || { echo "skip wpe-launcher: $WPE_BIN not built" >&2; continue; } ;;
-    python) stop_leftovers; start_ref live ;;
-    python-static) stop_leftovers; start_ref static ;;
   esac
   set_cmd "$rt" || continue
-  u=$URL; [[ $rt == python* ]] && u=$REF_URL
   if [ "${UIBENCH_WARMUP:-1}" = 1 ]; then   # one launch first, so caches and profiles are in the state a used kiosk has
     systemd-run --user --scope --quiet --collect --unit="uibench-rt-warmup-$rt" -- timeout 12 "${CMD[@]}" >/dev/null 2>&1 || true
     sleep 2
   fi
   echo "uibench: $rt → $OUT/$rt.json"
-  "$BIN" run --runtime "$rt" --mode "$MODE" --label "$LABEL" --url "$u" --out "$OUT/$rt.json" --screen-power "${EXTRA[@]}" -- "${CMD[@]}" \
+  "$BIN" run --runtime "$rt" --mode "$MODE" --label "$LABEL" --url "$URL" --out "$OUT/$rt.json" --screen-power "${EXTRA[@]}" -- "${CMD[@]}" \
     2> >(tee "$OUT/$rt.log" >&2) || echo "uibench: $rt FAILED (see $OUT/$rt.log)" >&2
   stop_leftovers
   sleep 3
 done
 
-python3 "$H/summarize.py" "$OUT"/*.json > "$OUT/summary.md" && cat "$OUT/summary.md"
+"$BIN" summarize "$OUT"/*.json > "$OUT/summary.md" && cat "$OUT/summary.md"
 echo "uibench: results in $OUT"

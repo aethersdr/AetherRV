@@ -15,6 +15,7 @@ UNIT=uibench-sway
 VT=${UIBENCH_VT:-8}
 HERE=$(cd "$(dirname "$0")" && pwd)
 STATE=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/uibench
+BIN=${UIBENCH_BIN:-$HOME/uibench/crate/target/release/aetherrv-uibench}
 mkdir -p "$STATE"
 
 swaysock() { ls -t "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/sway-ipc.$(id -u)."*.sock 2>/dev/null | head -1; }
@@ -54,7 +55,7 @@ start)
   SWAY_START_MS=$(( ($(date +%s%N) - T0) / 1000000 ))       # unit start → sway answering on its IPC socket
   printf 'SWAYSOCK=%s\nWAYLAND_DISPLAY=%s\nOUTPUT=%s\nKIND=%s\nREQUESTED_MODE=%s\nSWAY_START_MS=%s\nSWAY_EXTRA=%s\n' "$SWAYSOCK" "$(basename "$WD")" "$OUT" "$KIND" "$MODE" "$SWAY_START_MS" "$(printf '%s' "${UIBENCH_SWAY_EXTRA:-}" | md5sum | cut -c1-8)" > "$STATE/env"
   cat "$STATE/env"
-  swaymsg -t get_outputs -r | python3 -c 'import json,sys; [print("output", o["name"], o["current_mode"], "power", o.get("power")) for o in json.load(sys.stdin)]'
+  swaymsg -t get_outputs -r | "$BIN" digest outputs
   ;;
 stop)
   sudo systemctl stop $UNIT 2>/dev/null || true

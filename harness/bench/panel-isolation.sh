@@ -127,14 +127,10 @@ run_case "sway (kill -9)"           'sudo kill -9 $b_sway' no
 run_case "systemctl restart"        'sudo systemctl restart $U' no
 kill "$GW" 2>/dev/null; GW=
 # the gateway: the longest gap between answers, and anything but 200
-python3 -I - "$OUT/gateway.log" <<'EOF'
-import sys
-rows=[l.split() for l in open(sys.argv[1]) if l.strip()]
-ok=[float(t) for t,c in rows if c=="200"]; bad=[c for t,c in rows if c!="200"]
-gap=max((b-a for a,b in zip(ok,ok[1:])), default=0)
-print(f"gateway: {len(ok)} answers, {len(bad)} not 200, longest gap {gap:.2f} s")
-sys.exit(1 if bad or gap > 1.5 else 0)
-EOF
+awk '!NF { next }
+  $2 == "200" { if (n && (n == 1 || $1 - t > gap)) gap = $1 - t; t = $1; n++; next }
+  { bad++ }
+  END { printf "gateway: %d answers, %d not 200, longest gap %.2f s\n", n, bad, gap; exit (bad || gap > 1.5) }' "$OUT/gateway.log"
 [ $? = 0 ] || FAIL=1
 [ $FAIL = 0 ] && echo "PANEL ISOLATION: PASS" || echo "PANEL ISOLATION: FAIL"
 exit $FAIL

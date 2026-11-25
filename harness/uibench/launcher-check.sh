@@ -14,6 +14,7 @@ if ip -br link | grep -qE '^(hat0|hat1)\b'; then echo "refused: this host has ha
 set -a; # shellcheck disable=SC1091
 . "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/uibench/env"; set +a
 L=${1:-$HOME/uibench/wpe/aetherrv-panel-wpe}
+BIN=${UIBENCH_BIN:-$HOME/uibench/crate/target/release/aetherrv-uibench}
 T=$(mktemp -d); trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$T"' EXIT
 PASS=0; FAIL=0
 check() { if [ "$2" = "$3" ]; then echo "  ok   $1 ($2)"; PASS=$((PASS + 1)); else echo "  FAIL $1 (got $2, want $3)"; FAIL=$((FAIL + 1)); fi; }
@@ -28,8 +29,9 @@ setTimeout(() => { fetch("/still-here"); }, 4000);   // the page is still ours i
 </script></body></html>
 HTML
 echo ok > "$T/b/index.html"
-python3 -m http.server 18085 --bind 127.0.0.1 --directory "$T/a" > "$T/a.log" 2>&1 &
-python3 -m http.server 18086 --bind 127.0.0.1 --directory "$T/b" > "$T/b.log" 2>&1 &
+# the two origins, each logging every request it gets (404s too)
+"$BIN" serve "$T/a" --port 18085 --no-proxy --log > "$T/a.log" 2>&1 &
+"$BIN" serve "$T/b" --port 18086 --no-proxy --log > "$T/b.log" 2>&1 &
 sleep 1
 
 echo "== the launcher: navigation off its origin"
@@ -40,12 +42,8 @@ check "no request reached the other origin" "$(grep -c 'GET /' "$T/b.log")" 0
 check "the page stayed (its later request arrived)" "$(grep -c 'GET /still-here' "$T/a.log")" 1
 grep -o 'navigation to [^ ]* refused' "$T/l.log" | head -2 | sed 's/^/  log: /'
 echo "== fullscreen, background"
-size=$(swaymsg -t get_tree -r | python3 -c 'import json,sys
-def walk(n):
-    if n.get("pid") and n.get("type") == "con": yield n
-    for c in n.get("nodes", []) + n.get("floating_nodes", []): yield from walk(c)
-v = [n for n in walk(json.load(sys.stdin))]
-print("%dx%d fullscreen=%s" % (v[0]["rect"]["width"], v[0]["rect"]["height"], v[0].get("fullscreen_mode")) if v else "no window")')
+size=$(swaymsg -t get_tree -r | jq -r '[recurse((.nodes // []) + (.floating_nodes // []) | .[]) | select((.pid // 0) != 0 and .type == "con")]
+  | if length > 0 then .[0] | "\(.rect.width)x\(.rect.height) fullscreen=\(.fullscreen_mode | if . == null then "None" else . end)" else "no window" end')
 check "window fills the output" "$size" "1920x1200 fullscreen=1"
 webproc() { ps -eo pid,rss,comm --sort=-rss | awk '$3 == "WPEWebProcess" { print $1; exit }'; }   # the page's (largest)
 crash() {   # $1 = signal, $2 = seconds to wait
@@ -53,7 +51,7 @@ crash() {   # $1 = signal, $2 = seconds to wait
   [ -n "$wp" ] && kill "-$1" "$wp"
   for _ in $(seq $(( $2 * 4 ))); do kill -0 "$lp" 2>/dev/null || break; sleep 0.25; done
   if kill -0 "$lp" 2>/dev/null; then check "launcher exited after SIG$1 on its web process" running exited; kill "$lp"; wait "$lp"
-  else wait "$lp"; local rc=$? dt; dt=$(python3 -c "import time; print(round(time.time() - $t0, 1))")
+  else wait "$lp"; local rc=$? dt; dt=$(awk -v t0="$t0" -v t1="$(date +%s.%N)" 'BEGIN { printf "%.1f", t1 - t0 }')
     check "launcher exit status after SIG$1 on its web process (${dt} s)" "$rc" 2; fi
 }
 echo "== crash: kill -KILL its web process"

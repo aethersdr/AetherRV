@@ -30,17 +30,14 @@ cleanup() {
   rm -rf "$prof"
 }
 trap cleanup EXIT
-power() { swaymsg -t get_outputs -r | python3 -c 'import json,sys; print(str(json.load(sys.stdin)[0]["power"]).lower())'; }
+power() { swaymsg -t get_outputs -r | jq -r '.[0].power | tostring'; }
 PASS=0; FAIL=0
 check() { if [ "$2" = "$3" ]; then echo "  ok   $1 ($2)"; PASS=$((PASS + 1)); else echo "  FAIL $1 (got $2, want $3)"; FAIL=$((FAIL + 1)); fi; }
-lastrep() {   # the page's last report for a reason, as "available shield conn ready"
-  python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-r = [p for p in d["page"] if p.get("kind") == "page" and (sys.argv[1] == "*" or p.get("why") == sys.argv[1])]
-if not r: print("none none none none"); sys.exit()
-p = r[-1]; s = p.get("screen") or {}
-print(str(s.get("available")).lower(), str(s.get("shield")).lower(), p.get("conn"), str(p.get("ready")).lower())' "$1"
+lastrep() {   # the page's last report for a reason, as "available shield conn ready" (missing: none, conn None)
+  jq -r --arg why "$1" 'def low: if . == null then "none" else tostring | ascii_downcase end;
+    [.page[] | select(.kind == "page" and ($why == "*" or .why == $why))]
+    | if length == 0 then "none none none none"
+      else .[-1] | (.screen // {}) as $s | "\($s.available | low) \($s.shield | low) \(.conn | if . == null then "None" else . end) \(.ready | low)" end'
 }
 
 echo "== $RT: screen off/on from the page"

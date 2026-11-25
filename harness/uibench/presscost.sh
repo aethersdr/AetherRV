@@ -29,20 +29,7 @@ for page in $PAGES; do
   esac
   systemd-run --user --scope --quiet --collect --unit="uibench-rt-presscost-$page" -- "${cmd[@]}" >/dev/null 2>&1 &
   sleep 10
-  "$BIN" frames --secs 25 --no-capture --cmd "presscost 12" | python3 -c '
-import json, statistics, sys
-d = json.load(sys.stdin)
-r = [p for p in d["page"] if p.get("kind") == "presscost"]
-if not r: print("%-9s %-8s %-10s no presscost report" % (sys.argv[1], sys.argv[2], sys.argv[3] or "-")); sys.exit()
-r = r[-1]
-if not r.get("sel"): print("%-9s %-8s no press target on this page" % (sys.argv[1], sys.argv[2])); sys.exit()
-med = lambda v: statistics.median(v) if v else float("nan")
-mx = lambda v: max(v) if v else float("nan")
-print("%-9s %-8s %-10s %-22s %s  style %.2f ms, layout %.2f ms (median of 10-toggle means; max %.2f); rAF after the change p50 %.1f max %.1f ms, unchanged p50 %.1f max %.1f ms" % (
-    sys.argv[1], sys.argv[2], sys.argv[3] or "-", r["sel"], "x".join(map(str, r["rect"][2:])), med(r["style_ms"]), med(r["layout_ms"]), mx(r["layout_ms"]),
-    med(r["frame_ms"]), mx(r["frame_ms"]), med(r["control_ms"]), mx(r["control_ms"])))
-print(json.dumps(r), file=sys.stderr)
-' "$page" "$RT" "$PRESS"
+  "$BIN" frames --secs 25 --no-capture --cmd "presscost 12" | "$BIN" digest presscost "$page" "$RT" "$PRESS"   # the whole report on stderr
   systemctl --user stop "uibench-rt-presscost-$page.scope" 2>/dev/null || true
   rm -rf "$prof"
 done
