@@ -50,6 +50,92 @@ pub const TRACKED: [&str; 28] = [
     "wan.up_mbps",
 ];
 
+/// The Espar's diagnostics as a rolling buffer (owner, 2026-11-24: to look back at what the heater did, e.g. a power
+/// dip mid-run). Sampled every `[history] espar_interval` s (default 5, the diagnostics' own cycle) and kept for the
+/// last `espar_minutes` (default 30; 0 = off) only. Each row is `(sample key, state key, field)`: the sample key is the
+/// state key, plus `.field` for a field of an object value. Numbers as they are, bools as 1/0, the state and the
+/// phase as codes ([`espar_state_code`], [`espar_phase_code`]). While the heater is asleep only the state is sampled
+/// (the other values are its last ones, not live). Not chart keys: [`query`] doesn't return them.
+pub const ESPAR_ROWS: [(&str, &str, Option<&str>); 21] = [
+    ("climate.espar.state", "climate.espar.state", None),
+    ("climate.espar.diag.phase.phase", "climate.espar.diag.phase", Some("phase")),
+    ("climate.espar.diag.power_pct", "climate.espar.diag.power_pct", None),
+    ("climate.espar.diag.pump_hz", "climate.espar.diag.pump_hz", None),
+    ("climate.espar.diag.glow_w", "climate.espar.diag.glow_w", None),
+    ("climate.espar.diag.blower", "climate.espar.diag.blower", None),
+    ("climate.espar.diag.flame.flame", "climate.espar.diag.flame", Some("flame")),
+    ("climate.espar.diag.temps.flame_c", "climate.espar.diag.temps", Some("flame_c")),
+    ("climate.espar.diag.temps.intake_c", "climate.espar.diag.temps", Some("intake_c")),
+    ("climate.espar.diag.temps.outlet_c", "climate.espar.diag.temps", Some("outlet_c")),
+    ("climate.espar.diag.fuel.rate_ul_s", "climate.espar.diag.fuel", Some("rate_ul_s")),
+    ("climate.espar.diag.regulation.regulated_c", "climate.espar.diag.regulation", Some("regulated_c")),
+    ("climate.espar.diag.regulation.setpoint_c", "climate.espar.diag.regulation", Some("setpoint_c")),
+    ("climate.espar.diag.voltage_v", "climate.espar.diag.voltage_v", None),
+    ("climate.espar.diag.unit_c", "climate.espar.diag.unit_c", None),
+    ("climate.espar.diag.air_hpa", "climate.espar.diag.air_hpa", None),
+    ("climate.espar.diag.event_count", "climate.espar.diag.event_count", None),
+    ("climate.espar.ctl.active", "climate.espar.ctl.active", None),
+    ("climate.espar.ctl.room_c", "climate.espar.ctl.room_c", None),
+    ("climate.espar.ctl.setpoint_c", "climate.espar.ctl.setpoint_c", None),
+    ("climate.espar.lockout", "climate.espar.lockout", None),
+];
+
+/// `climate.espar.state` as a number: off 0, starting 1, heating 2, fan 3, cooldown 4, error 9.
+pub fn espar_state_code(s: &str) -> Option<f64> {
+    Some(match s {
+        "off" => 0.0,
+        "starting" => 1.0,
+        "heating" => 2.0,
+        "fan" => 3.0,
+        "cooldown" => 4.0,
+        "error" => 9.0,
+        _ => return None,
+    })
+}
+
+/// The heater's phase (diagnostics DID 0xFD10) back to its byte: off 0x00, startup 0x04, pre-glow 0x07, flame ramp-up
+/// 0x09, ignition 0x0C, burning 0x14, cool-down 0x1E, control pause 0x28, ventilation 0xD2; an unnamed `0xNN` as is.
+pub fn espar_phase_code(s: &str) -> Option<f64> {
+    Some(match s {
+        "off" => 0x00,
+        "startup" => 0x04,
+        "pre-glow" => 0x07,
+        "flame ramp-up" => 0x09,
+        "ignition" => 0x0C,
+        "burning" => 0x14,
+        "cool-down" => 0x1E,
+        "control pause" => 0x28,
+        "ventilation" => 0xD2,
+        x => return x.strip_prefix("0x").and_then(|h| u8::from_str_radix(h, 16).ok()).map(f64::from),
+    } as f64)
+}
+
+/// One sample of the Espar rows that have a value now: `(sample key, value)`.
+pub fn espar_rows(state: &dyn StateView) -> Vec<(&'static str, f64)> {
+    let awake = state.get("climate.espar.asleep") == Some(serde_json::Value::Bool(false));
+    let mut out = Vec::new();
+    for (name, key, field) in ESPAR_ROWS {
+        if !awake && name != "climate.espar.state" {
+            continue;
+        }
+        let Some(mut v) = state.get(key) else { continue };
+        if let Some(f) = field {
+            v = v.get(f).cloned().unwrap_or(serde_json::Value::Null);
+        }
+        let n = match (&v, name) {
+            (serde_json::Value::String(s), "climate.espar.state") => espar_state_code(s),
+            (serde_json::Value::String(s), "climate.espar.diag.phase.phase") => espar_phase_code(s),
+            (serde_json::Value::Number(n), _) => n.as_f64(),
+            (serde_json::Value::Bool(b), _) => Some(if *b { 1.0 } else { 0.0 }),
+            _ => None,
+        };
+        if let Some(n) = n {
+            out.push((name, n));
+        }
+    }
+    out
+}
+
 pub const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS samples (key TEXT NOT NULL, t REAL NOT NULL, v REAL NOT NULL);\n\
      CREATE INDEX IF NOT EXISTS samples_key_t ON samples (key, t);";
 
@@ -121,6 +207,27 @@ impl History {
             self.prune(now)?;
         }
         Ok(())
+    }
+
+    /// One sample of the Espar's rolling buffer ([`ESPAR_ROWS`]), and drop its rows older than `keep_s`; returns how
+    /// many rows were written.
+    pub fn sample_espar(&mut self, state: &dyn StateView, now: f64, keep_s: f64) -> rusqlite::Result<usize> {
+        let t = round(now, 1);
+        let rows = espar_rows(state);
+        let tx = self.db.unchecked_transaction()?;
+        {
+            let mut ins = tx.prepare_cached("INSERT INTO samples (key, t, v) VALUES (?1, ?2, ?3)")?;
+            for (k, v) in &rows {
+                ins.execute(rusqlite::params![k, t, v])?;
+            }
+            // one indexed range per key (the 30-day chart keys are never touched)
+            let mut del = tx.prepare_cached("DELETE FROM samples WHERE key = ?1 AND t < ?2")?;
+            for (k, _, _) in ESPAR_ROWS {
+                del.execute(rusqlite::params![k, now - keep_s])?;
+            }
+        }
+        tx.commit()?;
+        Ok(rows.len())
     }
 
     /// Delete rows older than the retention; returns how many.
@@ -201,6 +308,16 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
             bus.subscribe_state(&owner, k).await;
         }
     }
+    let (espar_interval, espar_keep) = (cfg.at("history").f64("espar_interval", 5.0), cfg.at("history").f64("espar_minutes", 30.0) * 60.0);
+    if espar_keep > 0.0 {
+        let mut subscribed = Vec::new();
+        for (_, k, _) in ESPAR_ROWS.iter().chain(&[("", "climate.espar.asleep", None)]) {
+            if !subscribed.contains(k) {
+                subscribed.push(k);
+                bus.subscribe_state(aetherrv_core::names::ESPAR, k).await;
+            }
+        }
+    }
     let (path, interval, days) = (opts.path.clone(), opts.interval, opts.retention_days);
     let h = tokio::task::spawn_blocking(move || History::new(&path, interval, days)).await?;
     if let Some(d) = &h.degraded {
@@ -227,6 +344,25 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
             }
         })
     };
+    if espar_keep > 0.0 {
+        let (h, view) = (h.clone(), bus.remote().clone());
+        tracing::info!("history: the Espar's diagnostics every {espar_interval} s, kept {:.0} min", espar_keep / 60.0);
+        tokio::spawn(async move {
+            loop {
+                let (h, view) = (h.clone(), view.clone());
+                let r = tokio::task::spawn_blocking(move || {
+                    h.lock().unwrap_or_else(|p| p.into_inner()).sample_espar(&*view, aetherrv_core::clock::now_s(), espar_keep)
+                })
+                .await;
+                match r {
+                    Ok(Err(e)) => tracing::error!("history: Espar sample failed: {e}"),
+                    Err(e) => tracing::error!("history: Espar sample failed: {e}"),
+                    Ok(Ok(_)) => {}
+                }
+                tokio::time::sleep(Duration::from_secs_f64(espar_interval.max(0.5))).await;
+            }
+        });
+    }
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     tokio::select! {
         _ = term.recv() => {},

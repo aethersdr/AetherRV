@@ -143,3 +143,83 @@ async fn service_samples_from_the_bus_and_reports_degraded() {
     );
     svc.abort();
 }
+
+/// The Espar's rolling buffer (owner, 2026-11-24): numbers, a field of an object, bools as 1/0, the state and the
+/// phase as codes; while the heater sleeps only the state.
+#[test]
+fn espar_rows_flatten_and_code() {
+    let s = StateStore::new();
+    s.set("climate.espar.asleep", json!(false));
+    s.set("climate.espar.state", json!("heating"));
+    s.set("climate.espar.diag.phase", json!({"request": "heat", "phase": "burning"}));
+    s.set("climate.espar.diag.power_pct", json!(100.0));
+    s.set("climate.espar.diag.glow_w", json!(0.0));
+    s.set("climate.espar.diag.blower", json!(4777));
+    s.set("climate.espar.diag.flame", json!({"flame": true, "fuel_state": "pumping"}));
+    s.set("climate.espar.diag.temps", json!({"flame_c": 167.7, "intake_c": 26.9, "outlet_c": 60.7}));
+    s.set("climate.espar.diag.regulation", json!({"setpoint_c": 18.3, "regulated_c": 9.0}));
+    s.set("climate.espar.ctl.active", json!(true));
+    s.set("climate.espar.diag.ul_per_stroke", json!(null));
+    let rows: std::collections::BTreeMap<_, _> = aetherrv_history::espar_rows(&s).into_iter().collect();
+    assert_eq!(rows["climate.espar.state"], 2.0);
+    assert_eq!(rows["climate.espar.diag.phase.phase"], 20.0); // 0x14 burning
+    assert_eq!(rows["climate.espar.diag.power_pct"], 100.0);
+    assert_eq!(rows["climate.espar.diag.blower"], 4777.0);
+    assert_eq!(rows["climate.espar.diag.flame.flame"], 1.0);
+    assert_eq!(rows["climate.espar.diag.temps.flame_c"], 167.7);
+    assert_eq!(rows["climate.espar.diag.regulation.regulated_c"], 9.0);
+    assert_eq!(rows["climate.espar.ctl.active"], 1.0);
+    assert!(!rows.contains_key("climate.espar.diag.pump_hz"), "missing keys are skipped");
+    assert_eq!(aetherrv_history::espar_phase_code("0x2a"), Some(42.0));
+    assert_eq!(aetherrv_history::espar_phase_code("pre-glow"), Some(7.0));
+
+    s.set("climate.espar.asleep", json!(true));
+    s.set("climate.espar.state", json!("off"));
+    let asleep = aetherrv_history::espar_rows(&s);
+    assert_eq!(asleep, vec![("climate.espar.state", 0.0)], "asleep: the other values are stale, only the state");
+}
+
+/// The buffer keeps the last `keep` seconds of the Espar rows and never touches the chart keys.
+#[test]
+fn espar_buffer_rolls_and_leaves_chart_keys_alone() {
+    let s = StateStore::new();
+    let mut h = History::new(MEMORY, 30.0, 30.0);
+    let now = now();
+    s.set("victron.battery.soc", json!(80.0));
+    h.sample(&s, now - 3600.0).unwrap(); // a chart row an hour old
+    s.set("climate.espar.asleep", json!(false));
+    s.set("climate.espar.state", json!("heating"));
+    s.set("climate.espar.diag.power_pct", json!(29.2));
+    assert_eq!(h.sample_espar(&s, now - 2400.0, 1800.0).unwrap(), 2); // 40 min ago
+    assert_eq!(h.sample_espar(&s, now - 600.0, 1800.0).unwrap(), 2); // 10 min ago
+    let n = |h: &History, k: &str| -> i64 { h.db().query_row("SELECT count(*) FROM samples WHERE key = ?1", [k], |r| r.get(0)).unwrap() };
+    assert_eq!(n(&h, "climate.espar.diag.power_pct"), 2, "nothing older than 30 min yet at the time of each sample");
+    assert_eq!(h.sample_espar(&s, now, 1800.0).unwrap(), 2);
+    assert_eq!(n(&h, "climate.espar.diag.power_pct"), 2, "the 40-min-old row is gone, the 10-min-old one stays");
+    assert_eq!(n(&h, "climate.espar.state"), 2);
+    assert_eq!(n(&h, "victron.battery.soc"), 1, "the chart row an hour old is kept (30-day retention)");
+    assert!(h.get("climate.espar.diag.power_pct", 3600.0, 100, now).is_empty(), "not a chart key");
+}
+
+/// The service samples the Espar's keys from the bus into the buffer.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn service_samples_the_espar_buffer_from_the_bus() {
+    let broker = Broker::start(false);
+    let dir = tempfile::tempdir().unwrap();
+    let db = dir.path().join("history.sqlite3");
+    let est = Arc::new(StateStore::new());
+    let _esp = Bus::start(BusOptions::new("espar").socket(&broker.socket), est.clone());
+    est.set("climate.espar.asleep", json!(false));
+    est.set("climate.espar.state", json!("heating"));
+    est.set("climate.espar.diag.temps", json!({"flame_c": 150.0, "intake_c": 20.0, "outlet_c": 55.0}));
+    let cfg = Cfg::parse("[history]\nespar_interval = 0.5\nespar_minutes = 30\n").unwrap();
+    let opts = Options { bus_socket: Some(broker.socket.clone()), path: db.to_str().unwrap().into(), interval: 30.0, retention_days: 30.0 };
+    let svc = tokio::spawn(aetherrv_history::run(cfg, opts));
+    let count = || -> i64 {
+        open_readonly(&db)
+            .and_then(|c| c.query_row("SELECT count(*) FROM samples WHERE key = 'climate.espar.diag.temps.flame_c' AND v = 150.0", [], |r| r.get(0)))
+            .unwrap_or(0)
+    };
+    assert!(eventually(Duration::from_secs(10), || count() >= 2).await, "the flame temperature sampled every 0.5 s");
+    svc.abort();
+}
