@@ -828,8 +828,9 @@ HDMI 2 and back (touch is mapped to HDMI-A-1, so it only works on HDMI 1), and t
 was awake and sway lit it. Fix: the panel unit now waits until the HDMI display reads connected and steady for 2 s
 (at most 20 s; `packaging/panel/wait-hdmi.sh`), installed in the van as an `/etc` drop-in. **Not yet proven by a
 reboot**: the reboot test was refused by the heater check (the Espar was heating) and waits for the heater to be off
-and cold. The screen auto-off is set to never until a long screen-off has been tested (the panel may drop off HDMI
-when it sleeps, and touch can't wake an output sway no longer has). The touchscreen's own commands were confirmed
+and cold. The screen auto-off was set to never for the evening, then back to 10 min (owner); whether a touch wakes the panel
+after a long sleep is still untested (it may drop off HDMI when it sleeps, and touch can't wake an output sway no
+longer has). The touchscreen's own commands were confirmed
 that evening (client `kiosk`: the MultiPlus, the MCS7 setpoint, an Espar heat run).
 
 Still to do (`docs/CUTOVER.md` §8): ~~a command from the touchscreen itself~~ (done, see above) (all of the day's commands came from a
