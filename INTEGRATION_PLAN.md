@@ -840,6 +840,17 @@ checked in WPE on the bench (the map's mean luminance 0.19 against 0.90) and con
 Installed with `packaging/push.sh --cutover` at 3bde579 (with the panel's HDMI wait in the unit itself now; the
 `/etc` drop-in duplicates it and can go).
 
+**A panel restart does not disturb the Espar** (owner's test, same evening): the panel restarted during a heat run,
+the Espar recorded every 2 s from 30 s before to 210 s after, the history log and the heater's own 2C4 frames: no
+change at all (burning at 100 %, flame on, no fault, no frame gap). The earlier dip began 78 s before that day's
+first panel restart and was the heater's own (flame-out and relight, nothing stored).
+
+**The Systems page's Modules card filled with tools** (same evening): every `aetherrv-ctl` run left a retained
+"down" status, 32 by then. Tools no longer announce themselves (`BusOptions::tool()`), the UI hides the old ones,
+and the 32 were cleared from the broker. The first deploy cross-compiled for the van (d8f3adf, `cross-push.sh
+--cutover`, owner), so the Pi wasn't loaded for 17 min during a burn. The Espar's diagnostics are in the history
+database too (every 30 s, 30 days, D23).
+
 Still to do (`docs/CUTOVER.md` §8): ~~a command from the touchscreen itself~~ (done, see above) (all of the day's commands came from a
 browser on the LAN; a tap the owner made on the panel left no command in `command_log`, so it was not seen to
 switch through AetherRV), the boot splash watched and power-on by stopwatch, the panel's memory after a day and
