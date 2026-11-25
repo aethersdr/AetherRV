@@ -16,11 +16,7 @@ capture_max_gb = 20         # …or oldest-first beyond this total
 path = "/var/lib/aetherrv/history.sqlite3"
 interval = 30          # seconds between samples
 retention_days = 30
-# The Espar's diagnostics (power, pump, glow plug, flame, temperatures, phase, ...) as a rolling buffer in the same
-# file, to look back at what the heater did: sampled every espar_interval seconds while it is awake, kept for
-# espar_minutes (0 = off).
-espar_interval = 5
-espar_minutes = 30
+# (the Espar's diagnostics are logged the same way while the heater is awake)
 
 [web]
 host = "0.0.0.0"

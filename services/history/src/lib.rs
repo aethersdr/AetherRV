@@ -50,12 +50,11 @@ pub const TRACKED: [&str; 28] = [
     "wan.up_mbps",
 ];
 
-/// The Espar's diagnostics as a rolling buffer (owner, 2026-11-24: to look back at what the heater did, e.g. a power
-/// dip mid-run). Sampled every `[history] espar_interval` s (default 5, the diagnostics' own cycle) and kept for the
-/// last `espar_minutes` (default 30; 0 = off) only. Each row is `(sample key, state key, field)`: the sample key is the
-/// state key, plus `.field` for a field of an object value. Numbers as they are, bools as 1/0, the state and the
-/// phase as codes ([`espar_state_code`], [`espar_phase_code`]). While the heater is asleep only the state is sampled
-/// (the other values are its last ones, not live). Not chart keys: [`query`] doesn't return them.
+/// The Espar's diagnostics (owner, 2026-11-24: to look back at what the heater did, e.g. a power dip mid-run),
+/// logged like the chart keys: every `interval`, kept `retention_days`, pruned hourly. Each row is `(sample key, state
+/// key, field)`: the sample key is the state key, plus `.field` for a field of an object value. Numbers as they are,
+/// bools as 1/0, the state and the phase as codes ([`espar_state_code`], [`espar_phase_code`]). While the heater is
+/// asleep only the state is sampled (the other values are its last ones, not live).
 pub const ESPAR_ROWS: [(&str, &str, Option<&str>); 21] = [
     ("climate.espar.state", "climate.espar.state", None),
     ("climate.espar.diag.phase.phase", "climate.espar.diag.phase", Some("phase")),
@@ -192,7 +191,8 @@ impl History {
     /// One sample of every tracked key that is a number (bools are not samples); prunes at most hourly.
     pub fn sample(&mut self, state: &dyn StateView, now: f64) -> rusqlite::Result<()> {
         let t = round(now, 1);
-        let rows: Vec<(&str, f64)> = TRACKED.iter().filter_map(|k| state.num(k).map(|v| (*k, v))).collect();
+        let mut rows: Vec<(&str, f64)> = TRACKED.iter().filter_map(|k| state.num(k).map(|v| (*k, v))).collect();
+        rows.extend(espar_rows(state));
         if !rows.is_empty() {
             let tx = self.db.unchecked_transaction()?;
             {
@@ -207,27 +207,6 @@ impl History {
             self.prune(now)?;
         }
         Ok(())
-    }
-
-    /// One sample of the Espar's rolling buffer ([`ESPAR_ROWS`]), and drop its rows older than `keep_s`; returns how
-    /// many rows were written.
-    pub fn sample_espar(&mut self, state: &dyn StateView, now: f64, keep_s: f64) -> rusqlite::Result<usize> {
-        let t = round(now, 1);
-        let rows = espar_rows(state);
-        let tx = self.db.unchecked_transaction()?;
-        {
-            let mut ins = tx.prepare_cached("INSERT INTO samples (key, t, v) VALUES (?1, ?2, ?3)")?;
-            for (k, v) in &rows {
-                ins.execute(rusqlite::params![k, t, v])?;
-            }
-            // one indexed range per key (the 30-day chart keys are never touched)
-            let mut del = tx.prepare_cached("DELETE FROM samples WHERE key = ?1 AND t < ?2")?;
-            for (k, _, _) in ESPAR_ROWS {
-                del.execute(rusqlite::params![k, now - keep_s])?;
-            }
-        }
-        tx.commit()?;
-        Ok(rows.len())
     }
 
     /// Delete rows older than the retention; returns how many.
@@ -250,10 +229,10 @@ impl History {
 }
 
 /// The chart query (Python `History.get`), on any connection to the samples table: points `[t, mean]` for `key`
-/// over the last `since` seconds, averaged into buckets of `max(interval, since / max_points)` seconds. Untracked
-/// keys return nothing.
+/// over the last `since` seconds, averaged into buckets of `max(interval, since / max_points)` seconds. Keys that
+/// are neither [`TRACKED`] nor [`ESPAR_ROWS`] return nothing.
 pub fn query(db: &Connection, key: &str, since: f64, max_points: i64, now: f64, interval: f64) -> rusqlite::Result<Vec<[f64; 2]>> {
-    if !TRACKED.contains(&key) {
+    if !TRACKED.contains(&key) && !ESPAR_ROWS.iter().any(|r| r.0 == key) {
         return Ok(Vec::new());
     }
     let start = now - since;
@@ -308,15 +287,11 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
             bus.subscribe_state(&owner, k).await;
         }
     }
-    let (espar_interval, espar_keep) = (cfg.at("history").f64("espar_interval", 5.0), cfg.at("history").f64("espar_minutes", 30.0) * 60.0);
-    if espar_keep > 0.0 {
-        let mut subscribed = Vec::new();
-        for (_, k, _) in ESPAR_ROWS.iter().chain(&[("", "climate.espar.asleep", None)]) {
-            if !subscribed.contains(k) {
-                subscribed.push(k);
-                bus.subscribe_state(aetherrv_core::names::ESPAR, k).await;
-            }
-        }
+    let mut espar_keys: Vec<&str> = ESPAR_ROWS.iter().map(|r| r.1).collect();
+    espar_keys.push("climate.espar.asleep");
+    espar_keys.dedup();
+    for k in espar_keys {
+        bus.subscribe_state(aetherrv_core::names::ESPAR, k).await;
     }
     let (path, interval, days) = (opts.path.clone(), opts.interval, opts.retention_days);
     let h = tokio::task::spawn_blocking(move || History::new(&path, interval, days)).await?;
@@ -344,25 +319,6 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
             }
         })
     };
-    if espar_keep > 0.0 {
-        let (h, view) = (h.clone(), bus.remote().clone());
-        tracing::info!("history: the Espar's diagnostics every {espar_interval} s, kept {:.0} min", espar_keep / 60.0);
-        tokio::spawn(async move {
-            loop {
-                let (h, view) = (h.clone(), view.clone());
-                let r = tokio::task::spawn_blocking(move || {
-                    h.lock().unwrap_or_else(|p| p.into_inner()).sample_espar(&*view, aetherrv_core::clock::now_s(), espar_keep)
-                })
-                .await;
-                match r {
-                    Ok(Err(e)) => tracing::error!("history: Espar sample failed: {e}"),
-                    Err(e) => tracing::error!("history: Espar sample failed: {e}"),
-                    Ok(Ok(_)) => {}
-                }
-                tokio::time::sleep(Duration::from_secs_f64(espar_interval.max(0.5))).await;
-            }
-        });
-    }
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     tokio::select! {
         _ = term.recv() => {},
