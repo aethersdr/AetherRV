@@ -161,7 +161,8 @@ async fn api_state(State(a): State<Arc<App>>) -> Json<Value> {
 
 /// Points for `key` over the last `since` seconds, averaged into at most `max_points` buckets (history.py `get`).
 pub fn history_get(db: &rusqlite::Connection, key: &str, since: f64, max_points: i64, interval: f64, now: f64) -> Vec<Value> {
-    if !TRACKED.contains(&key) {
+    // the chart keys, and the Espar's diagnostics the history service logs too (D23)
+    if !TRACKED.contains(&key) && !key.starts_with("climate.espar.") {
         return vec![];
     }
     let start = now - since;
@@ -450,4 +451,22 @@ pub async fn run(cfg: Cfg, bus_socket: Option<PathBuf>) -> anyhow::Result<()> {
     }
     bus.shutdown().await;
     Ok(())
+}
+
+#[cfg(test)]
+mod history_get_tests {
+    use super::history_get;
+
+    #[test]
+    fn serves_chart_keys_and_the_espar_diagnostics_only() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE samples (key TEXT NOT NULL, t REAL NOT NULL, v REAL NOT NULL);").unwrap();
+        let now = 1_000_000.0;
+        for (k, v) in [("climate.cabin.temp", 9.0), ("climate.espar.diag.power_pct", 100.0), ("not.tracked", 1.0)] {
+            db.execute("INSERT INTO samples (key, t, v) VALUES (?1, ?2, ?3)", rusqlite::params![k, now - 60.0, v]).unwrap();
+        }
+        assert_eq!(history_get(&db, "climate.cabin.temp", 3600.0, 240, 30.0, now).len(), 1);
+        assert_eq!(history_get(&db, "climate.espar.diag.power_pct", 3600.0, 240, 30.0, now).len(), 1);
+        assert!(history_get(&db, "not.tracked", 3600.0, 240, 30.0, now).is_empty());
+    }
 }
