@@ -868,3 +868,19 @@ heard (the owner).
 Cosmetic, for later: exited `aetherrv-ctl` runs stay listed as DOWN in `aetherrv-ctl health`; the Espar service clears
 its retained diagnostics keys about 10 s after a restart until its next read; a stopping service logs one
 "bus: disconnected" warning; `aetherrv-espar.service` sets `RestartSec` twice (the later 100 ms applies).
+
+## 50. The Python code removed (2026-11-25, owner)
+
+`rust` was fast-forwarded into `main` (a238271, tagged `python-final`: the last tree with the Python system), then the
+Python code left the repo: the backend (`src/`), its tests, its UI (`web/`), its deploy (`deploy/`), `pyproject.toml` /
+`uv.lock`, and the Python tools and harness pieces. What the Rust system still used moved to `packaging/` first
+(network, iwd and boot-splash files, and the system update, `packaging/update`, without the Python environment check
+that would have failed every update once `/opt/aetherrv` is gone; the van gets it with its next deploy). Ported:
+`aetherrv-setup peplink-rw-client` and `store-secrets` (secrets written only after the services' own parser reads them
+back), the N2K table generator and the licence list as jq scripts (byte-identical output), the UI benchmark's Python
+as `aetherrv-uibench` subcommands and jq, each diffed against its original before deletion. The van is unchanged:
+`/opt/aetherrv` and `packaging/rollback.sh` stay for the rollback window.
+
+The README screenshots are now the Rust UI (`harness/ui-reference/screenshots.sh`): the van's state and history
+copied read-only, sanitized (`sanitize-state.jq`: Denver, "Campground Wi-Fi", Batt 1-4, serials/MACs/private IPs
+replaced), rendered against a stub gateway that refuses every command.
