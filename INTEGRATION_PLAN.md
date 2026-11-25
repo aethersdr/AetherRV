@@ -783,3 +783,41 @@ hot water and pre-heat off; `auto:low-battery`), again whenever one is found hea
 Each runs its own after-run. The lockout lifts when charging or above 12 %. Before the 5 % power-off, AetherRV
 turns the heaters off too and waits (up to 10 min) until both are idle, so the heaters are cold before the BMS
 can cut power. This is the one owner-approved exception to "AetherRV acts only when a person asks".
+
+## 49. The Rust system in the van: the cutover (2026-11-24, owner present)
+
+Version **8ad8f60** (`/opt/aetherrv-rs/VERSION`), built natively on the van Pi (16 min 42 s), installed next to
+Python and switched with `docs/CUTOVER.md`. The Python tree stays in `/opt/aetherrv` for at least two weeks; the
+rollback is `sudo /opt/aetherrv-rs/src/packaging/rollback.sh`.
+
+- **Read-only, 30 min**: every key Python had was there (the 54 new keys are all D7); energy, the four EPOCH batteries
+  (real BlueZ, about 1 Hz), N2K's 11 devices, the MCS7 and the Espar as Python showed them; the owner checked the
+  Cerbo, the MCS7 panel, the keypad and the touchscreen. hat0 and hat1 sent **no frame** in the whole period. (Two
+  hat0 frames during the switch were Python's last answers to the Cerbo's 10 s address-claim poll, before it
+  stopped.)
+- **Then one device at a time**, each with the owner's yes: N2K (13 commands, each verified; hold-to-dim 44 → 98 %),
+  the MCS7, Victron, the Espar's diagnostics, then the Espar (attach OFF; FAN twice; HEAT 10 °C for 5 min, resumed
+  after a `systemctl restart` in 0.5 s and a `kill -9` while burning in 1.6 s, the timer's OFF and a 240 s after-run,
+  no new fault), and finally `cutover.sh --full`.
+- **The Espar's controller-loss tolerance**, measured at last: **15.2 s** in FAN, then idle and asleep.
+
+Surprises, all handled on the day:
+- The van had no Rust toolchain, `mosquitto`, WPE, GStreamer or `jq`; `heaters-idle.sh` (and so the cutover and the
+  rollback) needs `jq` and now says so. `push.sh` could not create `/opt/aetherrv-rs` on a first install, and the
+  runbook's backup `tar` expanded its glob in the wrong directory: both fixed.
+- The runbook's N2K test named a spare ch8 that no longer exists; the "Spare (ch 14)" tile has no virtual switch and
+  is refused, as in Python.
+- Testing the MCS7 from the Climate dial sent 10 °C (a whole display degree where the finger let go) and started the
+  furnace; set back to 7.2 °C, a normal after-run. Testing Victron switched the MultiPlus on and the MPPT off and on;
+  set back. The runbook now says to step with Home's ± and to note the Cerbo's settings first.
+- The Espar reports "heating" (2C4 state 09) from the first second of a HEAT run, so "heating" does not mean burning;
+  the first resume test therefore ran during the glow-plug preheat. Burning is the pump and power from the
+  diagnostics.
+- The heater's stored codes P000307, P000129 and P000440 date from 2026-11-22 (all inactive).
+
+Still to do (`docs/CUTOVER.md` §8): a command from the touchscreen itself (all of the day's commands came from a
+browser on the LAN), the alert chime heard, the boot splash and power-on by stopwatch (a reboot), the panel's memory
+after a day and after several days, the §8 UI numbers on the real panel, and the Cerbo failover only if wanted.
+Cosmetic, for later: exited `aetherrv-ctl` runs stay listed as DOWN in `aetherrv-ctl health`; the Espar service clears
+its retained diagnostics keys about 10 s after a restart until its next read; a stopping service logs one
+"bus: disconnected" warning; `aetherrv-espar.service` sets `RestartSec` twice (the later 100 ms applies).

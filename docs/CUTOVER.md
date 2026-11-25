@@ -108,6 +108,8 @@ Only with the owner's go-ahead at the time, with the heater in FAN (not burning)
 (`systemctl stop aetherrv-espar`, which sends no OFF) and time how long the heater keeps reporting `fan` before it
 stops by itself; then start the service. Expect a stored P000307/P000440 afterwards (clear it the usual way). Use
 the number to set `resume_listen_s` and the restart policy, and record it in `docs/ARCHITECTURE.md`.
+**Measured 2026-11-24: 15.2 s** in FAN (then idle, no fault in the 2C4, asleep 1.6 s later); the resume timings
+stand (`docs/ARCHITECTURE.md` §7.2).
 
 Then `sudo packaging/cutover.sh --full` (the config's `tx_enabled` decides, as in Python).
 
