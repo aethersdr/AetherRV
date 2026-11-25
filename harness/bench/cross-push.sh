@@ -2,11 +2,13 @@
 # Bench deploys without the Pi's 13-minute native build: cross-compile a COMMITTED revision on the workstation
 # (rustup's aarch64-unknown-linux-gnu target, clang + lld, linked against a sysroot copied from the bench itself, so
 # glibc, libgcc and libdbus are the bench's own), then sync the source and the binaries and run packaging/install.sh
-# there, as packaging/push.sh does. No containers. Bench only: refuses a host with hat0/hat1 (the van, whose deploys
-# stay native through the cutover runbook).
-#   harness/bench/cross-push.sh sysroot <bench>      copy the bench's headers and libraries (once, and after a pacman -Syu)
-#   harness/bench/cross-push.sh push <rev> <bench>   build <rev> and install it on <bench>; nothing is started
-#   harness/bench/cross-push.sh build <rev>          build only
+# there, as packaging/push.sh does. No containers. Refuses a host with hat0/hat1 (a console, the van) unless --cutover
+# is given (owner, 2026-11-24: the van's deploys may be cross-compiled too); then the host's glibc must be the one in
+# the sysroot, and install.sh runs with --cutover (installs next to what runs, starts nothing).
+#   harness/bench/cross-push.sh sysroot <bench>                  copy the bench's headers and libraries (once, and after a pacman -Syu)
+#   harness/bench/cross-push.sh push <rev> <bench>               build <rev> and install it on <bench>; nothing is started
+#   harness/bench/cross-push.sh push <rev> <console> --cutover   the same on a console (the van); nothing is started
+#   harness/bench/cross-push.sh build <rev>                      build only
 # Work files in harness/out/cross/ (gitignored): sysroot/, target/ (incremental across revisions), export/.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -27,8 +29,18 @@ sysroot)
   ln -sfn usr/lib "$SYSROOT/lib"
   echo "sysroot: $SYSROOT ($(du -sh "$SYSROOT" | cut -f1))" ;;
 push|build)
-  REV=${2:?usage: cross-push.sh push|build <rev> [<bench>]}; H=${3:-}
-  [ "$1" = build ] || { [ -n "$H" ] || { echo "usage: cross-push.sh push <rev> <bench>" >&2; exit 2; }; not_van "$H"; }
+  REV=${2:?usage: cross-push.sh push|build <rev> [<bench> | <console> --cutover]}; H=${3:-}; MODE=${4:-}
+  if [ "$1" = push ]; then
+    [ -n "$H" ] || { echo "usage: cross-push.sh push <rev> <bench> | push <rev> <console> --cutover" >&2; exit 2; }
+    if [ "$MODE" = --cutover ]; then
+      # a console: its glibc must be the sysroot's (the binaries are linked against the sysroot)
+      want=$(strings "$SYSROOT/usr/lib/libc.so.6" | sed -n 's/^GNU C Library .* version \([0-9.]*\)\.$/\1/p' | head -1)
+      have=$(ssh -o BatchMode=yes "$H" 'ldd --version | head -1' | grep -oE '[0-9]+\.[0-9]+$')
+      [ -n "$want" ] && [ "$want" = "$have" ] || { echo "refused: $H has glibc ${have:-?}, the sysroot ${want:-?}" >&2; exit 3; }
+    else
+      not_van "$H"
+    fi
+  fi
   [ -e "$SYSROOT/usr/lib/libc.so" ] || { echo "no sysroot: run '$0 sysroot $H' first" >&2; exit 4; }
   rustup target list --installed | grep -qx $T || { echo "missing: rustup target add $T" >&2; exit 4; }
   rm -rf "$W/export" && mkdir -p "$W/export"
@@ -54,12 +66,13 @@ push|build)
   echo "built: $(echo "$bins" | wc -l) binaries in $B"
   [ "$1" = build ] && exit 0
   # the source as push.sh syncs it, then the binaries where install.sh looks for them
+  ssh "$H" "sudo mkdir -p /opt/aetherrv-rs/src"   # (rsync makes only the last level)
   rsync -a --delete --exclude target --exclude .git --exclude ui/node_modules --exclude harness/out --exclude deploy/local.env \
     --exclude packaging/local.env --exclude '.venv' --exclude __pycache__ --exclude docs/private \
     --rsync-path="sudo rsync" "$W/export/" "$H":/opt/aetherrv-rs/src/
   ssh "$H" "sudo mkdir -p /opt/aetherrv-rs/src/target/release && sudo find /opt/aetherrv-rs/src/target/release -maxdepth 1 -name 'aetherrv-*' -delete"
   # shellcheck disable=SC2086  # one path per word
   rsync -a --rsync-path="sudo rsync" $bins "$H":/opt/aetherrv-rs/src/target/release/
-  ssh "$H" "cd /opt/aetherrv-rs/src && sudo packaging/install.sh" | tail -2 ;;
-*) sed -n '2,9p' "$0"; exit 2 ;;
+  ssh "$H" "cd /opt/aetherrv-rs/src && sudo packaging/install.sh ${MODE:+--cutover}" | tail -2 ;;
+*) sed -n '2,11p' "$0"; exit 2 ;;
 esac
