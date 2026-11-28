@@ -5,6 +5,7 @@ pub const ESPAR: &str = "espar";
 pub const N2K: &str = "n2k";
 pub const VICTRON: &str = "victron";
 pub const BATTERIES: &str = "batteries-ble";
+pub const RUUVI: &str = "ruuvi";
 pub const RIXENS: &str = "rixens";
 pub const STARLINK: &str = "starlink";
 pub const PEPLINK: &str = "peplink";
@@ -24,8 +25,8 @@ pub fn can_aux(bus: &str) -> String {
 }
 
 /// Every long-running service (the module-health list; `can-aux-*` instances are added from the config).
-pub const SERVICES: [&str; 16] = [
-    ESPAR, N2K, VICTRON, BATTERIES, RIXENS, STARLINK, PEPLINK, GPS, NETMON, WEATHER, POWER_GUARD, DERIVE, SETTINGS,
+pub const SERVICES: [&str; 17] = [
+    ESPAR, N2K, VICTRON, BATTERIES, RUUVI, RIXENS, STARLINK, PEPLINK, GPS, NETMON, WEATHER, POWER_GUARD, DERIVE, SETTINGS,
     ALERTS, HISTORY, GATEWAY,
 ];
 
@@ -46,6 +47,7 @@ pub const PREFIXES: &[(&str, &str)] = &[
     ("climate.fridge.", VICTRON),
     ("climate.freezer.", VICTRON),
     ("batteries.", BATTERIES),
+    ("ruuvi.", RUUVI),
     ("climate.rixens.", RIXENS),
     ("starlink.", STARLINK),
     ("peplink.", PEPLINK),

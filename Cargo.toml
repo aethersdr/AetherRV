@@ -18,6 +18,7 @@ proto-espar = { path = "crates/proto-espar" }
 proto-roypow = { path = "crates/proto-roypow" }
 proto-nmea = { path = "crates/proto-nmea" }
 proto-mcs7 = { path = "crates/proto-mcs7" }
+proto-ruuvi = { path = "crates/proto-ruuvi" }
 aetherrv-sim = { path = "crates/sim" }
 
 tokio = { version = "1.54", features = ["full"] }

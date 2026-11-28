@@ -29,6 +29,7 @@ systemd as the `aetherrv` user unless noted. The units are grouped by `aetherrv.
 | `aetherrv-can-aux@<bus>` | `CaptureOnlyAdapter`, `adapters/rixens.py` | one spare CAN port each (`fd0`, `fd1`, MCS7 CAN if wired) | `<device>.*`, `bus.<bus>.*` | none (no send path) |
 | `aetherrv-victron` | `adapters/victron.py` | MQTT client to the Cerbo GX | `victron.*`, `climate.cabin*`/`outside`/`fridge`/`freezer` temps | `victron`: `inverter_mode`, `shore_limit`, `mppt_mode`, `ack_alarms` |
 | `aetherrv-batteries-ble` | `adapters/epoch_ble.py` | BlueZ links to the EPOCH batteries | `batteries.ble*` | none |
+| `aetherrv-ruuvi` | none (new, 2026-11-27) | BlueZ discovery: Ruuvi tag advertisements, listen only | `ruuvi.*` (observe-only for now) | none |
 | `aetherrv-rixens` | `adapters/rixens_http.py` | MCS7 local HTTP API | `climate.rixens.*` | `rixens`: `setpoint`, `fan`, `furnace`, `electric`, `engine`, `hot_water`, `preheat`, `thermostat` |
 | `aetherrv-starlink` | `adapters/starlink.py` | dish gRPC | `starlink.*` | `starlink`: `install_update`, `reboot`, `check_update`, `set_heating`, `set_sleep` |
 | `aetherrv-peplink` | `adapters/peplink.py` | router API | `peplink.*`, `wan.*` | `peplink`: `set_wan_priority`, `set_wan_order` |

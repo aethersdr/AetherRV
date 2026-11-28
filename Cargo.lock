@@ -308,6 +308,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aetherrv-ruuvi"
+version = "0.1.0"
+dependencies = [
+ "aetherrv-core",
+ "anyhow",
+ "bluer",
+ "futures",
+ "proto-ruuvi",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "aetherrv-screen"
 version = "0.1.0"
 dependencies = [
@@ -2051,6 +2065,10 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
 ]
+
+[[package]]
+name = "proto-ruuvi"
+version = "0.1.0"
 
 [[package]]
 name = "quinn"

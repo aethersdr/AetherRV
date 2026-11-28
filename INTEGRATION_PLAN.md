@@ -988,3 +988,28 @@ stayed off and asleep; start-up line "room temperature from the cabin mean …")
 `aetherrv-ctl`: the room value was 5.26 °C from "cabin mean (front, rear, MCS7)", the dial's cabin value exactly (front
 4.9, rear 5.6, MCS7 5.3), and OFF at once; both commands ok in `command_log`. Waking the heater re-raised its three
 stored faults (P000307, P000129, P000440), the same fault memory as on 11-24, nothing new. No failed unit.
+
+## 54. The Ruuvi tags read directly: the listener, observe-only (2026-11-27, owner)
+
+Found while testing §53: a Ruuvi that goes silent never counts as stale while the Cerbo is connected (the Victron
+service republishes every role on each temperature message, and the Cerbo republishes everything every 30 s). The owner
+chose to read the tags directly on the Pi, with no Cerbo fallback ("Direct only"). Each broadcast carries the tag's
+own measurement counter and battery voltage, so a silent tag shows as silent, and a low tag battery can be seen
+before it dies (all four died unnoticed earlier this month).
+
+Step 1, this build: nothing that runs changes.
+- `proto-ruuvi`: data formats 5 (RAWv2) and 3 (RAWv1), tested against Ruuvi's published test vectors (valid,
+  maximum, minimum, invalid). Any other format byte is an error the caller counts, never a guess.
+- `aetherrv-ruuvi`, listen only, **observe-only**: one BlueZ discovery session (LE, duplicate data on, so every
+  advertisement is signalled), watching only devices whose manufacturer data carries Ruuvi's company id. Values cached
+  on BlueZ's device objects at start never count as heard. It publishes `ruuvi.tags` (per tag: role, short id,
+  format, temperature, humidity, battery voltage, RSSI, sequence, last heard, advertisements, new measurements, the
+  longest gaps, gaps over 60 s, decode errors; other people's Ruuvis by short id only, at most 16) and `ruuvi.scan`.
+  It owns no `climate.*` key. The tags' addresses live in the Pi's config only. Its unit is installed, not enabled.
+- The van's BlueZ (5.88) doesn't offer the passive advertisement monitor without experimental mode, so the listener
+  uses an ordinary discovery session, the same mechanism the battery service uses to reconnect.
+
+Next, with the owner's yes: run it in the van for about a day to measure whether every tag is heard continuously
+alongside the four battery links (per-tag gaps from `ruuvi.tags`; battery reconnects from the journal, against the
+day before). Only then the switch: the climate roles from this service, the Victron roles off, one owner function for
+every reader (the Espar's follow list included), `victron.connected` no longer gating directly-read tags.

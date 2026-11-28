@@ -1,0 +1,11 @@
+[package]
+name = "proto-ruuvi"
+description = "Ruuvi tag Bluetooth LE advertisements (data formats 5 and 3): decode, read-only"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

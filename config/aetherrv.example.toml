@@ -104,6 +104,17 @@ tx_enabled = false
 # name = "1"
 # address = "00:00:00:00:00:00"
 
+# Ruuvi tags read directly over Bluetooth LE (needs BlueZ), listen only: aetherrv-ruuvi. Observe-only for now: it
+# publishes ruuvi.* (each tag's reading, battery voltage, signal and the gaps between its broadcasts) and nothing
+# else; the climate values still come from the Cerbo. The role names are free text; the addresses are the tags' own.
+# [device.ruuvi]
+# kind = "ruuvi"
+# enabled = true
+# [device.ruuvi.tags]
+# cabin = "00:00:00:00:00:01"
+# cabin_rear = "00:00:00:00:00:02"
+# outside = "00:00:00:00:00:03"
+
 [device.espar]
 kind = "capture"       # Airtronic S2 D2L: capture-only until the frame map is verified
 bus = "hat0"           # placeholder

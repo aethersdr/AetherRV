@@ -80,8 +80,8 @@ against (197 ported tests, golden-parity replays of real CAN captures); that sys
 
 | Path | What |
 |---|---|
-| `crates/` | Shared libraries: `core` (bus client, state, commands, TxGate, config), `can` (SocketCAN, socketcand, failover, capture), protocol codecs (`proto-n2k`, `proto-espar`, `proto-roypow`, `proto-nmea`, `proto-mcs7`), `power`, `sim` (device simulators) |
-| `services/` | One binary per device or core function: `espar`, `n2k`, `rixens`, `victron`, `batteries-ble`, `starlink`, `peplink`, `gps`, `weather`, `netmon`, `can-aux`, `power-guard`, `alerts`, `history`, `derive`, `settings`, `gateway` (web + WebSocket), `screen`, and `admind` (the root helper) |
+| `crates/` | Shared libraries: `core` (bus client, state, commands, TxGate, config), `can` (SocketCAN, socketcand, failover, capture), protocol codecs (`proto-n2k`, `proto-espar`, `proto-roypow`, `proto-ruuvi`, `proto-nmea`, `proto-mcs7`), `power`, `sim` (device simulators) |
+| `services/` | One binary per device or core function: `espar`, `n2k`, `rixens`, `victron`, `batteries-ble`, `ruuvi`, `starlink`, `peplink`, `gps`, `weather`, `netmon`, `can-aux`, `power-guard`, `alerts`, `history`, `derive`, `settings`, `gateway` (web + WebSocket), `screen`, and `admind` (the root helper) |
 | `ui/` | The React + TypeScript touch UI (Vite; Leaflet and three.js bundled, no CDN) |
 | `sims/` | Simulator binaries for the bench: Espar heater, CLMD16 + keypads, MCS7, Cerbo, EPOCH batteries, Starlink, Peplink, GPS, CAN capture replay |
 | `utils/` | `aetherrv-ctl` (bus client), `aetherrv-migrate` (checks config, secrets, history and settings), `aetherrv-setup` (Victron pairing, the Peplink read-write API client, secrets writes), the isolation and soak tools, and the UI runtime benchmark (`uibench`) |

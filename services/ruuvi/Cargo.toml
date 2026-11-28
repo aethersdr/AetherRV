@@ -1,0 +1,26 @@
+[package]
+name = "aetherrv-ruuvi"
+description = "Ruuvi tags read directly over Bluetooth LE (advertisements only, read-only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aetherrv-ruuvi"
+path = "src/main.rs"
+
+[dependencies]
+aetherrv-core.workspace = true
+proto-ruuvi.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+bluer.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+aetherrv-core = { workspace = true, features = ["testutil"] }
+
+[lints]
+workspace = true
