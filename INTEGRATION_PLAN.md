@@ -1058,4 +1058,5 @@ cabin average kept going, the Ruuvi listener's measurement was untouched (same P
 
 **2026-11-27, switches (owner).** The Home page's Lights & switches card lost its "live" pill, and the Switches page its
 "Live: tap to switch. Keypad logic is off." banner. Both still explain when something is off: the card says "view only"
-or "demo · not connected", and the page "No switch banks decoded yet" or that switch control is off.
+or "demo · not connected", and the page "No switch banks decoded yet" or that switch control is off. On the van the same
+evening (owner yes): b5117fb installed (UI only) and the panel restarted; no other service restarted, no failed unit.
