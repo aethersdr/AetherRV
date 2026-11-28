@@ -1060,3 +1060,22 @@ cabin average kept going, the Ruuvi listener's measurement was untouched (same P
 "Live: tap to switch. Keypad logic is off." banner. Both still explain when something is off: the card says "view only"
 or "demo · not connected", and the page "No switch banks decoded yet" or that switch control is off. On the van the same
 evening (owner yes): b5117fb installed (UI only) and the panel restarted; no other service restarted, no failed unit.
+
+## 56. The Pi's load on Settings → Device (2026-11-27, owner)
+
+Owner: a chart at the bottom of the Device tab of CPU, GPU and memory use, plus the SoC temperature. From a read-only
+look at the van: 4 cores and 16 GB; the SoC's own sensor is the `cpu-thermal` zone (also NVMe, RP1 and fan sensors,
+not used); the V3D GPU's `gpu_stats` gives each GPU queue's busy runtime and a timestamp, readable without root.
+- The settings service (no new unit to enable) reads them: CPU % from `/proc/stat` (idle + iowait over all), GPU % as
+  the busiest queue's Δruntime / Δtimestamp (binning and rendering overlap, so not summed), memory % as 1 −
+  MemAvailable / MemTotal, the SoC temperature from the zone found by its type. The counters are read once per history
+  interval (30 s), so CPU and GPU are the exact means over what history records; memory and temperature are the mean
+  of 5 s samples. A missing file is null and the UI leaves that series out.
+- `pi.cpu_pct`, `pi.gpu_pct`, `pi.mem_pct`, `pi.soc_c` (owner: settings) are in history's and the gateway's lists.
+- The chart: the three loads on one 0–100 % axis (CPU blue, GPU amber, memory pink, validated for day and night) and
+  the SoC temperature in its own lane in the display unit, sharing the time window (6 h / 24 h / 7 d); live values in
+  the legend.
+
+On the bench (Pi 5, e536b45, under systemd as `aetherrv`): both files found by the service itself, values published
+(CPU 1.6 %, GPU 0.0 %, memory 4.9 %, SoC 42 °C), and after restarting history and the gateway `/api/history` returned
+points for all four.
