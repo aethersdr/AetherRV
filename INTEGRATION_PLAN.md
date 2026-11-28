@@ -1084,3 +1084,9 @@ On the van the same evening (owner yes), heaters idle: a3b02a4 installed (cross-
 history and gateway services and the panel restarted; the Ruuvi listener and the battery service untouched. The service
 found the same two files as on the bench. First interval: CPU 11.4 %, GPU 43.1 % (the panel had just restarted and was
 drawing its pages), memory 6.7 %, SoC 35.7 °C; history had points for all four. No failed unit, no warnings.
+
+Later that evening (owner): the RP1 and NVMe temperatures join the SoC's (`pi.rp1_c` from hwmon `rp1_adc`, `pi.nvme_c`
+from hwmon `nvme`'s "Composite" reading, both found by name; SoC orange, RP1 violet, NVMe green, validated for day
+and night with a brighter night green), and the page was too tall, so the load and temperature charts now sit side by
+side (stacked at phone width). At the panel's size the Device tab still scrolls 164 px (about 380 px stacked). Bench
+(6f562f5): both sensors found, SoC 41.5, RP1 49.5, NVMe 36.9 °C, history points for both.
