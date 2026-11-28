@@ -417,3 +417,28 @@ test("cabin average with the rear Ruuvi: front · rear · MCS7, and only the sen
   s.delta({ "climate.cabin.rear_ruuvi_temp": null, "climate.cabin.rear_temp": 19.0 }); // the rear Ruuvi left out
   await expect(page.locator("#dial-label .dial-split")).toHaveText("average of front 64° · back 66°");
 });
+
+test("temperature chart: shaded bands while the MCS7 and the Espar ran, in the legend and the tooltip", async ({ page }) => {
+  await stubGateway(page);
+  const now = Math.floor(Date.now() / 1000), B = 240;                     // 24 h at 360 points = 240 s buckets
+  const ts = Array.from({ length: 360 }, (_, i) => now - 86400 + (i + 1) * B);
+  const on = (from: number, to: number, v: number) => ts.map(t => [t, t > now - from && t <= now - to ? v : 0]);
+  await page.route("**/api/history**", r => r.fulfill({ json: {
+    "climate.cabin.temp": ts.map(t => [t, 15]), "climate.outside.temp": ts.map(t => [t, 2]),
+    "climate.rixens.fuel_hz": on(6 * 3600, 5 * 3600, 5.5),                  // the MCS7 burned 6 h → 5 h ago
+    "climate.espar.state": on(3 * 3600, 2 * 3600, 2),                       // the Espar heated 3 h → 2 h ago
+  } }));
+  await open(page);
+  const band = (n: string) => page.locator(`#chart-temp .band[data-band="${n}"] .band-wash`);
+  await expect(band("MCS7")).toHaveCount(1);
+  await expect(band("Espar")).toHaveCount(1);
+  await expect(page.locator("#legend-temp > span")).toHaveText(["Cabin", "Outside", "MCS7 running", "Espar running"]);
+  const box = (await band("MCS7").boundingBox())!;
+  expect(box.width).toBeGreaterThan(10);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.locator("#chart-temp .tip .tip-band")).toHaveText(["MCS7running"]);
+  const eb = (await band("Espar").boundingBox())!;
+  expect(eb.x).toBeGreaterThan(box.x + box.width);                          // later in time, further right
+  await page.mouse.move(eb.x + eb.width / 2, eb.y + eb.height / 2);
+  await expect(page.locator("#chart-temp .tip .tip-band")).toHaveText(["Esparrunning"]);
+});

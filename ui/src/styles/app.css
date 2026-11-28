@@ -14,6 +14,7 @@
   /* entity colors (validated, dark surface): */
   --c-solar: #c98500; --c-shore: #199e70; --c-alt: #9085e9; --c-load: #d55181; --c-batt: #3987e5;
   --c-cabin: #d95926; --c-out: #3987e5;
+  --c-mcs7: #9085e9; --c-espar: #c98500;   /* heater run bands (validated against each other and the surface) */
   /* status (reserved, always with icon + label) */
   --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
   --accent: #3987e5;
@@ -25,6 +26,7 @@ html.night {
   --ink: #e7a07a; --ink-2: #b97a58; --muted: #7d523b; --accent: #b4502a;
   --c-solar: #9a6a10; --c-shore: #2e7a5c; --c-alt: #7266b8; --c-load: #a8486a; --c-batt: #3a6aa8;
   --c-cabin: #a84a22; --c-out: #3a6aa8;
+  --c-mcs7: #7266b8; --c-espar: #9a6a10;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -137,6 +139,8 @@ main { position: relative; overflow: hidden; }
 .tchart .grid.base { stroke: var(--track); }
 .tchart .axis { fill: var(--muted); font-size: 16px; font-variant-numeric: tabular-nums; }
 .tchart .xhair line { stroke: var(--muted); stroke-width: 1; }
+.tchart .band-wash { opacity: .2; }
+.legend .band-key i { background: color-mix(in srgb, var(--k) 32%, transparent) !important; border-top: 4px solid var(--k); }
 .tip { position: absolute; top: 6px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px;
   font-size: 17px; pointer-events: none; min-width: 170px; box-shadow: 0 10px 30px #0007; }
 .tip-t { color: var(--muted); margin-bottom: 4px; }

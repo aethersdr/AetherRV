@@ -6,8 +6,11 @@ import { memo, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, ty
 
 export type Point = readonly [number, number];
 export interface Series { name: string; color: string; points?: readonly Point[] | null }
+/** Stretches of time shaded behind the lines (e.g. when a heater ran), each with a solid strip along the top. */
+export interface Band { name: string; color: string; spans: readonly (readonly [number, number])[] }
 export interface TimeChartProps {
   series: readonly Series[];
+  bands?: readonly Band[];
   unit?: string; yMin?: number; yMax?: number; yTicks?: readonly number[];
   area?: boolean; zero?: boolean; t0?: number; t1?: number;
   fmt?: (v: number) => string;
@@ -46,6 +49,7 @@ export const TimeChart = memo(function TimeChart(opt: TimeChartProps) {
   const W = size?.w || 600, H = size?.h || 220;
   const series = useMemo(() => opt.series.filter((s): s is Series & { points: readonly Point[] } => !!s.points && s.points.length > 0), [opt.series]);
   const fmt = opt.fmt || ((v: number) => `${Math.round(v)}${opt.unit || ""}`);
+  const bands = opt.bands ?? [];
   const xh = useRef<SVGGElement>(null), tip = useRef<HTMLDivElement>(null);
 
   if (!series.length) {
@@ -88,6 +92,9 @@ export const TimeChart = memo(function TimeChart(opt: TimeChartProps) {
       dots[i]?.setAttribute("cx", String(x(p[0]))); dots[i]?.setAttribute("cy", String(y(p[1])));
       rows += `<div><i style="background:${s.color}"></i>${esc(s.name)}<b>${esc(fmt(p[1]))}</b></div>`;
     });
+    for (const b of bands) {
+      if (b.spans.some(([a, z]) => t >= a && t <= z)) rows += `<div class="tip-band"><i style="background:${b.color}"></i>${esc(b.name)}<b>running</b></div>`;
+    }
     const cx = Math.min(Math.max(px, PAD.l), W - PAD.r);
     const line = g.querySelector("line")!;
     line.setAttribute("x1", String(cx)); line.setAttribute("x2", String(cx));
@@ -104,6 +111,16 @@ export const TimeChart = memo(function TimeChart(opt: TimeChartProps) {
   return (
     <div className={`chart ${opt.className ?? ""}`} id={opt.id} ref={el}>
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="tchart">
+        {bands.map((b, i) => (
+          <g key={b.name} className="band" data-band={b.name}>
+            {b.spans.flatMap(([a, z]) => {
+              const xa = Math.max(PAD.l, x(a)), xz = Math.min(W - PAD.r, x(z));
+              if (xz <= PAD.l || xa >= W - PAD.r) return [];
+              const w = Math.max(2, xz - xa);
+              return [<rect key={`w${a}`} className="band-wash" x={xa} y={PAD.t} width={w} height={H - PAD.t - PAD.b} fill={b.color} />,
+                <rect key={`s${a}`} className="band-strip" x={xa} y={PAD.t + i * 6} width={w} height={4} rx={2} fill={b.color} />];
+            })}
+          </g>))}
         {(opt.yTicks || ticks).filter(v => v >= vmin && v <= vmax).map(v => [
           <line key={`g${v}`} className={`grid${v === 0 ? " base" : ""}`} x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} />,
           <text key={`t${v}`} className="axis" x={PAD.l - 10} y={y(v) + 5} textAnchor="end">{fmt(v)}</text>])}

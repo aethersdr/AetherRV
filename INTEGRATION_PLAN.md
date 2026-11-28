@@ -928,3 +928,15 @@ The display part (no heater code):
   `climate.cabin.rear_temp` stays the MCS7 sensor. The Climate dial reads "average of front · rear · MCS7", listing only
   the sensors in use (with no rear tag, "front · back" as before).
 - The Cerbo simulator has the fifth tag. The Espar still reads `climate.cabin_front.temp` only.
+
+## 52. Heater runs on the Climate chart (2026-11-27, owner)
+
+The Temperature chart shades the time each heater ran ("operational = running", owner), from history already
+recorded, so past runs show too: the MCS7 while its fuel pump runs (`climate.rixens.fuel_hz` > 0, i.e. the burner
+firing), the Espar while its state isn't off (`climate.espar.state` code > 0: starting, heating, fan or cool-down; an
+error state would also count). A bucket of `/api/history` with any running in it is shaded whole and neighbouring
+ones merge, so a band is as precise as the bucket: 4 min at 24 h, 28 min at 7 d, 2 h at 30 d. Each band is a light
+wash with a solid strip along the top (MCS7 violet, Espar amber, validated against each other and the surface in day
+and night mode), named in the legend and as "running" in the tooltip. `TimeChart` takes the bands; other charts are
+unchanged. Checked against a copy of the van's history: the MCS7's burns line up with the cabin warming, and the
+Espar's run on 11-24 shows.

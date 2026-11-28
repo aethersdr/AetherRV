@@ -3,7 +3,8 @@
 // reference; every part subscribes to its own keys (see DialCard.tsx and Heaters.tsx for the control rules).
 import "./climate.css";
 import { memo, useMemo, useState } from "react";
-import { TimeChart, type Point } from "../../charts/TimeChart";
+import { bucketS, runSpans } from "../../charts/bands";
+import { TimeChart, type Band, type Point } from "../../charts/TimeChart";
 import { Icon } from "../../components/Icon";
 import { fmtT, tC } from "../../lib/format";
 import { useHistory } from "../../state/history";
@@ -43,26 +44,39 @@ const ColdCard = memo(function ColdCard() {
 });
 
 // ── Temperature history (cabin + outside), 24 h / 7 d / 30 d; ?temp=<seconds> sets the first range (as app.js) ──
-const TEMP_KEYS = ["climate.cabin.temp", "climate.outside.temp"];
+// Shaded bands show when each heater ran (owner, 2026-11-27), from history already recorded: the MCS7 while its
+// fuel pump runs (the burner firing), the Espar while its state isn't off (starting, heating, fan or cool-down).
+const TEMP_KEYS = ["climate.cabin.temp", "climate.outside.temp", "climate.rixens.fuel_hz", "climate.espar.state"];
+const POINTS = 360;
 const SPANS = [[86400, "24 h"], [604800, "7 d"], [2592000, "30 d"]] as const;
 const firstSpan = typeof location === "undefined" ? 86400 : +(new URLSearchParams(location.search).get("temp") || 86400);
 const conv = (pts: readonly Point[] | undefined): Point[] => (pts ?? []).map(p => [p[0], tC(p[1])!] as const);
 export const tempFmt = (v: number) => `${Number.isInteger(+(+v).toFixed(1)) ? Math.round(v) : (+v).toFixed(1)}°`;
 const TempCard = memo(function TempCard() {
   const [span, setSpan] = useState(firstSpan);
-  const h = useHistory(TEMP_KEYS, span);
+  const h = useHistory(TEMP_KEYS, span, POINTS);
   const series = useMemo(() => [
     { name: "Cabin", color: "var(--c-cabin)", points: conv(h?.["climate.cabin.temp"]) },
     { name: "Outside", color: "var(--c-out)", points: conv(h?.["climate.outside.temp"]) },
   ], [h]);
+  const bands = useMemo<Band[]>(() => {
+    const b = bucketS(span, POINTS);
+    return [
+      { name: "MCS7", color: "var(--c-mcs7)", spans: runSpans(h?.["climate.rixens.fuel_hz"], b) },
+      { name: "Espar", color: "var(--c-espar)", spans: runSpans(h?.["climate.espar.state"], b) },
+    ];
+  }, [h, span]);
   return (
     <div className="card wide">
       <div className="card-h"><h2>Temperature</h2>
         <div className="seg range" id="range-temp">
           {SPANS.map(([s, l]) => <button key={s} data-s={s} className={span === s ? "on" : undefined} onClick={() => setSpan(s)}>{l}</button>)}
         </div></div>
-      <div className="legend" id="legend-temp">{series.map(s => <span key={s.name}><i style={{ background: s.color }} />{s.name}</span>)}</div>
-      <TimeChart id="chart-temp" series={series} zero={false} fmt={tempFmt} />
+      <div className="legend" id="legend-temp">
+        {series.map(s => <span key={s.name}><i style={{ background: s.color }} />{s.name}</span>)}
+        {bands.map(b => <span key={b.name} className="band-key"><i style={{ ["--k" as string]: b.color }} />{b.name} running</span>)}
+      </div>
+      <TimeChart id="chart-temp" series={series} bands={bands} zero={false} fmt={tempFmt} />
     </div>
   );
 });
