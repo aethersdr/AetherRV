@@ -950,7 +950,6 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .sw-in.on { border-color: color-mix(in srgb, var(--good) 55%, var(--line)); }
 .sw-in.on .ic { color: var(--good); }
 .quick-btn.na { opacity: .5; }
-.demo-tag.live-tag { color: var(--good); border-color: color-mix(in srgb, var(--good) 50%, var(--line)); }
 /* Individual EPOCH batteries (Bluetooth) */
 .battm-wide { grid-column: 1 / -1; }
 .battm-cellgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }

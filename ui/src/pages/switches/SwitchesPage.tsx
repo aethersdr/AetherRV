@@ -8,12 +8,14 @@ import { useOptimistic } from "../../logic/optimistic";
 import { heldTile, holdStart, swOptId, toggleSwitch, type Sw, type Trigger, type VInput } from "../../logic/switches";
 import { useKey, useKeySelector, useSelect } from "../../state/hooks";
 
+// A note only when something is off: no banks decoded, or switch control off. Live control needs none (owner,
+// 2026-11-27: "Live: tap to switch. Keypad logic is off." removed).
 const Note = memo(function Note() {
-  const t = useSelect(["switches.source", "switching.automation", ...ctlKeys("n2k")], g =>
+  const t = useSelect(["switches.source", ...ctlKeys("n2k")], g =>
     g("switches.source") !== "n2k" ? "No switch banks decoded yet."
-      : canControlDev("n2k") ? `Live: tap to switch. Keypad logic ${g("switching.automation") ? "runs in AetherRV" : "is off"}.`
+      : canControlDev("n2k") ? ""
       : "Live from NMEA 2000. Switch control is off (n2k tx_enabled is not set), so tapping does nothing.");
-  return <div className="banner-note" id="sw-note"><Icon name="alert" /><span id="sw-note-t">{t}</span></div>;
+  return t ? <div className="banner-note" id="sw-note"><Icon name="alert" /><span id="sw-note-t">{t}</span></div> : null;
 });
 
 /** The status line under a tile's name (app.js label()). */

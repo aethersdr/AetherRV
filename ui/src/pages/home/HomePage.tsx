@@ -206,7 +206,8 @@ const QuickCard = memo(function QuickCard() {
   return (
     <div className="card quick-card">
       <div className="card-h"><h2>Lights &amp; switches</h2>
-        <span className={`demo-tag${ids.length && live ? " live-tag" : ""}`} data-goto="switches">{ids.length ? (live ? "live" : "view only") : "demo · not connected"}</span></div>
+        {/* no tag while the switches are live (owner, 2026-11-27: the "live" pill removed) */}
+        {!(ids.length && live) && <span className="demo-tag" data-goto="switches">{ids.length ? "view only" : "demo · not connected"}</span>}</div>
       <div className="quick-grid" id="quick-sw">
         {ids.length ? ids.map(id => <QuickBtn key={id} id={id} />)
           // demo placeholders only: toggle on screen, send nothing

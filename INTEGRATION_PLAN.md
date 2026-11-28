@@ -1055,3 +1055,7 @@ On the van the same evening (owner yes), heaters idle: e80b3da installed (cross-
 derive services and the panel restarted. Live: solar 0 W at night (panel 0.04 V, 0 A), shore 1092 W at 119.3 V and
 9.1 A (charging), DC loads 117.7 W at 13.37 V and 8.8 A, AC loads 0 W at 119.3 V. The Espar stayed off and asleep, the
 cabin average kept going, the Ruuvi listener's measurement was untouched (same PID); no failed unit, no warnings.
+
+**2026-11-27, switches (owner).** The Home page's Lights & switches card lost its "live" pill, and the Switches page its
+"Live: tap to switch. Keypad logic is off." banner. Both still explain when something is off: the card says "view only"
+or "demo · not connected", and the page "No switch banks decoded yet" or that switch control is off.

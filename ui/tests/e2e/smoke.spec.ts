@@ -39,6 +39,7 @@ test("every page renders and the rail switches pages", async ({ page }) => {
   await expect(page.locator("#hub-soc")).toHaveText("72%");
   await expect(page.locator(".quick-btn")).toHaveCount(4);
   await expect(page.locator("#chip-ro")).toHaveCount(0);                    // a screen that can control: no control chip
+  await expect(page.locator(".quick-card .demo-tag")).toHaveCount(0);       // switches live: no "live" pill (owner, 2026-11-27)
   for (const [v, title] of [["energy", "Energy"], ["climate", "Climate"], ["weather", "Weather"], ["switches", "Switches"],
     ["network", "Network"], ["alerts", "Alerts"], ["systems", "Systems"], ["settings", "Settings"], ["home", "Home"]] as const) {
     await page.click(`.rail button[data-v=${v}]`);
@@ -96,6 +97,7 @@ test("view only: buttons explain and nothing is sent", async ({ page }) => {
   const gw = await stubGateway(page, { control: false });
   await page.goto("/#home");
   await expect(page.locator("#chip-ro")).toContainText("Read-only");
+  await expect(page.locator(".quick-card .demo-tag")).toHaveText("view only");
   await expect(page.locator('.hq-btn[data-hq="furnace"]')).toBeDisabled();
   await expect(page.locator("#hsp-up")).toBeDisabled();
   await page.locator('.quick-btn[data-sw="7.1"]').click();
@@ -151,4 +153,18 @@ test("energy flow: the edges' dots run on the canvas while an edge carries power
   const b = await snap();
   await page.waitForTimeout(300);
   expect(await snap()).toBe(b);                                                 // nothing runs: nothing redrawn
+});
+
+test("Switches page: no banner while switching is live; it explains when control is off", async ({ page }) => {
+  await stubGateway(page);
+  await page.goto("/#switches");
+  await expect(page.locator(".sw-tile, [data-sw]").first()).toBeVisible();
+  await expect(page.locator("#sw-note")).toHaveCount(0);
+  await page.screenshot({ path: "../harness/out/ui-pages/react-switches-live.png" });
+  await page.goto("/#home");
+  await page.locator(".quick-card").screenshot({ path: "../harness/out/ui-pages/react-home-switches-card.png" });
+  const ro = await page.context().newPage();
+  await stubGateway(ro, { control: false });
+  await ro.goto("/#switches");
+  await expect(ro.locator("#sw-note")).toContainText("Switch control is off");
 });
