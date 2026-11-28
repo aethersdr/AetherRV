@@ -1029,3 +1029,7 @@ last (it stayed off and asleep, nothing sent; start-up line "cabin mean"). All u
 four battery links connected; every Ruuvi now shows its RSSI (-59 to -75 dBm). Not restarted: the broker, the
 on-demand admind, the panel (unchanged since its restart earlier that day). The listener's measurement counts from
 this restart.
+
+**2026-11-27, top bar (owner).** The "Control: heat + power" pill is gone from the top bar (every page shares it). A
+screen that can control shows no chip; a view-only phone or laptop still shows "Read-only", which says why its
+buttons are off.

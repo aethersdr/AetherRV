@@ -83,10 +83,11 @@ const NetChip = memo(function NetChip() {
   );
 });
 
-const CtlChip = memo(function CtlChip() {
-  const on = useSelect([K.control, devOkKey("rixens"), devOkKey("victron")], () =>
-    [canControl() && "heat", canControlDev("victron") && "power"].filter(Boolean).join(" + "));
-  return <span id="chip-ro" className="chip">{on ? <><Icon name="check" />Control: {on}</> : <><Icon name="lock" />Read-only</>}</span>;
+// "Read-only" on a screen that can control nothing (a view-only phone or laptop): it says why the buttons are off.
+// A screen that can control shows no chip (owner, 2026-11-27: the "Control: heat + power" pill removed).
+const ReadOnlyChip = memo(function ReadOnlyChip() {
+  const ro = useSelect([K.control, devOkKey("rixens"), devOkKey("victron")], () => !canControl() && !canControlDev("victron"));
+  return ro ? <span id="chip-ro" className="chip"><Icon name="lock" />Read-only</span> : null;
 });
 
 const LinkChip = memo(function LinkChip() {
@@ -131,7 +132,7 @@ export const TopBar = memo(function TopBar() {
     <header className="topbar">
       <div className="title"><h1 id="page-title">{viewTitle(view)}</h1><span id="page-sub"></span></div>
       <div className="chips">
-        <DemoChip /><AlertChip /><NetChip /><CtlChip /><LinkChip /><ScreenBtn /><NightBtn />
+        <DemoChip /><AlertChip /><NetChip /><ReadOnlyChip /><LinkChip /><ScreenBtn /><NightBtn />
       </div>
       <Clock />
     </header>

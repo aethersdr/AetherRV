@@ -38,7 +38,7 @@ test("every page renders and the rail switches pages", async ({ page }) => {
   await expect(page.locator("#chip-link")).toContainText("Live");
   await expect(page.locator("#hub-soc")).toHaveText("72%");
   await expect(page.locator(".quick-btn")).toHaveCount(4);
-  await expect(page.locator("#chip-ro")).toContainText("Control: heat + power");
+  await expect(page.locator("#chip-ro")).toHaveCount(0);                    // a screen that can control: no control chip
   for (const [v, title] of [["energy", "Energy"], ["climate", "Climate"], ["weather", "Weather"], ["switches", "Switches"],
     ["network", "Network"], ["alerts", "Alerts"], ["systems", "Systems"], ["settings", "Settings"], ["home", "Home"]] as const) {
     await page.click(`.rail button[data-v=${v}]`);
