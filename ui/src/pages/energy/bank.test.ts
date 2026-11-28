@@ -1,7 +1,7 @@
 // Energy page logic: the numbers app.js showed, character for character (invented data).
 import { describe, expect, it } from "vitest";
 import { socColor } from "../../lib/format";
-import { approach, B3, b3FillH, b3Width, b3X, bankPct, bankState, battPct, BS, cellTiles, clampOrbit, discClip, durSeconds, fitDistance,
+import { approach, B3, b3FillH, b3Width, b3X, bankPct, bankState, battPct, BS, cellTiles, clampOrbit, discClip, durSeconds, fitDistance, toGoText,
   flowAdvance, flowDur, flowOf, headView, hueOf, nudgeLimit, ORBIT, orbitPos, recordBank, rowView, sparkPaths, splitUnit, sumSeries,
   type BankHist, type Ble } from "./bank";
 
@@ -35,7 +35,7 @@ describe("battery bank", () => {
 
   it("the header lines", () => {
     const v = headView(getter({ "batteries.ble": [A, B, C], "victron.battery.voltage": 13.218, "victron.battery.current": -4.66,
-      "victron.battery.ttg": 3 * 86400, "victron.battery.power": -60 }));
+      "energy.battery.to_go_s": 3 * 86400, "energy.battery.to_go_dir": "empty", "victron.battery.power": -60 }));
     expect(v.line1).toBe("13.22 V · -4.7 A · 3 d to go");
     expect(v.line2).toBe("410 / 1380 Ah · 2 of 3 batteries via Bluetooth");
     expect(v.pctTitle).toBe("1 batteries: available Ah ÷ 460 Ah");
@@ -161,5 +161,18 @@ describe("WebGL bank maths (three-free)", () => {
     expect(flowAdvance(0.5, -1, 0.5, 2)).toBeCloseTo(0.75);     // discharging: the other way
     expect(flowAdvance(0.1, 1, 0.5, 2)).toBeCloseTo(0.85);      // wraps into [0, 1)
     expect(durSeconds(flowDur(24))).toBe(2);
+  });
+});
+
+describe("time to go, both ways (owner, 2026-11-27)", () => {
+  const tg = (o: Record<string, unknown>) => toGoText(getter(o));
+  it("to full while charging, to go while discharging, nothing at rest or when the label disagrees", () => {
+    expect(tg({ "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full", "victron.battery.power": 878 })).toBe(" · 2 h 42 m to full");
+    expect(tg({ "energy.battery.to_go_s": 292260, "energy.battery.to_go_dir": "empty", "victron.battery.power": -260 })).toBe(" · 3 d to go");
+    expect(tg({ "energy.battery.to_go_s": null, "energy.battery.to_go_dir": null, "victron.battery.power": 2 })).toBe("");
+    // the average still says charging while the bank has just started discharging: say nothing rather than "to full"
+    expect(tg({ "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full", "victron.battery.power": -200 })).toBe("");
+    expect(headView(getter({ "victron.battery.voltage": 13.49, "victron.battery.current": 65.1, "victron.battery.power": 878,
+      "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full" })).line1).toBe("13.49 V · 65.1 A · 2 h 42 m to full");
   });
 });

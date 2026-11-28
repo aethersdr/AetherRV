@@ -1,13 +1,16 @@
 //! `aetherrv-derive`: derived values (ARCHITECTURE.md §2).
 //!
 //! * energy (`src/aetherrv/energy.py`, every 1 s): `energy.alternator.power`, `energy.alternator.source`,
-//!   `energy.dc.load` (the logic is `proto_n2k::energy::derive`).
+//!   `energy.dc.load` (the logic is `proto_n2k::energy::derive`), `energy.dc.load_a`, and the time to go
+//!   `energy.battery.to_go_s` / `.to_go_dir` ([`togo`]).
 //! * the cabin average (`aetherrv_core::climate`, every 2 s), only with `[climate] cabin_source = "average"`:
 //!   `climate.cabin.temp`, `.humidity`, `.source`, `.front_temp` (front Ruuvi), `.rear_ruuvi_temp` (rear Ruuvi),
 //!   `.rear_temp` (the MCS7's sensor by the bed).
 //!
 //! Inputs come from other services over the bus; an input whose owner is down reads as unknown (None), exactly
 //! like a missing key in Python.
+
+pub mod togo;
 
 use aetherrv_core::bus::{Bus, BusOptions};
 use aetherrv_core::climate::{self, Sensor};
@@ -27,15 +30,38 @@ pub const REAR_STALE: f64 = climate::MCS7_STALE;
 /// What the cabin average reads.
 pub const CABIN_INPUTS: [&str; 9] = climate::INPUTS;
 
-/// What the energy figures read.
-pub const ENERGY_INPUTS: [&str; 6] = [
+/// What the energy figures read (the last three for the time to go, [`togo`]).
+pub const ENERGY_INPUTS: [&str; 9] = [
     "victron.alternator.power",
     "alternator.power",
     "victron.dc.load",
     "victron.battery.current",
     "victron.battery.voltage",
     "alternator.current",
+    "batteries.ble",
+    "batteries.ble.current",
+    "victron.battery.ttg",
 ];
+
+/// `energy.battery.to_go_s` / `energy.battery.to_go_dir` for one loop step: the bank current (the shunt's, else the
+/// batteries' sum) into the running average, then [`togo::to_go`]. No current at all clears the average.
+pub fn derive_to_go(state: &dyn StateView, avg: &mut togo::Avg, now: f64) -> Vec<(String, Value)> {
+    let num = |k: &str| state.get(k).and_then(|v| v.as_f64());
+    let amps = num("victron.battery.current").or_else(|| num("batteries.ble.current"));
+    let a = match amps {
+        Some(i) => Some(avg.add(i, now)),
+        None => {
+            avg.clear();
+            None
+        }
+    };
+    let rows = match state.get("batteries.ble") {
+        Some(Value::Array(r)) => r,
+        _ => vec![],
+    };
+    let (secs, dir) = togo::to_go(a, togo::bank_ah(&rows), num("victron.battery.ttg"));
+    vec![("energy.battery.to_go_s".into(), secs), ("energy.battery.to_go_dir".into(), dir)]
+}
 
 /// Cabin temperature as the mean of the fresh sensors out of the front Ruuvi, the rear Ruuvi (when configured) and
 /// the MCS7's own sensor at the back by the bed (owner, 2026-11-27); a missing or stale one is left out. With no
@@ -116,8 +142,11 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
     {
         let (st, view) = (state.clone(), view.clone());
         tokio::spawn(async move {
+            let mut avg = togo::Avg::default();
             loop {
-                st.update(derive_energy(&*view));
+                let mut out = derive_energy(&*view);
+                out.extend(derive_to_go(&*view, &mut avg, aetherrv_core::clock::boottime_s()));
+                st.update(out);
                 tokio::time::sleep(opts.energy_period).await;
             }
         });

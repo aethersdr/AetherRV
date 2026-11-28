@@ -223,9 +223,14 @@ const QuickCard = memo(function QuickCard() {
 
 // ── Battery, last 24 h ──
 const SOC_SERIES_KEYS = ["victron.battery.soc"];
+// The time to go both ways (owner, 2026-11-27), from derive's `energy.battery.to_go_*` (the Cerbo's own figure exists
+// only while discharging): "… remaining at current draw" or "… to full at this charge rate"; nothing at rest.
 const SocSub = memo(function SocSub() {
-  const ttg = useKey<number | null>("victron.battery.ttg");
-  return <span className="muted" id="soc-sub">{ttg ? `${fmtTTG(ttg)} remaining at current draw` : ""}</span>;
+  const t = useSelect(["energy.battery.to_go_s", "energy.battery.to_go_dir"], g => {
+    const s = g<number | null>("energy.battery.to_go_s"), dir = g<string | null>("energy.battery.to_go_dir");
+    return !s ? "" : dir === "full" ? `${fmtTTG(s)} to full at this charge rate` : dir === "empty" ? `${fmtTTG(s)} remaining at current draw` : "";
+  });
+  return <span className="muted" id="soc-sub">{t}</span>;
 });
 const SocCard = memo(function SocCard() {
   const h = useHistory(SOC_SERIES_KEYS, 86400);

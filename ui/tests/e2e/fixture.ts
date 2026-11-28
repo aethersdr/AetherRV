@@ -2,7 +2,7 @@
 export const STATE: Record<string, unknown> = {
   "victron.connected": true,
   "victron.battery.soc": 72.4, "victron.battery.voltage": 13.18, "victron.battery.power": -48, "victron.battery.current": -3.6,
-  "victron.battery.ttg": 400000,
+  "victron.battery.ttg": 400000, "energy.battery.to_go_s": 432000, "energy.battery.to_go_dir": "empty",
   "victron.pv.power": 120, "energy.alternator.power": 0, "victron.ac.shore": null, "energy.dc.load": 168, "victron.ac.load": 0,
   "victron.vebus.instance": 276, "victron.vebus.name": "TestInverter", "victron.vebus.state": 0, "victron.vebus.mode": 4,
   "victron.vebus.dc_w": 0, "victron.controls_ok": true,

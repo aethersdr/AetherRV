@@ -33,6 +33,15 @@ export function bankState(bp: number | null | undefined): readonly [string, stri
 }
 
 export interface HeadView { pct: number | null; pctTitle: string; st: readonly [string, string, string]; line1: string; line2: string }
+/** The time to go (derive: `energy.battery.to_go_*`, the batteries' own Ah over the averaged bank current), shown only
+ *  when it agrees with the Charging / Discharging label: " · 2 h 42 m to full" or " · 3 d to go"; nothing at rest. */
+export function toGoText(get: <T>(k: string) => T | undefined): string {
+  const s = get<number | null>("energy.battery.to_go_s"), dir = get<string | null>("energy.battery.to_go_dir");
+  const st = bankState(get<number | null>("victron.battery.power"))[2];
+  if (!s) return "";
+  return dir === "full" && st === "chg" ? ` · ${fmtTTG(s)} to full` : dir === "empty" && st === "dis" ? ` · ${fmtTTG(s)} to go` : "";
+}
+
 export function headView(get: <T>(k: string) => T | undefined): HeadView {
   const ble = get<Ble[]>("batteries.ble") || [], ok = ble.filter(b => b.ok);
   const withAh = ok.filter(b => b.remaining_ah != null);
@@ -41,7 +50,7 @@ export function headView(get: <T>(k: string) => T | undefined): HeadView {
     pct: bankPct(ble, get<number | null>("victron.battery.soc")),
     pctTitle: withAh.length ? `${withAh.length} batteries: available Ah ÷ ${BATT_AH * withAh.length} Ah` : "Lynx shunt SoC",
     st: bankState(get<number | null>("victron.battery.power")),
-    line1: `${num(get("victron.battery.voltage"), 2)} V · ${num(get("victron.battery.current"), 1)} A · ${fmtTTG(get<number>("victron.battery.ttg"))} to go`,
+    line1: `${num(get("victron.battery.voltage"), 2)} V · ${num(get("victron.battery.current"), 1)} A${toGoText(get)}`,
     line2: `${rem == null ? "" : `${Math.round(rem)} / ${BATT_AH * ble.length} Ah · `}${ok.length} of ${ble.length} batteries via Bluetooth`,
   };
 }
