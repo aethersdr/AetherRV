@@ -1098,4 +1098,5 @@ to 32–44 % and the CPU to about 12 %, i.e. the touchscreen's drawing is what u
 
 **2026-11-27, Device tab (owner).** The "Restart display" and "Shut down" buttons are gone; Reboot (still with its
 confirmation) moved to the right of the "Device & display" heading. The admin helper keeps its `restart_kiosk` and
-`poweroff` actions (the low-battery shutdown doesn't use the page).
+`poweroff` actions (the low-battery shutdown doesn't use the page). On the van the same evening (owner yes): 0ba648b
+installed (UI only) and the panel restarted; no other service restarted, no failed unit.
