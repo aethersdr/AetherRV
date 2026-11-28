@@ -1079,3 +1079,8 @@ not used); the V3D GPU's `gpu_stats` gives each GPU queue's busy runtime and a t
 On the bench (Pi 5, e536b45, under systemd as `aetherrv`): both files found by the service itself, values published
 (CPU 1.6 %, GPU 0.0 %, memory 4.9 %, SoC 42 °C), and after restarting history and the gateway `/api/history` returned
 points for all four.
+
+On the van the same evening (owner yes), heaters idle: a3b02a4 installed (cross-compiled), then only the settings,
+history and gateway services and the panel restarted; the Ruuvi listener and the battery service untouched. The service
+found the same two files as on the bench. First interval: CPU 11.4 %, GPU 43.1 % (the panel had just restarted and was
+drawing its pages), memory 6.7 %, SoC 35.7 °C; history had points for all four. No failed unit, no warnings.
