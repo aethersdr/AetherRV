@@ -1022,3 +1022,10 @@ tag batteries 2.89–3.18 V, longest gap 7.7 s; the four battery links still con
 Baseline for the battery links: no reconnect in the 24 h before. Found and fixed for the next build (not deployed, to
 keep the measurement running): `aetherrv-migrate` didn't know the `ruuvi` kind (a harmless WARN), and RSSI showed
 only once BlueZ signalled a change (now read when a tag is first watched).
+
+Later that evening (owner: "deploy to the van and restart all services"), heaters idle: 88f6440 installed
+(cross-compiled) and 19 services restarted onto it, the Ruuvi listener included (still not enabled) and the Espar's
+last (it stayed off and asleep, nothing sent; start-up line "cabin mean"). All up, no failed unit, no warnings; the
+four battery links connected; every Ruuvi now shows its RSSI (-59 to -75 dBm). Not restarted: the broker, the
+on-demand admind, the panel (unchanged since its restart earlier that day). The listener's measurement counts from
+this restart.
