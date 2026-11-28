@@ -111,7 +111,8 @@ tx_enabled = false
 # With kind = "espar" (AetherRV as the heater's controller), the room temperature it sends: "front" (default: the
 # cabin Ruuvi, [device.victron] cabin_temp) or "average" (the mean of the fresh cabin sensors: the cabin Ruuvi, the
 # rear one if cabin_rear_temp names it, and the MCS7's sensor). Either way a dropout during a heat run holds the
-# last value for 5 min before the heater's own intake sensor is used.
+# last value for 5 min before the heater's own intake sensor is used. "average" needs [climate] cabin_source =
+# "average": only then does the Victron service publish the cabin Ruuvi as the front sensor.
 # room_source = "front"
 
 [device.rixens]

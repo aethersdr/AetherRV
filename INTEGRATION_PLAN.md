@@ -968,5 +968,15 @@ simulators give front 20.5, rear 19.5 and MCS7 7.2 °C), with every 054 recorded
 - `espar-systemd.sh` (restart, kill -9, watchdog, broker restart; no cabin services, so the intake sensor): PASS,
   max 054 gap 3.0 s, 0 controller-loss faults, 0 full-power frames.
 
-The bench simulator doesn't send a hot intake reading, so "never the intake mid-run" rests on the control tests. The
-van keeps "front" until the owner says yes.
+The simulator's intake reading starts at 16 °C and climbs while it heats, so it would show in the recording: it never
+did. Then every input lost mid-burn, on the full stack with `blind_off_s = 60` (as `espar-blind.sh`): the broker
+stopped for 30 s and started, then stopped for good. All 591 HEAT frames carried 15.7 (the last mean, held), in every
+phase, never the intake; the service turned the heater off 60 s after the last bus contact, normal after-run, 0
+controller-loss faults, 0 full-power frames. The journal has the start-up line "room temperature from the cabin mean
+…". On the workstation, with vcan up, all 23 Espar tests ran (the 7 process tests on the default "front" path
+included) and the workspace passes (413).
+
+Not changed, found on the way: a Ruuvi that goes silent is never "stale" while the Cerbo is connected, because the
+Victron service republishes every role on every temperature message (an unchanged value refreshes its age) and the
+Cerbo republishes everything every 30 s; it drops out only when the Cerbo removes or blanks it. The front Ruuvi has
+always worked this way. The van keeps "front" until the owner says yes.
