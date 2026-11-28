@@ -41,6 +41,7 @@ pub const PREFIXES: &[(&str, &str)] = &[
     ("alternator.", N2K),
     ("victron.", VICTRON),
     ("climate.cabin_front.", VICTRON),
+    ("climate.cabin_rear.", VICTRON),
     ("climate.outside.", VICTRON),
     ("climate.fridge.", VICTRON),
     ("climate.freezer.", VICTRON),
@@ -117,6 +118,7 @@ mod tests {
         assert_eq!(owner_of("climate.cabin.temp", "average", &bus).as_deref(), Some(DERIVE));
         assert_eq!(owner_of("climate.cabin.temp", "victron", &bus).as_deref(), Some(VICTRON));
         assert_eq!(owner_of("climate.cabin_front.temp", "average", &bus).as_deref(), Some(VICTRON));
+        assert_eq!(owner_of("climate.cabin_rear.temp", "average", &bus).as_deref(), Some(VICTRON));
         assert_eq!(owner_of("bus.hat0.rate", "x", &bus).as_deref(), Some(N2K));
         assert_eq!(owner_of("bus.fd0.rate", "x", &bus).as_deref(), Some("can-aux-fd0"));
         assert_eq!(owner_of("tx.enabled.espar_diag", "x", &bus).as_deref(), Some(ESPAR));

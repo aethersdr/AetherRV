@@ -54,6 +54,7 @@ cabin_temp = "IAT"
 outside_temp = "oat"
 fridge_temp = "FRG"
 freezer_temp = "FRZ"
+cabin_rear_temp = "RCT"
 {extra}
 "#,
             sec = sec.display(),
@@ -113,7 +114,8 @@ async fn state_commands_and_reconnect_against_the_simulator() {
     assert_eq!(r.get("climate.outside.temp"), Some(json!(-1.25)), "names match case-insensitively");
     assert_eq!(r.get("climate.fridge.temp"), Some(json!(3.5)));
     assert_eq!(r.get("climate.freezer.humidity"), None, "no humidity on that tag");
-    assert_eq!(r.list("victron.temps").len(), 4);
+    assert_eq!(r.list("victron.temps").len(), 5);
+    assert_eq!((r.get("climate.cabin_rear.temp"), r.get("climate.cabin_rear.humidity")), (Some(json!(19.5)), Some(json!(40.0))));
     assert_eq!(r.get("victron.tanks"), Some(json!([{"name": "Fresh", "type": "fresh", "level": 62.5}])));
     assert_eq!(r.get("victron.bms.modules_online"), Some(json!(1)));
     let n = r.list("victron.notifications");

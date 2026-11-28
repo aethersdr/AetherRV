@@ -364,7 +364,7 @@ the tools below write them to `/etc/aetherrv/secrets.toml`, readable only by roo
 | Equipment | What to set |
 |---|---|
 | Victron GX | `[device.victron]`: `host` = the GX's address, `enabled = true`. Then pair: `sudo /opt/aetherrv-rs/bin/aetherrv-setup victron-pair <gx-address>` and enable MQTT pairing on the GX (Settings → Integrations → MQTT) while it waits. |
-| Ruuvi / temperature sensors on the GX | `[device.victron]` `cabin_temp`, `outside_temp`, `fridge_temp`, `freezer_temp`: the sensors' names on the GX. |
+| Ruuvi / temperature sensors on the GX | `[device.victron]` `cabin_temp`, `outside_temp`, `fridge_temp`, `freezer_temp` and optionally `cabin_rear_temp` (a second cabin sensor at the back, for `[climate] cabin_source = "average"`): the sensors' names on the GX. |
 | Rixens MCS7 | `[device.rixens_http]`: `host` = the MCS7's address on your LAN, `enabled = true`. |
 | Starlink | `[device.starlink]`: `enabled = true`; `target` is the dish's gRPC address (usually `192.168.100.1:9200`, reachable through the router). |
 | Peplink | `[device.peplink]`: `host` = the router, `enabled = true`. Create the read-only API user with `tools/peplink_install_readonly_user.sh` and `tools/peplink_create_api_client.sh` (run from your computer; they prompt for passwords, need `jq`). For WAN priority control, also create the read-write API client on the Pi: `sudo /opt/aetherrv-rs/bin/aetherrv-setup peplink-rw-client <router-address>` (asks for the router's admin login, used once and never stored). |

@@ -254,6 +254,11 @@ const VAN: &str = r#"{
     "temperature/23/TemperatureType": 2,
     "temperature/23/Temperature": 3.5,
     "temperature/23/Humidity": 60.0,
+    "temperature/28/ProductName": "RuuviTag",
+    "temperature/28/CustomName": "RCT",
+    "temperature/28/TemperatureType": 2,
+    "temperature/28/Temperature": 19.5,
+    "temperature/28/Humidity": 40.0,
     "tank/40/CustomName": "Fresh",
     "tank/40/FluidType": 1,
     "tank/40/Level": 62.5,
@@ -286,8 +291,8 @@ const VAN: &str = r#"{
 }"#;
 
 impl CerboConfig {
-    /// A van like the one AetherRV runs in: Lynx shunt + one BMS, MultiPlus, SmartSolar, four Ruuvi tags
-    /// (IAT/OAT/FRZ/FRG, typed "generic" like Ruuvis on Venus OS), a fresh tank, two VE.Can devices and one active
+    /// A van like the one AetherRV runs in: Lynx shunt + one BMS, MultiPlus, SmartSolar, five Ruuvi tags
+    /// (IAT/OAT/FRZ/FRG/RCT, typed "generic" like Ruuvis on Venus OS), a fresh tank, two VE.Can devices and one active
     /// low-battery warning. All values are made up.
     pub fn van() -> CerboConfig {
         let v: Value = serde_json::from_str(VAN).expect("the built-in van model is valid JSON");

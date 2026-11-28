@@ -71,6 +71,16 @@ impl std::fmt::Debug for Settings {
     }
 }
 
+/// The rear cabin Ruuvi (`climate.cabin_rear.*`, owner 2026-11-27), only when `cabin_rear_temp` names one (a Custom
+/// name or an instance). Unlike the other roles there is no by-type stand-in: the first "room" sensor would be the
+/// front one, counted twice in the cabin mean.
+pub fn rear_role(v: Option<&Value>) -> Option<Role> {
+    match v {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
+        Some(_) => Some(Role { name: "cabin_rear".into(), want: Want::from_value(v), kind: "room" }),
+    }
+}
+
 impl Settings {
     /// As Python's `build()`: the first `[device.*]` with `kind = "victron"` (`None` if there is none).
     /// `cabin_temp` is used only when `[climate] cabin_source` is "victron" (the default) or "average"; with
@@ -89,19 +99,21 @@ impl Settings {
             _ => (Want::Off, "cabin"),
         };
         let secret = |k: &str| secrets.opt_str(k).filter(|s| !s.is_empty());
+        let mut roles = model::roles(
+            cabin_role,
+            cabin,
+            Want::from_value(d.get("outside_temp")),
+            Want::from_value(d.get("fridge_temp")),
+            Want::from_value(d.get("freezer_temp")),
+        );
+        roles.extend(rear_role(d.get("cabin_rear_temp")));
         Ok(Some(Settings {
             host,
             port,
             tls: d.bool("tls", false),
             username: secret("victron_mqtt_user"),
             password: secret("victron_mqtt_password"),
-            roles: model::roles(
-                cabin_role,
-                cabin,
-                Want::from_value(d.get("outside_temp")),
-                Want::from_value(d.get("fridge_temp")),
-                Want::from_value(d.get("freezer_temp")),
-            ),
+            roles,
         }))
     }
 }

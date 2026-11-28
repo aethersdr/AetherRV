@@ -77,6 +77,31 @@ fn test_four_ruuvi_tags_by_name() {
     assert_eq!(a.state.get("climate.cabin.humidity"), Some(json!(44.0)));
 }
 
+/// The rear cabin Ruuvi (2026-11-27): a role only when `cabin_rear_temp` names one, and never a by-type stand-in.
+#[test]
+fn rear_cabin_ruuvi_only_when_named() {
+    use aetherrv_victron::rear_role;
+    assert!(rear_role(None).is_none() && rear_role(Some(&Value::Null)).is_none() && rear_role(Some(&json!(false))).is_none());
+    let with_rear = |rear: Option<Value>| {
+        let mut r = roles("cabin_front", by(json!("IAT")), Want::Auto, Want::Auto, Want::Auto);
+        r.extend(rear_role(rear.as_ref()));
+        Victron::new(Arc::new(StateStore::new()), TxGate::new([]), CommandLog::memory("victron"), r)
+    };
+    // not configured: a second "room" tag never becomes the rear sensor
+    let a = with_rear(None);
+    feed(&a, "20", &[("TemperatureType", json!(3)), ("CustomName", json!("IAT")), ("Temperature", json!(5.25))]);
+    feed(&a, "28", &[("TemperatureType", json!(3)), ("CustomName", json!("RCT")), ("Temperature", json!(8.71))]);
+    assert_eq!(a.state.get("climate.cabin_front.temp"), Some(json!(5.25)));
+    assert_eq!(a.state.get("climate.cabin_rear.temp"), None);
+    // configured by name (case-insensitive): its temperature and humidity
+    let a = with_rear(Some(json!("rct")));
+    feed(&a, "20", &[("TemperatureType", json!(2)), ("CustomName", json!("IAT")), ("Temperature", json!(5.25))]);
+    assert_eq!(a.state.get("climate.cabin_rear.temp"), Some(Value::Null), "configured but not on the Cerbo: —");
+    feed(&a, "28", &[("TemperatureType", json!(2)), ("CustomName", json!("RCT")), ("Temperature", json!(8.71)), ("Humidity", json!(41.6))]);
+    assert_eq!((a.state.get("climate.cabin_rear.temp"), a.state.get("climate.cabin_rear.humidity")), (Some(json!(8.71)), Some(json!(41.6))));
+    assert_eq!(a.state.get("climate.cabin_front.temp"), Some(json!(5.25)));
+}
+
 /// py: tests/test_victron.py::test_battery_collection_and_kind
 #[test]
 fn test_battery_collection_and_kind() {

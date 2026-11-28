@@ -127,6 +127,9 @@ cabin_temp = "Cabin"         # ← your sensors' Custom names on the Cerbo
 outside_temp = "Outside"
 fridge_temp = "Fridge"
 freezer_temp = "Freezer"
+# A second cabin sensor at the back (optional): used only when named, never a by-type stand-in. With
+# [climate] cabin_source = "average" it joins the cabin mean.
+# cabin_rear_temp = "Rear"
 
 # Refrigeration alarm thresholds, °C (UI shows a warning above these).
 [ui]
@@ -147,8 +150,9 @@ tx_enabled = false
 fuel_ml_per_pulse = 0.0313
 
 # Which sensor is "cabin temperature": "victron" (the cabin sensor via the Cerbo), "rixens" (MCS7's own sensor),
-# or "average" (the mean of both, e.g. a Ruuvi at the front and the MCS7 at the back; if one goes stale the
-# other is used alone). Display only: the heater always regulates on its own sensor.
+# or "average" (the mean of the fresh ones out of the cabin Ruuvi, the rear Ruuvi if [device.victron]
+# cabin_rear_temp names one, and the MCS7's sensor; a stale one is left out). Display only: the heaters
+# regulate on their own room values.
 [climate]
 cabin_source = "victron"
 

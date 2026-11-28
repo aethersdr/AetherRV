@@ -902,3 +902,29 @@ and the panel kept running. The services still run 493935c/d8f3adf binaries unti
 The same day (owner: "deploy to the van and restart the services"), with both heaters idle: d29284c deployed
 (cross-compiled; the binaries equal 773090c's) and all 18 services restarted onto it, the Espar's last (it stayed off and
 asleep; nothing sent). All active, no failed unit, no warnings. Not restarted: the broker, the on-demand admind, the panel.
+
+## 51. A rear cabin Ruuvi (2026-11-27, owner)
+
+The owner fitted a fifth Ruuvi at the back of the cabin. The Cerbo heard it but, as Venus OS does with every new
+Bluetooth sensor, kept it off and unnamed. Venus OS lists each sensor under `ble/0/Devices/<dev>/` (`Name`, `Enabled`,
+`CustomName`, `Age`) and keeps its settings under `settings/0/Settings/Devices/<dev>/` (`CustomName`, `Enabled`, and
+once enabled `TemperatureType` and `ClassAndVrmInstance`). Read first from the Pi (a 40 s listen with
+`mosquitto_sub`; the MQTT login in a 0600 options file, never on a command line; the Victron service's keepalive makes
+the Cerbo republish everything), then, with the owner's yes, two writes: `CustomName = "RCT"`, and once that showed,
+`Enabled = 1`. The Cerbo created a new temperature service (generic, with humidity) and AetherRV's `victron.temps`
+listed it at once. Nothing in AetherRV restarted.
+
+Owner decisions: the cabin value becomes the mean of all three sensors (front Ruuvi, rear Ruuvi, the MCS7's sensor by
+the bed), and the Espar should regulate on that mean too. The Espar part is a heater change: it is designed and
+bench-tested on its own and needs a fresh yes before it reaches the van.
+
+The display part (no heater code):
+- `[device.victron] cabin_rear_temp` names the rear tag; the service publishes `climate.cabin_rear.*`. Only when it
+  is named: unlike the other roles there is no first-of-type stand-in, which would be the front tag counted twice.
+- `aetherrv_core::climate` holds the cabin mean, shared so that every reader agrees on which sensors count: the fresh
+  ones out of the three, each Ruuvi stale after 15 min or with the Cerbo disconnected, the MCS7 60 s after its last
+  poll. With no rear tag the result is the front + MCS7 mean exactly as before.
+- `aetherrv-derive` publishes it (`[climate] cabin_source = "average"`), with the new `climate.cabin.rear_ruuvi_temp`;
+  `climate.cabin.rear_temp` stays the MCS7 sensor. The Climate dial reads "average of front · rear · MCS7", listing only
+  the sensors in use (with no rear tag, "front · back" as before).
+- The Cerbo simulator has the fifth tag. The Espar still reads `climate.cabin_front.temp` only.

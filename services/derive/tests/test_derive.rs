@@ -49,6 +49,37 @@ fn front_sensor_older_than_15_min_is_not_used() {
     assert_eq!(out["climate.cabin.front_temp"], Value::Null);
 }
 
+/// With the rear Ruuvi (owner, 2026-11-27): the mean of all three fresh sensors, each shown on its own key; one that
+/// goes stale is left out.
+#[test]
+fn cabin_mean_of_front_and_rear_ruuvis_and_the_mcs7() {
+    let s = StateStore::new();
+    let now = aetherrv_core::clock::now_s();
+    s.update([
+        ("climate.cabin_front.temp", json!(5.25)),
+        ("climate.cabin_front.humidity", json!(51.5)),
+        ("climate.cabin_rear.temp", json!(8.71)),
+        ("climate.cabin_rear.humidity", json!(41.6)),
+        ("victron.connected", json!(true)),
+        ("climate.rixens.cabin_c", json!(5.61)),
+        ("climate.rixens.cabin_rh", json!(49.0)),
+        ("climate.rixens.live", json!(true)),
+        ("climate.rixens.updated", json!(now)),
+    ]);
+    let out: std::collections::HashMap<String, Value> = derive_cabin(&s, now).into_iter().collect();
+    assert_eq!((out["climate.cabin.temp"].clone(), out["climate.cabin.humidity"].clone()), (json!(6.52), json!(47.37)));
+    assert_eq!(out["climate.cabin.source"], json!("average"));
+    let shown = ["front_temp", "rear_ruuvi_temp", "rear_temp"].map(|k| out[&format!("climate.cabin.{k}")].clone());
+    assert_eq!(shown, [json!(5.25), json!(8.71), json!(5.61)]);
+    // the MCS7 stale → the two Ruuvis
+    let out: std::collections::HashMap<String, Value> = derive_cabin(&s, now + 120.0).into_iter().collect();
+    assert_eq!((out["climate.cabin.temp"].clone(), out["climate.cabin.rear_temp"].clone()), (json!(6.98), Value::Null));
+    // the rear Ruuvi alone
+    s.set_at("climate.cabin_front.temp", json!(5.25), ((now - 16.0 * 60.0) * 1000.0) as i64);
+    let out: std::collections::HashMap<String, Value> = derive_cabin(&s, now + 120.0).into_iter().collect();
+    assert_eq!((out["climate.cabin.temp"].clone(), out["climate.cabin.source"].clone()), (json!(8.71), json!("rear_ruuvi")));
+}
+
 fn publisher(broker: &Broker, name: &str) -> (Arc<StateStore>, Bus) {
     let st = Arc::new(StateStore::new());
     let b = Bus::start(BusOptions::new(name).socket(&broker.socket), st.clone());

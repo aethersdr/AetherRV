@@ -2,36 +2,30 @@
 //!
 //! * energy (`src/aetherrv/energy.py`, every 1 s): `energy.alternator.power`, `energy.alternator.source`,
 //!   `energy.dc.load` (the logic is `proto_n2k::energy::derive`).
-//! * the cabin average (`src/aetherrv/climate.py` `derive_cabin`, every 2 s), only with `[climate] cabin_source =
-//!   "average"`: `climate.cabin.temp`, `.humidity`, `.source`, `.front_temp`, `.rear_temp`.
+//! * the cabin average (`aetherrv_core::climate`, every 2 s), only with `[climate] cabin_source = "average"`:
+//!   `climate.cabin.temp`, `.humidity`, `.source`, `.front_temp` (front Ruuvi), `.rear_ruuvi_temp` (rear Ruuvi),
+//!   `.rear_temp` (the MCS7's sensor by the bed).
 //!
 //! Inputs come from other services over the bus; an input whose owner is down reads as unknown (None), exactly
 //! like a missing key in Python.
 
 use aetherrv_core::bus::{Bus, BusOptions};
+use aetherrv_core::climate::{self, Sensor};
 use aetherrv_core::config::Cfg;
-use aetherrv_core::num::{jof, round};
-use aetherrv_core::state::{StateExt, StateStore, StateView};
+use aetherrv_core::num::jof;
+use aetherrv_core::state::{StateStore, StateView};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 /// s. The Cerbo republishes a Ruuvi only when the value changes, so allow quiet spells.
-pub const FRONT_STALE: f64 = 15.0 * 60.0;
+pub const FRONT_STALE: f64 = climate::RUUVI_STALE;
 /// s since the last successful MCS7 poll (`climate.rixens.updated`).
-pub const REAR_STALE: f64 = 60.0;
+pub const REAR_STALE: f64 = climate::MCS7_STALE;
 
 /// What the cabin average reads.
-pub const CABIN_INPUTS: [&str; 7] = [
-    "climate.cabin_front.temp",
-    "climate.cabin_front.humidity",
-    "victron.connected",
-    "climate.rixens.cabin_c",
-    "climate.rixens.cabin_rh",
-    "climate.rixens.live",
-    "climate.rixens.updated",
-];
+pub const CABIN_INPUTS: [&str; 9] = climate::INPUTS;
 
 /// What the energy figures read.
 pub const ENERGY_INPUTS: [&str; 6] = [
@@ -43,45 +37,26 @@ pub const ENERGY_INPUTS: [&str; 6] = [
     "alternator.current",
 ];
 
-fn mean(vals: &[Option<f64>]) -> Option<f64> {
-    let v: Vec<f64> = vals.iter().flatten().copied().collect();
-    if v.is_empty() { None } else { Some(round(v.iter().sum::<f64>() / v.len() as f64, 2)) }
-}
-
-/// Cabin temperature as the mean of the front Ruuvi (via the Cerbo) and the MCS7's own sensor at the back; if one
-/// is missing or stale, the other alone. Display only: the heater regulates on its own sensor.
+/// Cabin temperature as the mean of the fresh sensors out of the front Ruuvi, the rear Ruuvi (when configured) and
+/// the MCS7's own sensor at the back by the bed (owner, 2026-11-27); a missing or stale one is left out. With no
+/// rear Ruuvi this is the front + MCS7 mean, as before.
 pub fn derive_cabin(state: &dyn StateView, now: f64) -> Vec<(String, Value)> {
-    let age = state.age("climate.cabin_front.temp");
-    let front_ok = state.val("climate.cabin_front.temp").is_some()
-        && !state.is_false("victron.connected")
-        && age.is_some_and(|a| a < FRONT_STALE);
-    let upd = state.num("climate.rixens.updated");
-    let rear_ok = state.val("climate.rixens.cabin_c").is_some()
-        && !state.is_false("climate.rixens.live")
-        && upd.is_some_and(|u| now - u < REAR_STALE);
-    let (mut temps, mut hums, mut used) = (Vec::new(), Vec::new(), Vec::new());
-    if front_ok {
-        temps.push(state.num("climate.cabin_front.temp"));
-        hums.push(state.num("climate.cabin_front.humidity"));
-        used.push("front");
-    }
-    if rear_ok {
-        temps.push(state.num("climate.rixens.cabin_c"));
-        hums.push(state.num("climate.rixens.cabin_rh"));
-        used.push("rear");
-    }
+    let (temp, humidity, used) = climate::cabin(state, now);
     let source = match used.as_slice() {
-        [_, _] => json!("average"),
-        [one] => json!(one),
-        _ => Value::Null,
+        [] => Value::Null,
+        [one] => json!(one.sensor.source()),
+        _ => json!("average"),
     };
-    let raw = |ok: bool, k: &str| if ok { state.get(k).unwrap_or(Value::Null) } else { Value::Null };
+    let raw = |s: Sensor, k: &str| {
+        if used.iter().any(|r| r.sensor == s) { state.get(k).unwrap_or(Value::Null) } else { Value::Null }
+    };
     vec![
-        ("climate.cabin.temp".into(), jof(mean(&temps))),
-        ("climate.cabin.humidity".into(), jof(mean(&hums))),
+        ("climate.cabin.temp".into(), jof(temp)),
+        ("climate.cabin.humidity".into(), jof(humidity)),
         ("climate.cabin.source".into(), source),
-        ("climate.cabin.front_temp".into(), raw(front_ok, "climate.cabin_front.temp")),
-        ("climate.cabin.rear_temp".into(), raw(rear_ok, "climate.rixens.cabin_c")),
+        ("climate.cabin.front_temp".into(), raw(Sensor::Front, "climate.cabin_front.temp")),
+        ("climate.cabin.rear_temp".into(), raw(Sensor::Mcs7, "climate.rixens.cabin_c")),
+        ("climate.cabin.rear_ruuvi_temp".into(), raw(Sensor::Rear, "climate.cabin_rear.temp")),
     ]
 }
 

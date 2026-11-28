@@ -124,18 +124,27 @@ const CabinTemp = memo(function CabinTemp() {
   return <div className="dial-temp" id="dial-temp" ref={useNumText<HTMLDivElement>(tC(c), deg)} />;
 });
 
-const LABEL_KEYS = ["climate.cabin.humidity", "climate.cabin.source", "climate.cabin.front_temp", "climate.cabin.rear_temp"];
+// The cabin average's sensors: the front Ruuvi, the rear Ruuvi (only when there is one) and the MCS7's sensor by
+// the bed ("rear_temp", shown as "back" while there is no rear Ruuvi, as before it existed).
+const LABEL_KEYS = ["climate.cabin.humidity", "climate.cabin.source", "climate.cabin.front_temp", "climate.cabin.rear_temp",
+  "climate.cabin.rear_ruuvi_temp"];
+function splitText(fr: number | null, rr: number | null, bk: number | null, fT: (c: number | null) => string): string {
+  if (rr == null) return `average of front ${fT(fr)} · back ${fT(bk)}`;
+  const parts: [string, number | null][] = [["front", fr], ["rear", rr], ["MCS7", bk]];
+  return `average of ${parts.filter(([, t]) => t != null).map(([n, t]) => `${n} ${fT(t)}`).join(" · ")}`;
+}
 const CabinLabel = memo(function CabinLabel() {
   const v = useSelect(LABEL_KEYS, g => {
     const rh = g<number | null>("climate.cabin.humidity");
     return { rh: rh == null ? null : Math.round(rh), avg: g("climate.cabin.source") === "average",
-      fr: g<number | null>("climate.cabin.front_temp") ?? null, bk: g<number | null>("climate.cabin.rear_temp") ?? null };
+      fr: g<number | null>("climate.cabin.front_temp") ?? null, bk: g<number | null>("climate.cabin.rear_temp") ?? null,
+      rr: g<number | null>("climate.cabin.rear_ruuvi_temp") ?? null };
   });
   const fT = (c: number | null) => (c == null ? "—" : deg(tC(c)!));
   return (
     <div className="muted" id="dial-label">
       {v.rh == null ? "cabin" : `cabin · ${v.rh}% RH`}
-      {v.avg && <span className="dial-split">{`average of front ${fT(v.fr)} · back ${fT(v.bk)}`}</span>}
+      {v.avg && <span className="dial-split">{splitText(v.fr, v.rr, v.bk, fT)}</span>}
     </div>
   );
 });

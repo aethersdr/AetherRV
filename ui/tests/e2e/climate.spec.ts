@@ -407,3 +407,13 @@ test.describe("with motion (springs and tweens running)", () => {
     await expect.poll(async () => Math.abs(+(await knob.getAttribute("cx"))! - ex) + Math.abs(+(await knob.getAttribute("cy"))! - ey)).toBeLessThan(0.05);
   });
 });
+
+test("cabin average with the rear Ruuvi: front · rear · MCS7, and only the sensors in use", async ({ page }) => {
+  const s = await stubGateway(page, { state: { "climate.cabin.rear_ruuvi_temp": 20.0 } });
+  await open(page);
+  await expect(page.locator("#dial-label .dial-split")).toHaveText("average of front 64° · rear 68° · MCS7 66°");
+  s.delta({ "climate.cabin.rear_temp": null });                                   // the MCS7 left out (stale)
+  await expect(page.locator("#dial-label .dial-split")).toHaveText("average of front 64° · rear 68°");
+  s.delta({ "climate.cabin.rear_ruuvi_temp": null, "climate.cabin.rear_temp": 19.0 }); // the rear Ruuvi left out
+  await expect(page.locator("#dial-label .dial-split")).toHaveText("average of front 64° · back 66°");
+});
