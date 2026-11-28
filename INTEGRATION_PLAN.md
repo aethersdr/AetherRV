@@ -1050,3 +1050,8 @@ MultiPlus's input and output voltage (`vebus/<n>/Ac/ActiveIn/L1/V`, `Ac/Out/L1/V
 
 The tiles show them on the label row ("13.2 V · 12.8 A", wrapping under the label at phone width); a missing value
 reads "—", and no values at all hide the line. The Alternator and Battery temp tiles are unchanged.
+
+On the van the same evening (owner yes), heaters idle: e80b3da installed (cross-compiled), then only the Victron and
+derive services and the panel restarted. Live: solar 0 W at night (panel 0.04 V, 0 A), shore 1092 W at 119.3 V and
+9.1 A (charging), DC loads 117.7 W at 13.37 V and 8.8 A, AC loads 0 W at 119.3 V. The Espar stayed off and asleep, the
+cabin average kept going, the Ruuvi listener's measurement was untouched (same PID); no failed unit, no warnings.
