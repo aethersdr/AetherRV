@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// The keys the charts use, in Python's order.
-pub const TRACKED: [&str; 32] = [
+pub const TRACKED: [&str; 34] = [
     "victron.battery.soc",
     "victron.battery.power",
     "victron.pv.power",
@@ -52,6 +52,8 @@ pub const TRACKED: [&str; 32] = [
     "pi.gpu_pct",
     "pi.mem_pct",
     "pi.soc_c",
+    "pi.rp1_c",
+    "pi.nvme_c",
 ];
 
 /// The Espar's diagnostics (owner, 2026-11-24: to look back at what the heater did, e.g. a power dip mid-run),

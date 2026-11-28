@@ -355,30 +355,35 @@ test("night mode from Settings switches the whole UI", async ({ page }) => {
   await expect(page.locator("html")).not.toHaveClass(/\bnight\b/);
 });
 
-test("device tab: the Pi load chart (CPU, GPU, memory; SoC temperature in its own lane), live values in the legend", async ({ page }) => {
+test("device tab: the Pi load chart (CPU, GPU, memory; SoC, RP1 and NVMe temperatures in their own lane), live values", async ({ page }) => {
   const gw = await stub(page);
   const now = Math.floor(Date.now() / 1000);
   const ts = Array.from({ length: 360 }, (_, i) => now - 86400 + (i + 1) * 240);
   const wave = (base: number, amp: number) => ts.map((t, i) => [t, +(base + amp * Math.sin(i / 20)).toFixed(1)]);
+  const temps = { "pi.soc_c": wave(48, 5), "pi.rp1_c": wave(50, 4), "pi.nvme_c": wave(30, 3) };
   const hist: string[] = [];
   await page.route("**/api/history**", r => {
     hist.push(r.request().url());
-    return r.fulfill({ json: { "pi.cpu_pct": wave(18, 10), "pi.gpu_pct": wave(4, 3), "pi.mem_pct": wave(7, 0.5), "pi.soc_c": wave(48, 5) } });
+    return r.fulfill({ json: { "pi.cpu_pct": wave(18, 10), "pi.gpu_pct": wave(4, 3), "pi.mem_pct": wave(7, 0.5), ...temps } });
   });
   await page.goto("/#settings");
   await tab(page, "device");
   await expect(page.locator("#chart-pi path[stroke]")).toHaveCount(3);       // CPU, GPU, memory on one % axis
-  await expect(page.locator("#chart-pi-temp path[stroke]")).toHaveCount(1);  // the SoC temperature on its own scale
-  expect(hist.some(u => u.includes("pi.cpu_pct") && u.includes("pi.soc_c"))).toBe(true);
-  gw.delta({ "pi.cpu_pct": 12.3, "pi.gpu_pct": 0.4, "pi.mem_pct": 6.8, "pi.soc_c": 40 });
-  await expect(page.locator("#legend-pi")).toHaveText(/CPU12%.*GPU0%.*Memory7%.*SoC temperature104°/);
+  await expect(page.locator("#chart-pi-temp path[stroke]")).toHaveCount(3);  // SoC, RP1, NVMe on their own scale
+  expect(hist.some(u => ["pi.cpu_pct", "pi.soc_c", "pi.rp1_c", "pi.nvme_c"].every(k => u.includes(k)))).toBe(true);
+  gw.delta({ "pi.cpu_pct": 12.3, "pi.gpu_pct": 0.4, "pi.mem_pct": 6.8, "pi.soc_c": 40, "pi.rp1_c": 41, "pi.nvme_c": 21 });
+  await expect(page.locator("#legend-pi")).toHaveText(/^CPU12%GPU0%Memory7%$/);
+  await expect(page.locator("#legend-pi-temp")).toHaveText(/^SoC104°RP1 chip106°NVMe SSD70°$/);   // °F, the default unit
   await page.locator("#pi-chart").scrollIntoViewIfNeeded();
   await page.locator("#pi-chart").screenshot({ path: "../harness/out/ui-pages/react-settings-pi-chart.png" });
-  // a Pi without GPU counters: the GPU series and its legend entry are left out
-  gw.delta({ "pi.gpu_pct": null });
+  await page.locator("#set-body").evaluate(e => e.scrollTo(0, e.scrollHeight));
+  await page.screenshot({ path: "../harness/out/ui-pages/react-settings-device-bottom.png" });
+  // a Pi without GPU counters or an SSD: those series and legend entries are left out
+  gw.delta({ "pi.gpu_pct": null, "pi.nvme_c": null });
   await page.unroute("**/api/history**");
-  await page.route("**/api/history**", r => r.fulfill({ json: { "pi.cpu_pct": wave(18, 10), "pi.mem_pct": wave(7, 0.5), "pi.soc_c": wave(48, 5) } }));
+  await page.route("**/api/history**", r => r.fulfill({ json: { "pi.cpu_pct": wave(18, 10), "pi.mem_pct": wave(7, 0.5), "pi.soc_c": wave(48, 5), "pi.rp1_c": wave(50, 4) } }));
   await page.click("#range-pi [data-s='21600']");
   await expect(page.locator("#chart-pi path[stroke]")).toHaveCount(2);
-  await expect(page.locator('#legend-pi [data-k="pi.gpu_pct"]')).toHaveCount(0);
+  await expect(page.locator("#chart-pi-temp path[stroke]")).toHaveCount(2);
+  await expect(page.locator('#legend-pi [data-k="pi.gpu_pct"], #legend-pi-temp [data-k="pi.nvme_c"]')).toHaveCount(0);
 });

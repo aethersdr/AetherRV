@@ -371,7 +371,7 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
         let every = Duration::from_secs_f64(cfg.at("history").f64("interval", 30.0).max(5.0));
         tokio::spawn(async move {
             let paths = host::Paths::discover();
-            tracing::info!("host: SoC sensor {:?}, GPU stats {:?}", paths.soc_temp, paths.gpu_stats);
+            tracing::info!("host: SoC {:?}, RP1 {:?}, NVMe {:?}, GPU stats {:?}", paths.soc_temp, paths.rp1_temp, paths.nvme_temp, paths.gpu_stats);
             let mut s = host::Sampler::new(paths);
             let mut next = tokio::time::Instant::now() + every;
             loop {

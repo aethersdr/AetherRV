@@ -8,6 +8,8 @@
 //! * `pi.mem_pct`: 100 × (1 − MemAvailable / MemTotal) of `/proc/meminfo` (what programs could not get back; the page
 //!   cache doesn't count as used).
 //! * `pi.soc_c`: the thermal zone of type `cpu-thermal`, the SoC's own sensor (the BCM2712 on a Pi 5), °C.
+//! * `pi.rp1_c`: the RP1 I/O chip (USB, Ethernet, GPIO) on a Pi 5: hwmon `rp1_adc`, °C.
+//! * `pi.nvme_c`: the NVMe SSD's own sensor: hwmon `nvme`, its "Composite" reading, °C.
 //!
 //! The counters are read once per publish, every `[history] interval` (30 s by default), so the CPU and GPU figures
 //! are the exact means over the interval that history records them for; memory and temperature are the mean of
@@ -85,6 +87,9 @@ pub struct Paths {
     pub meminfo: PathBuf,
     /// The `temp` file of the `cpu-thermal` zone.
     pub soc_temp: Option<PathBuf>,
+    /// hwmon `rp1_adc` and hwmon `nvme` ("Composite") `temp*_input`.
+    pub rp1_temp: Option<PathBuf>,
+    pub nvme_temp: Option<PathBuf>,
     pub gpu_stats: Option<PathBuf>,
 }
 
@@ -96,9 +101,31 @@ impl Paths {
             stat: "/proc/stat".into(),
             meminfo: "/proc/meminfo".into(),
             soc_temp: find_thermal(Path::new("/sys/class/thermal"), "cpu-thermal"),
+            rp1_temp: find_hwmon_temp(Path::new("/sys/class/hwmon"), "rp1_adc", None),
+            nvme_temp: find_hwmon_temp(Path::new("/sys/class/hwmon"), "nvme", Some("Composite")),
             gpu_stats: find_gpu_stats(Path::new("/sys/devices/platform")),
         }
     }
+}
+
+/// The `temp*_input` of the hwmon device named `name` (by name, never by its number, which follows the probe order):
+/// the one labelled `label` if there is one, else the first.
+pub fn find_hwmon_temp(dir: &Path, name: &str, label: Option<&str>) -> Option<PathBuf> {
+    let mut devs: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).collect();
+    devs.sort();
+    let dev = devs.into_iter().find(|d| std::fs::read_to_string(d.join("name")).is_ok_and(|n| n.trim() == name))?;
+    let mut temps: Vec<String> = std::fs::read_dir(&dev)
+        .ok()?
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|f| f.starts_with("temp") && f.ends_with("_input"))
+        .collect();
+    temps.sort();
+    let labelled = |f: &String, l: &str| {
+        std::fs::read_to_string(dev.join(f.replace("_input", "_label"))).is_ok_and(|x| x.trim() == l)
+    };
+    let pick = label.and_then(|l| temps.iter().find(|f| labelled(f, l))).or(temps.first());
+    pick.map(|f| dev.join(f))
 }
 
 pub fn find_thermal(dir: &Path, kind: &str) -> Option<PathBuf> {
@@ -138,13 +165,22 @@ pub struct Sampler {
     cpu: Option<(u64, u64)>,
     gpu: Option<Vec<Queue>>,
     mem: Vec<f64>,
-    temp: Vec<f64>,
+    /// SoC, RP1, NVMe samples (°C), in [`TEMPS`] order.
+    temps: [Vec<f64>; 3],
+}
+
+/// The temperature keys, in the order of `Sampler::temps`.
+pub const TEMPS: [&str; 3] = ["pi.soc_c", "pi.rp1_c", "pi.nvme_c"];
+
+/// A millidegree file (`temp`, `temp1_input`) in °C.
+fn milli_c(p: Option<&Path>) -> Option<f64> {
+    p.and_then(read).and_then(|s| s.trim().parse::<f64>().ok()).map(|t| t / 1000.0)
 }
 
 impl Sampler {
     /// Reads the counters once, so the first publish already has a full interval behind it.
     pub fn new(paths: Paths) -> Sampler {
-        let mut s = Sampler { paths, cpu: None, gpu: None, mem: vec![], temp: vec![] };
+        let mut s = Sampler { paths, cpu: None, gpu: None, mem: vec![], temps: Default::default() };
         s.cpu = read(&s.paths.stat).as_deref().and_then(cpu_times);
         s.gpu = s.paths.gpu_stats.as_deref().and_then(read).as_deref().and_then(gpu_queues);
         s
@@ -155,8 +191,11 @@ impl Sampler {
         if let Some(m) = read(&self.paths.meminfo).as_deref().and_then(mem_pct) {
             self.mem.push(m);
         }
-        if let Some(t) = self.paths.soc_temp.as_deref().and_then(read).and_then(|s| s.trim().parse::<f64>().ok()) {
-            self.temp.push(t / 1000.0);
+        let files = [self.paths.soc_temp.as_deref(), self.paths.rp1_temp.as_deref(), self.paths.nvme_temp.as_deref()];
+        for (acc, f) in self.temps.iter_mut().zip(files) {
+            if let Some(t) = milli_c(f) {
+                acc.push(t);
+            }
         }
     }
 
@@ -167,15 +206,15 @@ impl Sampler {
         let gpu = self.paths.gpu_stats.as_deref().and_then(read).as_deref().and_then(gpu_queues);
         let cpu_v = self.cpu.zip(cpu).and_then(|(p, c)| cpu_pct(p, c));
         let gpu_v = self.gpu.as_deref().zip(gpu.as_deref()).and_then(|(p, c)| gpu_pct(p, c));
-        let out = vec![
+        let mut out = vec![
             ("pi.cpu_pct".to_string(), r1(cpu_v)),
             ("pi.gpu_pct".to_string(), r1(gpu_v)),
             ("pi.mem_pct".to_string(), r1(mean(&self.mem))),
-            ("pi.soc_c".to_string(), r1(mean(&self.temp))),
         ];
+        out.extend(TEMPS.iter().zip(&self.temps).map(|(k, v)| (k.to_string(), r1(mean(v)))));
         (self.cpu, self.gpu) = (cpu, gpu);
         self.mem.clear();
-        self.temp.clear();
+        self.temps.iter_mut().for_each(Vec::clear);
         out
     }
 }
@@ -227,14 +266,29 @@ mod tests {
         std::fs::write(&gs, "queue\ttimestamp\tjobs\truntime\nrender\t1000000000\t1\t0\n").unwrap();
         std::fs::write(d.join("stat"), "cpu  100 0 100 800 0 0 0 0 0 0\n").unwrap();
         std::fs::write(d.join("meminfo"), "MemTotal: 1000 kB\nMemAvailable: 750 kB\n").unwrap();
+        // hwmon: the NVMe drive's "Composite" is not its first reading here; RP1 has one unlabelled reading
+        for (h, name) in [("hwmon0", "cpu_thermal"), ("hwmon1", "nvme"), ("hwmon2", "rp1_adc")] {
+            std::fs::create_dir_all(d.join("hwmon").join(h)).unwrap();
+            std::fs::write(d.join("hwmon").join(h).join("name"), format!("{name}\n")).unwrap();
+        }
+        std::fs::write(d.join("hwmon/hwmon1/temp1_input"), "25000\n").unwrap();
+        std::fs::write(d.join("hwmon/hwmon1/temp1_label"), "Sensor 1\n").unwrap();
+        std::fs::write(d.join("hwmon/hwmon1/temp2_input"), "20850\n").unwrap();
+        std::fs::write(d.join("hwmon/hwmon1/temp2_label"), "Composite\n").unwrap();
+        std::fs::write(d.join("hwmon/hwmon2/temp1_input"), "40945\n").unwrap();
         let paths = Paths {
             stat: d.join("stat"),
             meminfo: d.join("meminfo"),
             soc_temp: find_thermal(&d.join("thermal"), "cpu-thermal"),
+            rp1_temp: find_hwmon_temp(&d.join("hwmon"), "rp1_adc", None),
+            nvme_temp: find_hwmon_temp(&d.join("hwmon"), "nvme", Some("Composite")),
             gpu_stats: find_gpu_stats(&d.join("platform")),
         };
         assert_eq!(paths.soc_temp.as_deref(), Some(d.join("thermal/thermal_zone1/temp").as_path()), "found by type, not index");
         assert_eq!(paths.gpu_stats.as_deref(), Some(gs.as_path()));
+        assert_eq!(paths.nvme_temp.as_deref(), Some(d.join("hwmon/hwmon1/temp2_input").as_path()), "the Composite reading");
+        assert_eq!(paths.rp1_temp.as_deref(), Some(d.join("hwmon/hwmon2/temp1_input").as_path()));
+        assert!(find_hwmon_temp(&d.join("hwmon"), "nothing", None).is_none());
         let mut s = Sampler::new(paths.clone());
         std::fs::write(d.join("stat"), "cpu  150 0 150 900 0 0 0 0 0 0\n").unwrap(); // +100 busy of +200
         std::fs::write(&gs, "queue\ttimestamp\tjobs\truntime\nrender\t3000000000\t9\t500000000\n").unwrap(); // 0.5 of 2 s
@@ -243,10 +297,12 @@ mod tests {
         let out: std::collections::HashMap<String, Value> = s.publish().into_iter().collect();
         assert_eq!((out["pi.cpu_pct"].clone(), out["pi.gpu_pct"].clone()), (json!(50.0), json!(25.0)));
         assert_eq!((out["pi.mem_pct"].clone(), out["pi.soc_c"].clone()), (json!(25.0), json!(40.7)), "the means of the samples");
-        // a board without the GPU file or the sensor: null, not an error
-        let mut bare = Sampler::new(Paths { soc_temp: None, gpu_stats: None, ..paths });
+        assert_eq!((out["pi.rp1_c"].clone(), out["pi.nvme_c"].clone()), (json!(40.9), json!(20.9)));
+        // a board without the GPU file or the sensors: null, not an error
+        let mut bare = Sampler::new(Paths { soc_temp: None, rp1_temp: None, nvme_temp: None, gpu_stats: None, ..paths });
         let out: std::collections::HashMap<String, Value> = bare.publish().into_iter().collect();
         assert_eq!((out["pi.gpu_pct"].clone(), out["pi.soc_c"].clone()), (Value::Null, Value::Null));
+        assert_eq!((out["pi.rp1_c"].clone(), out["pi.nvme_c"].clone()), (Value::Null, Value::Null));
         std::fs::remove_dir_all(&d).ok();
     }
 }
