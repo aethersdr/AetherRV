@@ -1090,3 +1090,8 @@ from hwmon `nvme`'s "Composite" reading, both found by name; SoC orange, RP1 vio
 and night with a brighter night green), and the page was too tall, so the load and temperature charts now sit side by
 side (stacked at phone width). At the panel's size the Device tab still scrolls 164 px (about 380 px stacked). Bench
 (6f562f5): both sensors found, SoC 41.5, RP1 49.5, NVMe 36.9 °C, history points for both.
+
+On the van (owner yes), heaters idle: b8bbd12 installed, then only settings, history, the gateway and the panel
+restarted. Live: SoC 35.9, RP1 39.8, NVMe 17.8 °C. The first hour of the load history already tells something: with
+the screen dark the Pi idles at about 3 % CPU and 0 % GPU; each panel restart (which wakes the screen) brought the GPU
+to 32–44 % and the CPU to about 12 %, i.e. the touchscreen's drawing is what uses the GPU.
