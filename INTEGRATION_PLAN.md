@@ -1100,3 +1100,22 @@ to 32–44 % and the CPU to about 12 %, i.e. the touchscreen's drawing is what u
 confirmation) moved to the right of the "Device & display" heading. The admin helper keeps its `restart_kiosk` and
 `poweroff` actions (the low-battery shutdown doesn't use the page). On the van the same evening (owner yes): 0ba648b
 installed (UI only) and the panel restarted; no other service restarted, no failed unit.
+
+## 57. Time to go, charging and discharging (2026-11-27, owner)
+
+Owner: the Energy page's "to go" never showed; it should work for charge and discharge. Venus OS computes TimeToGo
+only while discharging, and on the van the Lynx Shunt's is null even then (no capacity set; its SoC, 77 %, had drifted
+from the batteries' 85-99 %). The batteries carry what is needed: each one's remaining Ah and SoC (no full-charge
+capacity in the RoyPow frames; their SoC implies about 450 Ah full, not the nominal 460).
+- The derive service publishes `energy.battery.to_go_s` (whole minutes) and `energy.battery.to_go_dir`: to empty =
+  the batteries' remaining Ah, to full = each battery's remaining Ah to its own 100 % SoC (`remaining × (100/SoC − 1)`;
+  a battery not reporting filled in at the others' average), both over the bank current (the shunt's, else the
+  batteries' sum) averaged over 3 minutes, weighted by time and restarted when it changes direction; nothing within
+  ±1 A or once full; with no battery data the Cerbo's figure, discharging only.
+- The Energy card reads "… A · 2 h 42 m to full" or "· 3 d to go", only when that agrees with its Charging /
+  Discharging label; Home's battery line "… to full at this charge rate" / "… remaining at current draw".
+- Checked live first: over 1.4 min of a 65 A charge the batteries' remaining rose 1.1 Ah (1.5 expected), in 0.1 Ah
+  steps. Bench (56d3818, no battery simulator): the Cerbo fallback while discharging, 51840 s.
+
+Not changed, noted for the owner: the Energy headline percent divides by 460 Ah per battery, so it tops out near 98 %
+when the batteries say 100 %.
