@@ -940,3 +940,9 @@ wash with a solid strip along the top (MCS7 violet, Espar amber, validated again
 and night mode), named in the legend and as "running" in the tooltip. `TimeChart` takes the bands; other charts are
 unchanged. Checked against a copy of the van's history: the MCS7's burns line up with the cabin warming, and the
 Espar's run on 11-24 shows.
+
+Deployed the same day (owner: "Deploy, restart panel too"), heaters idle: 0d0afe4 installed (cross-compiled; installs
+only), `cabin_rear_temp = "RCT"` added to the van's `[device.victron]` (backup `*.pre-rear-ruuvi-20261127`;
+`aetherrv-migrate` OK), then the Victron and derive services and the panel restarted. The rear Ruuvi read 6.3 °C, and the
+cabin value became the mean of all three (front 5.0, rear 6.3, MCS7 5.5 → 5.6 °C). The Espar was not restarted and still
+reads the front Ruuvi. No failed unit, no warnings.
