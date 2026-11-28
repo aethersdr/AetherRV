@@ -59,8 +59,18 @@ pub fn derive_to_go(state: &dyn StateView, avg: &mut togo::Avg, now: f64) -> Vec
         Some(Value::Array(r)) => r,
         _ => vec![],
     };
-    let (secs, dir) = togo::to_go(a, togo::bank_ah(&rows), num("victron.battery.ttg"));
-    vec![("energy.battery.to_go_s".into(), secs), ("energy.battery.to_go_dir".into(), dir)]
+    let ah = togo::bank_ah(&rows);
+    let (secs, dir) = togo::to_go(a, ah, num("victron.battery.ttg"));
+    let socs = togo::soc_range(&rows);
+    // also recorded by history (owner, 2026-11-27): to learn this van's end-of-charge taper from its own charges
+    vec![
+        ("energy.battery.to_go_s".into(), secs),
+        ("energy.battery.to_go_dir".into(), dir),
+        ("energy.battery.left_ah".into(), jof(ah.map(|x| aetherrv_core::num::round(x.0, 1)))),
+        ("energy.battery.to_full_ah".into(), jof(ah.map(|x| aetherrv_core::num::round(x.1, 1)))),
+        ("energy.battery.soc_min".into(), jof(socs.map(|x| x.0))),
+        ("energy.battery.soc_max".into(), jof(socs.map(|x| x.1))),
+    ]
 }
 
 /// Cabin temperature as the mean of the fresh sensors out of the front Ruuvi, the rear Ruuvi (when configured) and

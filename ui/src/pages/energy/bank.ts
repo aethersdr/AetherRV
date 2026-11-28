@@ -39,7 +39,17 @@ export function toGoText(get: <T>(k: string) => T | undefined): string {
   const s = get<number | null>("energy.battery.to_go_s"), dir = get<string | null>("energy.battery.to_go_dir");
   const st = bankState(get<number | null>("victron.battery.power"))[2];
   if (!s) return "";
-  return dir === "full" && st === "chg" ? ` · ${fmtTTG(s)} to full` : dir === "empty" && st === "dis" ? ` · ${fmtTTG(s)} to go` : "";
+  if (dir === "empty" && st === "dis") return ` · ${fmtTTG(s)} to go`;
+  if (dir !== "full" || st !== "chg") return "";
+  // straight-line until the van's own taper is learnt (owner, 2026-11-27): say so, and which phase the charger is in
+  const phase = chargePhase(get<number | null>("victron.vebus.state"), get<number | null>("victron.mppt.state"));
+  return ` · ${fmtTTG(s)} to full at this rate${phase ? ` · ${phase}` : ""}`;
+}
+
+/** The charging phase (Bulk, Absorption, Float, Storage, Equalize): the MultiPlus's, else the solar charger's. */
+export function chargePhase(vebus: number | null | undefined, mppt: number | null | undefined): string {
+  const ph = (s: number | null | undefined, t: Record<number, string>) => (s != null && s >= 3 && s <= 7 ? t[s] ?? "" : "");
+  return ph(vebus, VEBUS_STATE) || ph(mppt, MPPT_STATE);
 }
 
 export function headView(get: <T>(k: string) => T | undefined): HeadView {

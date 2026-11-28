@@ -1124,3 +1124,11 @@ On the van the same evening (owner yes; the headline percent left as it is, owne
 then only derive and the panel restarted. Charging at 65.8 A with the batteries at 86 / 86 / 92 / 100 %: published
 8940 s ("2 h 29 m to full"); by hand from the same readings, 162 Ah to full at 65.8 A = 148 min. No failed unit, no
 warnings; nothing else restarted.
+
+**2026-11-27, the end-of-charge taper (owner: "learn it from this van").** The "to full" figure is straight-line (Ah to
+each battery's 100 % over the averaged current), so near the end of a charge, when the charger's absorption phase lets
+the current fall away, it is optimistic. Rather than guess a LiFePO4 curve, the van's own charges are now recorded:
+history samples the bank current and voltage, the MultiPlus's and the solar charger's phase codes, and derive's new
+`energy.battery.left_ah`, `energy.battery.to_full_ah`, `energy.battery.soc_min` / `soc_max` (the batteries finish at
+different times). After a couple of full charges the taper is fitted from that. Until then the Energy card reads
+"… to full at this rate · Bulk" (Absorption, Float: the MultiPlus's phase, else the solar charger's).

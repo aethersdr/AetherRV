@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// The keys the charts use, in Python's order.
-pub const TRACKED: [&str; 34] = [
+pub const TRACKED: [&str; 42] = [
     "victron.battery.soc",
     "victron.battery.power",
     "victron.pv.power",
@@ -54,6 +54,16 @@ pub const TRACKED: [&str; 34] = [
     "pi.soc_c",
     "pi.rp1_c",
     "pi.nvme_c",
+    // to learn this van's end-of-charge taper (owner, 2026-11-27): the bank current and voltage, the chargers' phase,
+    // the batteries' Ah left and to full, and their SoC spread
+    "victron.battery.current",
+    "victron.battery.voltage",
+    "victron.vebus.state",
+    "victron.mppt.state",
+    "energy.battery.left_ah",
+    "energy.battery.to_full_ah",
+    "energy.battery.soc_min",
+    "energy.battery.soc_max",
 ];
 
 /// The Espar's diagnostics (owner, 2026-11-24: to look back at what the heater did, e.g. a power dip mid-run),

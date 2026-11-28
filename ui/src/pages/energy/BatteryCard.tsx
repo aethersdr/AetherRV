@@ -11,7 +11,7 @@ import { BATT_AH, cellTiles, headView, rowView, type Ble, type RowView } from ".
 import { Bank } from "./Bank3D";
 
 const HEAD_KEYS = ["batteries.ble", "victron.battery.soc", "victron.battery.power", "victron.battery.voltage",
-  "victron.battery.current", "energy.battery.to_go_s", "energy.battery.to_go_dir"];
+  "victron.battery.current", "energy.battery.to_go_s", "energy.battery.to_go_dir", "victron.vebus.state", "victron.mppt.state"];
 const pctFmt = (p: number) => fmtPct(p);
 
 const BankHead = memo(function BankHead() {

@@ -140,3 +140,21 @@ fn dc_loads_current_from_the_corrected_power() {
     s.set("victron.battery.voltage", Value::Null);
     assert_eq!(aetherrv_derive::derive_energy(&s).into_iter().find(|(k, _)| k == "energy.dc.load_a").unwrap().1, Value::Null);
 }
+
+/// Time to go and the figures history records to learn the end-of-charge taper (owner, 2026-11-27).
+#[test]
+fn time_to_go_and_the_charge_figures() {
+    let s = StateStore::new();
+    s.update([
+        ("victron.battery.current", json!(65.8)),
+        ("batteries.ble", json!([
+            {"ok": true, "remaining_ah": 390.0, "soc": 86}, {"ok": true, "remaining_ah": 392.0, "soc": 86},
+            {"ok": true, "remaining_ah": 412.0, "soc": 92}, {"ok": true, "remaining_ah": 451.0, "soc": 100}])),
+    ]);
+    let mut avg = aetherrv_derive::togo::Avg::default();
+    let out: std::collections::HashMap<String, Value> = aetherrv_derive::derive_to_go(&s, &mut avg, 100.0).into_iter().collect();
+    // 63.5 + 63.8 + 35.8 + 0 = 163.1 Ah to full at 65.8 A = 148.7 min → 149 min
+    assert_eq!((out["energy.battery.to_go_s"].clone(), out["energy.battery.to_go_dir"].clone()), (json!(8940), json!("full")));
+    assert_eq!((out["energy.battery.left_ah"].clone(), out["energy.battery.to_full_ah"].clone()), (json!(1645.0), json!(163.1)));
+    assert_eq!((out["energy.battery.soc_min"].clone(), out["energy.battery.soc_max"].clone()), (json!(86.0), json!(100.0)));
+}

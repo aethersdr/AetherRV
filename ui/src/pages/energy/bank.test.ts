@@ -1,7 +1,7 @@
 // Energy page logic: the numbers app.js showed, character for character (invented data).
 import { describe, expect, it } from "vitest";
 import { socColor } from "../../lib/format";
-import { approach, B3, b3FillH, b3Width, b3X, bankPct, bankState, battPct, BS, cellTiles, clampOrbit, discClip, durSeconds, fitDistance, toGoText,
+import { approach, B3, b3FillH, b3Width, b3X, bankPct, bankState, battPct, BS, cellTiles, chargePhase, clampOrbit, discClip, durSeconds, fitDistance, toGoText,
   flowAdvance, flowDur, flowOf, headView, hueOf, nudgeLimit, ORBIT, orbitPos, recordBank, rowView, sparkPaths, splitUnit, sumSeries,
   type BankHist, type Ble } from "./bank";
 
@@ -167,12 +167,17 @@ describe("WebGL bank maths (three-free)", () => {
 describe("time to go, both ways (owner, 2026-11-27)", () => {
   const tg = (o: Record<string, unknown>) => toGoText(getter(o));
   it("to full while charging, to go while discharging, nothing at rest or when the label disagrees", () => {
-    expect(tg({ "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full", "victron.battery.power": 878 })).toBe(" · 2 h 42 m to full");
+    expect(tg({ "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full", "victron.battery.power": 878 })).toBe(" · 2 h 42 m to full at this rate");
+    // the charger's phase: the MultiPlus's, else the solar charger's (a MultiPlus inverting is no charge phase)
+    expect(tg({ "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full", "victron.battery.power": 878, "victron.vebus.state": 3 })).toBe(" · 2 h 42 m to full at this rate · Bulk");
+    expect(tg({ "energy.battery.to_go_s": 600, "energy.battery.to_go_dir": "full", "victron.battery.power": 90, "victron.vebus.state": 9, "victron.mppt.state": 4 })).toBe(" · 0 h 10 m to full at this rate · Absorption");
+    expect(chargePhase(5, null)).toBe("Float");
+    expect(chargePhase(9, 0)).toBe("");
     expect(tg({ "energy.battery.to_go_s": 292260, "energy.battery.to_go_dir": "empty", "victron.battery.power": -260 })).toBe(" · 3 d to go");
     expect(tg({ "energy.battery.to_go_s": null, "energy.battery.to_go_dir": null, "victron.battery.power": 2 })).toBe("");
     // the average still says charging while the bank has just started discharging: say nothing rather than "to full"
     expect(tg({ "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full", "victron.battery.power": -200 })).toBe("");
     expect(headView(getter({ "victron.battery.voltage": 13.49, "victron.battery.current": 65.1, "victron.battery.power": 878,
-      "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full" })).line1).toBe("13.49 V · 65.1 A · 2 h 42 m to full");
+      "energy.battery.to_go_s": 9720, "energy.battery.to_go_dir": "full" })).line1).toBe("13.49 V · 65.1 A · 2 h 42 m to full at this rate");
   });
 });

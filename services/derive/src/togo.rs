@@ -44,6 +44,16 @@ pub fn bank_ah(rows: &[Value]) -> Option<(f64, f64)> {
     })
 }
 
+/// The lowest and highest SoC of the batteries reporting (they charge in parallel but don't finish together).
+pub fn soc_range(rows: &[Value]) -> Option<(f64, f64)> {
+    let socs: Vec<f64> = rows
+        .iter()
+        .filter(|r| r.get("ok").and_then(Value::as_bool) == Some(true))
+        .filter_map(|r| r.get("soc").and_then(Value::as_f64))
+        .collect();
+    (!socs.is_empty()).then(|| (socs.iter().copied().fold(f64::INFINITY, f64::min), socs.iter().copied().fold(f64::NEG_INFINITY, f64::max)))
+}
+
 /// The time-weighted average of the bank current.
 #[derive(Debug, Default, Clone)]
 pub struct Avg {
@@ -114,6 +124,8 @@ mod tests {
         assert_eq!((aetherrv_core::num::round(l3, 1), aetherrv_core::num::round(f3, 1)), (1230.0, 136.6));
         assert!(bank_ah(&[row(false, 1.0, 50.0)]).is_none() && bank_ah(&[]).is_none());
         assert_eq!(bank_ah(&[row(true, 451.0, 100.0)]).unwrap().1, 0.0);
+        assert_eq!(soc_range(&rows), Some((85.0, 99.0)));
+        assert_eq!(soc_range(&[row(false, 1.0, 50.0)]), None, "only batteries reporting");
     }
 
     #[test]
