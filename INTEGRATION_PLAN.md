@@ -1132,3 +1132,6 @@ history samples the bank current and voltage, the MultiPlus's and the solar char
 `energy.battery.left_ah`, `energy.battery.to_full_ah`, `energy.battery.soc_min` / `soc_max` (the batteries finish at
 different times). After a couple of full charges the taper is fitted from that. Until then the Energy card reads
 "… to full at this rate · Bulk" (Absorption, Float: the MultiPlus's phase, else the solar charger's).
+On the van (owner yes), heaters idle: 0e09229 installed, then only derive, history and the panel restarted; recording
+started mid-charge (Bulk, 65 A, batteries 87–100 %, 148.7 Ah to full, "2 h 18 m to full at this rate · Bulk"); all
+eight keys sampled within the first minute. No failed unit, no warnings.
