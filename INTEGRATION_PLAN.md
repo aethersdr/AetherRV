@@ -1119,3 +1119,8 @@ capacity in the RoyPow frames; their SoC implies about 450 Ah full, not the nomi
 
 Not changed, noted for the owner: the Energy headline percent divides by 460 Ah per battery, so it tops out near 98 %
 when the batteries say 100 %.
+
+On the van the same evening (owner yes; the headline percent left as it is, owner), heaters idle: fe7d096 installed,
+then only derive and the panel restarted. Charging at 65.8 A with the batteries at 86 / 86 / 92 / 100 %: published
+8940 s ("2 h 29 m to full"); by hand from the same readings, 162 Ah to full at 65.8 A = 148 min. No failed unit, no
+warnings; nothing else restarted.
