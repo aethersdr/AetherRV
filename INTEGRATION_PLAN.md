@@ -980,3 +980,11 @@ Not changed, found on the way: a Ruuvi that goes silent is never "stale" while t
 Victron service republishes every role on every temperature message (an unchanged value refreshes its age) and the
 Cerbo republishes everything every 30 s; it drops out only when the Cerbo removes or blanks it. The front Ruuvi has
 always worked this way. The van keeps "front" until the owner says yes.
+
+On the van the same evening (owner: "Yes, put it on the van", and a short FAN as the live check), heaters idle:
+7705351 installed (cross-compiled; only the Espar's binary differs from what ran), `room_source = "average"` added to
+`[device.espar]` (backup `*.pre-espar-mean-20261127`; `aetherrv-migrate` OK), the Espar's service restarted alone (it
+stayed off and asleep; start-up line "room temperature from the cabin mean …"). Then FAN with a 2-min timer through
+`aetherrv-ctl`: the room value was 5.26 °C from "cabin mean (front, rear, MCS7)", the dial's cabin value exactly (front
+4.9, rear 5.6, MCS7 5.3), and OFF at once; both commands ok in `command_log`. Waking the heater re-raised its three
+stored faults (P000307, P000129, P000440), the same fault memory as on 11-24, nothing new. No failed unit.
