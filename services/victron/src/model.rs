@@ -24,6 +24,9 @@ pub const WATCH: &[(&str, &str)] = &[
     ("system/0/Dc/Vebus/Power", "victron.vebus.dc_w"),
     ("system/0/Ac/Consumption/L1/Power", "victron.ac.load"),
     ("system/0/Ac/Grid/L1/Power", "victron.ac.shore"),
+    // the Energy tiles' amps (owner, 2026-11-27): the same system totals as the tiles' power
+    ("system/0/Ac/Consumption/L1/Current", "victron.ac.load_a"),
+    ("system/0/Ac/Grid/L1/Current", "victron.ac.shore_a"),
     ("system/0/SystemState/State", "victron.system.state"),
 ];
 
@@ -44,6 +47,11 @@ pub const CONTROL_PATHS: &[&str] = &[
     "solarcharger/+/State",
     "solarcharger/+/ProductName",
     "solarcharger/+/CustomName",
+    // display only (the Energy tiles' volts and amps), kept with the instance they belong to
+    "vebus/+/Ac/ActiveIn/L1/V",
+    "vebus/+/Ac/Out/L1/V",
+    "solarcharger/+/Pv/V",
+    "solarcharger/+/Yield/Power",
 ];
 
 pub const BATT_FIELDS: &[&str] = &[
@@ -74,6 +82,17 @@ pub const BATT_FIELDS: &[&str] = &[
     "Info/MaxDischargeCurrent",
     "Info/BatteryLowVoltage",
 ];
+
+/// The current on the panel side of the solar charger, which the Cerbo doesn't publish: its PV power (`Yield/Power`)
+/// over the PV voltage (`Pv/V`), 2 decimals. No power is 0 A whatever the voltage (at night `Pv/V` reads a few
+/// hundredths of a volt); with power but under 1 V, or a value missing, it is unknown.
+pub fn panel_amps(power: Option<&Value>, volts: Option<&Value>) -> Value {
+    match (power.and_then(Value::as_f64), volts.and_then(Value::as_f64)) {
+        (Some(p), _) if p <= 0.0 => json!(0.0),
+        (Some(p), Some(v)) if v >= 1.0 => json!(aetherrv_core::num::round(p / v, 2)),
+        _ => Value::Null,
+    }
+}
 
 /// Venus OS temperature service `TemperatureType` (dbus-adc / Ruuvi).
 pub fn temp_type(v: &Value) -> &'static str {
@@ -529,6 +548,10 @@ impl Model {
             ("victron.mppt.name".into(), or(self.g("solarcharger", &mp, "CustomName"), self.g("solarcharger", &mp, "ProductName"))),
             ("victron.mppt.mode".into(), g("solarcharger", &mp, "Mode")),
             ("victron.mppt.state".into(), g("solarcharger", &mp, "State")),
+            ("victron.ac.shore_v".into(), g("vebus", &vb, "Ac/ActiveIn/L1/V")),
+            ("victron.ac.load_v".into(), g("vebus", &vb, "Ac/Out/L1/V")),
+            ("victron.pv.panel_v".into(), g("solarcharger", &mp, "Pv/V")),
+            ("victron.pv.panel_a".into(), panel_amps(self.g("solarcharger", &mp, "Yield/Power"), self.g("solarcharger", &mp, "Pv/V"))),
             ("victron.controls_ok".into(), json!(self.gate_enabled && self.link_up)),
         ]
     }
@@ -571,6 +594,16 @@ mod tests {
         assert_eq!(Want::from_value(Some(&json!(" Galley "))), Want::Match("galley".into()));
         assert_eq!(Want::from_value(Some(&json!(false))), Want::Off);
         assert_eq!(Want::from_value(None), Want::Auto);
+    }
+
+    #[test]
+    fn panel_amps_from_pv_power_over_pv_volts() {
+        let a = |p: Value, v: Value| panel_amps(Some(&p), Some(&v));
+        assert_eq!(a(json!(312), json!(38.5)), json!(8.1));
+        assert_eq!(a(json!(0.0), json!(0.07)), json!(0.0), "night: no power is 0 A");
+        assert_eq!(a(json!(100), json!(0.5)), Value::Null, "power but no real voltage: unknown");
+        assert_eq!(panel_amps(None, Some(&json!(38.0))), Value::Null);
+        assert_eq!(a(json!(250), Value::Null), Value::Null);
     }
 
     #[test]

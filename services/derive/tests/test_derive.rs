@@ -124,3 +124,19 @@ async fn service_derives_from_the_bus() {
     assert!(eventually(Duration::from_secs(5), || is("energy.dc.load", json!(136.0))).await);
     svc.abort();
 }
+
+/// The DC loads' current for the Energy tile (owner, 2026-11-27): the same corrected power over the battery voltage.
+#[test]
+fn dc_loads_current_from_the_corrected_power() {
+    let s = StateStore::new();
+    s.update([("victron.dc.load", json!(120)), ("victron.battery.voltage", json!(13.28))]);
+    let out: std::collections::HashMap<String, Value> = aetherrv_derive::derive_energy(&s).into_iter().collect();
+    assert_eq!((out["energy.dc.load"].clone(), out["energy.dc.load_a"].clone()), (json!(120), json!(9.0)));
+    // the alternator measured over N2K: the Cerbo's figure is replaced, and the current follows it
+    s.update([("alternator.power", json!(500)), ("alternator.current", json!(37.0)), ("victron.battery.current", json!(47.0))]);
+    let out: std::collections::HashMap<String, Value> = aetherrv_derive::derive_energy(&s).into_iter().collect();
+    assert_eq!((out["energy.dc.load"].clone(), out["energy.dc.load_a"].clone()), (json!(132.8), json!(10.0)));
+    // no battery voltage: unknown
+    s.set("victron.battery.voltage", Value::Null);
+    assert_eq!(aetherrv_derive::derive_energy(&s).into_iter().find(|(k, _)| k == "energy.dc.load_a").unwrap().1, Value::Null);
+}

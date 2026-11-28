@@ -23,6 +23,8 @@ const STATE: Record<string, unknown> = {
   "victron.vebus.mode_adjustable": true, "victron.vebus.limit_adjustable": true, "victron.vebus.current_limit": 16,
   "victron.vebus.ac_out_w": 35, "victron.vebus.shore_connected": false,
   "victron.mppt.instance": 289, "victron.mppt.name": "TestSolar", "victron.mppt.state": 3, "victron.mppt.mode": 1,
+  "victron.pv.panel_v": 38.5, "victron.pv.panel_a": 3.12, "victron.ac.shore_v": 0, "victron.ac.shore_a": 0,
+  "energy.dc.load_a": 12.75, "victron.ac.load_v": 120.1, "victron.ac.load_a": 0.26,
 };
 const HIST = (() => {                       // invented 24 h of 5-minute buckets
   const t1 = 1_800_000_000, pts = (f: (i: number) => number) => Array.from({ length: 288 }, (_, i) => [t1 - (287 - i) * 300, f(i)]);
@@ -98,6 +100,13 @@ test("the battery card, tiles, controls and chart show the state", async ({ page
   await expect(page.locator('#bc-rows tr').nth(1).locator(".mos i").nth(1)).toHaveClass("off");
   await expect(page.locator('.stat[data-k="victron.pv.power"] .stat-v')).toHaveText("120W");
   await expect(page.locator('.stat[data-k="energy.alternator.power"]')).toHaveClass(/\bidle\b/);
+  // volts and amps (owner, 2026-11-27): solar on the panel side, shore in, DC loads at the battery voltage, AC loads
+  const sub = (k: string) => page.locator(`.stat[data-k="${k}"] .stat-sub`);
+  await expect(sub("victron.pv.power")).toHaveText("38.5 V · 3.1 A");
+  await expect(sub("victron.ac.shore")).toHaveText("0.0 V · 0.0 A");
+  await expect(sub("energy.dc.load")).toHaveText("13.2 V · 12.8 A");
+  await expect(sub("victron.ac.load")).toHaveText("120 V · 0.3 A");
+  await expect(page.locator('.stat[data-k="energy.alternator.power"] .stat-sub')).toHaveCount(0);  // not asked for
   await expect(page.locator("#pwr-ctl")).toContainText("TestInverter");
   await expect(page.locator("#pwr-ctl")).toContainText("Off · 35 W AC out");
   await expect(page.locator("#lim-val")).toHaveText("16 A");
@@ -466,4 +475,34 @@ test("phone width: one column, no sideways scroll", async ({ page }) => {
   const over = await page.evaluate(() => { const v = document.querySelector(".view.on")!; return v.scrollWidth - v.clientWidth; });
   expect(over).toBeLessThanOrEqual(0);
   await page.screenshot({ path: `${OUT}/react-energy-390x844.png`, fullPage: true });
+});
+
+test("tile volts and amps: live, a missing one reads —, none at all hides the line", async ({ page }) => {
+  const gw = await stubGateway(page);
+  await page.goto("/#energy");
+  const sub = (k: string) => page.locator(`.stat[data-k="${k}"] .stat-sub`);
+  await expect(sub("victron.ac.load")).toHaveText("120 V · 0.3 A");
+  gw.send({ type: "delta", data: { "victron.ac.load_a": 9.94, "victron.ac.shore_v": 119.77, "victron.ac.shore_a": 9.68 } });
+  await expect(sub("victron.ac.load")).toHaveText("120 V · 9.9 A");
+  await expect(sub("victron.ac.shore")).toHaveText("120 V · 9.7 A");
+  gw.send({ type: "delta", data: { "victron.pv.panel_a": null } });              // power but no real panel voltage
+  await expect(sub("victron.pv.power")).toHaveText("38.5 V · — A");
+  gw.send({ type: "delta", data: { "victron.pv.panel_v": null, "victron.pv.panel_a": null } });  // no solar charger
+  await expect(sub("victron.pv.power")).toHaveCount(0);
+});
+
+test("phone width: the volts and amps wrap under the label and stay inside their tile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await stubGateway(page);
+  await page.goto("/#energy");
+  const grid = page.locator("#energy-stats");
+  await grid.scrollIntoViewIfNeeded();
+  for (const k of ["victron.pv.power", "victron.ac.shore", "energy.dc.load", "victron.ac.load"]) {
+    const tile = (await page.locator(`.stat[data-k="${k}"]`).boundingBox())!;
+    const line = (await page.locator(`.stat[data-k="${k}"] .stat-sub`).boundingBox())!;
+    expect(line.x).toBeGreaterThanOrEqual(tile.x);
+    expect(line.x + line.width).toBeLessThanOrEqual(tile.x + tile.width + 0.5);
+    expect(line.y + line.height).toBeLessThanOrEqual(tile.y + tile.height + 0.5);
+  }
+  await grid.screenshot({ path: `${OUT}/react-energy-tiles-390.png` });
 });

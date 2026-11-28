@@ -116,6 +116,10 @@ async fn state_commands_and_reconnect_against_the_simulator() {
     assert_eq!(r.get("climate.freezer.humidity"), None, "no humidity on that tag");
     assert_eq!(r.list("victron.temps").len(), 5);
     assert_eq!((r.get("climate.cabin_rear.temp"), r.get("climate.cabin_rear.humidity")), (Some(json!(19.5)), Some(json!(40.0))));
+    // the Energy tiles' volts and amps: panel side of the solar charger (312 W / 38.5 V), shore, AC loads
+    let va = |k: &str| r.get(k).unwrap_or(Value::Null);
+    assert_eq!([va("victron.pv.panel_v"), va("victron.pv.panel_a")], [json!(38.5), json!(8.1)]);
+    assert_eq!([va("victron.ac.shore_v"), va("victron.ac.shore_a"), va("victron.ac.load_v"), va("victron.ac.load_a")], [json!(0.0), json!(0.0), json!(120.1), json!(1.75)]);
     assert_eq!(r.get("victron.tanks"), Some(json!([{"name": "Fresh", "type": "fresh", "level": 62.5}])));
     assert_eq!(r.get("victron.bms.modules_online"), Some(json!(1)));
     let n = r.list("victron.notifications");

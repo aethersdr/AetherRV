@@ -60,9 +60,19 @@ pub fn derive_cabin(state: &dyn StateView, now: f64) -> Vec<(String, Value)> {
     ]
 }
 
-/// The energy figures (Python `energy.derive`).
+/// The energy figures (Python `energy.derive`), plus `energy.dc.load_a` (owner, 2026-11-27): the DC loads' current, from
+/// that same corrected power over the battery voltage (the Cerbo's own DC-system current is wrong while the
+/// alternator is measured over N2K), 1 decimal; unknown without both.
 pub fn derive_energy(state: &dyn StateView) -> Vec<(String, Value)> {
-    proto_n2k::energy::derive(|k| state.get(k))
+    let mut out = proto_n2k::energy::derive(|k| state.get(k));
+    let load = out.iter().find(|(k, _)| k == "energy.dc.load").and_then(|(_, v)| v.as_f64());
+    let volts = state.get("victron.battery.voltage").and_then(|v| v.as_f64());
+    let amps = match (load, volts) {
+        (Some(p), Some(v)) if v >= 5.0 => json!(aetherrv_core::num::round(p / v, 1)),
+        _ => Value::Null,
+    };
+    out.push(("energy.dc.load_a".into(), amps));
+    out
 }
 
 pub struct Options {

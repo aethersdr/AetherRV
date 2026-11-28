@@ -1034,3 +1034,19 @@ this restart.
 screen that can control shows no chip; a view-only phone or laptop still shows "Read-only", which says why its
 buttons are off. On the van the same evening (owner yes): f03ca13 installed (UI only) and the panel restarted; no other
 service restarted, no failed unit.
+
+## 55. Volts and amps on the Energy tiles (2026-11-27, owner)
+
+Owner: small data points on the Energy tiles, solar on the panel side, shore in, DC loads and AC loads. From a 40 s
+read-only listen to the van's Cerbo: it publishes the panel voltage (`solarcharger/<n>/Pv/V`) but no panel current, the
+MultiPlus's input and output voltage (`vebus/<n>/Ac/ActiveIn/L1/V`, `Ac/Out/L1/V`), and the system totals' currents
+(`system/0/Ac/Grid/L1/Current`, `Ac/Consumption/L1/Current`, `Dc/System/Current`). New keys:
+- `victron.pv.panel_v`, and `victron.pv.panel_a` = the charger's PV power (`Yield/Power`) over `Pv/V` (no power is
+  0 A; with power but under 1 V, unknown);
+- `victron.ac.shore_v` / `victron.ac.shore_a`, `victron.ac.load_v` / `victron.ac.load_a`: the currents from the same
+  system totals as the tiles' power;
+- `energy.dc.load_a` (derive) = the tile's corrected DC load over the battery voltage, not the Cerbo's
+  `Dc/System/Current`, which is wrong while the alternator is measured over N2K; the tile's voltage is the battery's.
+
+The tiles show them on the label row ("13.2 V · 12.8 A", wrapping under the label at phone width); a missing value
+reads "—", and no values at all hide the line. The Alternator and Battery temp tiles are unchanged.

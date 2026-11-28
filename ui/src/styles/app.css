@@ -175,7 +175,8 @@ main { position: relative; overflow: hidden; }
 .stat-ic .ic { width: 44px; height: 44px; }
 .stat-v { font-size: 64px; font-weight: 600; letter-spacing: -2px; line-height: 1; margin-top: auto; }
 .stat-v small { font-size: 26px; color: var(--muted); font-weight: 500; letter-spacing: 0; margin-left: 6px; }
-.stat-l { color: var(--muted); font-size: 19px; margin-top: 8px; }
+.stat-l { color: var(--muted); font-size: 19px; margin-top: 8px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; }
+.stat-sub { font-size: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stat.idle .stat-ic { color: var(--muted) !important; }
 .stat.idle .stat-v { color: var(--muted); }
 
@@ -973,6 +974,7 @@ html.night .th-tube, html.night .th-bulb-o { stroke: var(--ink-2); }
 .stat-v { font-size: 46px; letter-spacing: -1.5px; }
 .stat-v small { font-size: 20px; }
 .stat-l { font-size: 16px; margin-top: 4px; }
+.stat-sub { font-size: 14px; }
 .pwr-ctl .pwr-row { grid-template-columns: 1fr 1fr; gap: 14px; }
 .pwr-ctl .pwr-main { grid-column: 1 / -1; }
 
