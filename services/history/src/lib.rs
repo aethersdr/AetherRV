@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// The keys the charts use, in Python's order.
-pub const TRACKED: [&str; 28] = [
+pub const TRACKED: [&str; 32] = [
     "victron.battery.soc",
     "victron.battery.power",
     "victron.pv.power",
@@ -48,6 +48,10 @@ pub const TRACKED: [&str; 28] = [
     "starlink.power_w",
     "wan.down_mbps", // the Peplink's active WAN (Network chart)
     "wan.up_mbps",
+    "pi.cpu_pct", // the Pi's own load (Settings → Device chart)
+    "pi.gpu_pct",
+    "pi.mem_pct",
+    "pi.soc_c",
 ];
 
 /// The Espar's diagnostics (owner, 2026-11-24: to look back at what the heater did, e.g. a power dip mid-run),

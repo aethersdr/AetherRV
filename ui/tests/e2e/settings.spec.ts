@@ -354,3 +354,31 @@ test("night mode from Settings switches the whole UI", async ({ page }) => {
   await page.click('[data-night="0"]');
   await expect(page.locator("html")).not.toHaveClass(/\bnight\b/);
 });
+
+test("device tab: the Pi load chart (CPU, GPU, memory; SoC temperature in its own lane), live values in the legend", async ({ page }) => {
+  const gw = await stub(page);
+  const now = Math.floor(Date.now() / 1000);
+  const ts = Array.from({ length: 360 }, (_, i) => now - 86400 + (i + 1) * 240);
+  const wave = (base: number, amp: number) => ts.map((t, i) => [t, +(base + amp * Math.sin(i / 20)).toFixed(1)]);
+  const hist: string[] = [];
+  await page.route("**/api/history**", r => {
+    hist.push(r.request().url());
+    return r.fulfill({ json: { "pi.cpu_pct": wave(18, 10), "pi.gpu_pct": wave(4, 3), "pi.mem_pct": wave(7, 0.5), "pi.soc_c": wave(48, 5) } });
+  });
+  await page.goto("/#settings");
+  await tab(page, "device");
+  await expect(page.locator("#chart-pi path[stroke]")).toHaveCount(3);       // CPU, GPU, memory on one % axis
+  await expect(page.locator("#chart-pi-temp path[stroke]")).toHaveCount(1);  // the SoC temperature on its own scale
+  expect(hist.some(u => u.includes("pi.cpu_pct") && u.includes("pi.soc_c"))).toBe(true);
+  gw.delta({ "pi.cpu_pct": 12.3, "pi.gpu_pct": 0.4, "pi.mem_pct": 6.8, "pi.soc_c": 40 });
+  await expect(page.locator("#legend-pi")).toHaveText(/CPU12%.*GPU0%.*Memory7%.*SoC temperature104°/);
+  await page.locator("#pi-chart").scrollIntoViewIfNeeded();
+  await page.locator("#pi-chart").screenshot({ path: "../harness/out/ui-pages/react-settings-pi-chart.png" });
+  // a Pi without GPU counters: the GPU series and its legend entry are left out
+  gw.delta({ "pi.gpu_pct": null });
+  await page.unroute("**/api/history**");
+  await page.route("**/api/history**", r => r.fulfill({ json: { "pi.cpu_pct": wave(18, 10), "pi.mem_pct": wave(7, 0.5), "pi.soc_c": wave(48, 5) } }));
+  await page.click("#range-pi [data-s='21600']");
+  await expect(page.locator("#chart-pi path[stroke]")).toHaveCount(2);
+  await expect(page.locator('#legend-pi [data-k="pi.gpu_pct"]')).toHaveCount(0);
+});

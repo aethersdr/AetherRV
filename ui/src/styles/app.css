@@ -15,6 +15,7 @@
   --c-solar: #c98500; --c-shore: #199e70; --c-alt: #9085e9; --c-load: #d55181; --c-batt: #3987e5;
   --c-cabin: #d95926; --c-out: #3987e5;
   --c-mcs7: #9085e9; --c-espar: #c98500;   /* heater run bands (validated against each other and the surface) */
+  --c-cpu: #3987e5; --c-gpu: #c98500; --c-mem: #d55181; --c-soc: #d95926;   /* Pi load chart (CPU, GPU, memory validated) */
   /* status (reserved, always with icon + label) */
   --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
   --accent: #3987e5;
@@ -27,6 +28,7 @@ html.night {
   --c-solar: #9a6a10; --c-shore: #2e7a5c; --c-alt: #7266b8; --c-load: #a8486a; --c-batt: #3a6aa8;
   --c-cabin: #a84a22; --c-out: #3a6aa8;
   --c-mcs7: #7266b8; --c-espar: #9a6a10;
+  --c-cpu: #3a6aa8; --c-gpu: #9a6a10; --c-mem: #a8486a; --c-soc: #a84a22;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -1204,6 +1206,9 @@ html.night .t-cold { color: var(--c-batt); }
 .set-sel:disabled { opacity: .45; }
 /* Settings → Starlink: power graph + events */
 #set-body .set-h.sub .seg.range { margin-left: auto; }
+.pi-chart #chart-pi { height: 220px; }
+.pi-chart .pi-temp { height: 130px; margin-top: 10px; }
+.pi-chart .legend b { margin-left: 2px; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 #set-body .chart.sl-pow { height: 200px; }
 .sl-events { display: grid; gap: 4px; max-height: 340px; overflow-y: auto; margin-bottom: 8px; }
 .sl-ev { display: grid; grid-template-columns: 10px 170px 1fr auto; gap: 12px; align-items: center; padding: 8px 12px; border-radius: 10px;

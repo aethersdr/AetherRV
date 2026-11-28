@@ -9,6 +9,8 @@
 //! * [`ColdRearm`]: clears `fridge_off` / `freezer_off` once that unit is back at or below its limit.
 //! * `ui.bms_expected`, `ui.fridge_max_c`, `ui.freezer_max_c` from the config.
 
+pub mod host;
+
 use aetherrv_core::admin::AdminClient;
 use aetherrv_core::bus::{Bus, BusOptions};
 use aetherrv_core::command::{BoxFuture, CommandHandler, Reply};
@@ -363,6 +365,29 @@ pub async fn run(cfg: Cfg, opts: Options) -> anyhow::Result<()> {
     }
     aetherrv_core::notify::ready();
     aetherrv_core::notify::spawn_runtime_watchdog();
+    {
+        // the Pi's own load (Settings → Device): published once per history interval, sampled every host::SAMPLE
+        let state = state.clone();
+        let every = Duration::from_secs_f64(cfg.at("history").f64("interval", 30.0).max(5.0));
+        tokio::spawn(async move {
+            let paths = host::Paths::discover();
+            tracing::info!("host: SoC sensor {:?}, GPU stats {:?}", paths.soc_temp, paths.gpu_stats);
+            let mut s = host::Sampler::new(paths);
+            let mut next = tokio::time::Instant::now() + every;
+            loop {
+                tokio::time::sleep(host::SAMPLE.min(next.saturating_duration_since(tokio::time::Instant::now()))).await;
+                if tokio::time::Instant::now() >= next {
+                    state.update(s.publish());
+                    next += every;
+                    if next <= tokio::time::Instant::now() {
+                        next = tokio::time::Instant::now() + every; // fell behind (a stall): no burst of catch-up publishes
+                    }
+                } else {
+                    s.sample();
+                }
+            }
+        });
+    }
     {
         let (state, prefs, remote) = (state.clone(), prefs.clone(), bus.remote().clone());
         let lookup = opts.lookup.clone().unwrap_or_else(open_meteo);

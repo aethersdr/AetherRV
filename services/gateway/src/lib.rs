@@ -41,13 +41,13 @@ fn long_verb(v: &str) -> Duration {
 }
 
 /// History keys the UI may chart (history.py's TRACKED).
-pub const TRACKED: [&str; 28] = [
+pub const TRACKED: [&str; 32] = [
     "victron.battery.soc", "victron.battery.power", "victron.pv.power", "victron.dc.load", "victron.ac.load",
     "victron.ac.shore", "victron.alternator.power", "energy.alternator.power", "energy.dc.load", "alternator.current",
     "climate.cabin.temp", "climate.outside.temp", "climate.fridge.temp", "climate.freezer.temp", "climate.rixens.coolant",
     "climate.rixens.fuel_hz", "climate.rixens.inlet_c", "climate.rixens.outlet_c", "climate.rixens.flame_c",
     "climate.rixens.fan_rpm", "climate.rixens.fuel_gph", "starlink.down_mbps", "starlink.up_mbps", "starlink.latency_ms",
-    "starlink.snr_db", "starlink.power_w", "wan.down_mbps", "wan.up_mbps",
+    "starlink.snr_db", "starlink.power_w", "wan.down_mbps", "wan.up_mbps", "pi.cpu_pct", "pi.gpu_pct", "pi.mem_pct", "pi.soc_c",
 ];
 
 /// How the gateway reaches the services (the bus; a fake in tests).

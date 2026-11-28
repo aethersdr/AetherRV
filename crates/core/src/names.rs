@@ -60,6 +60,7 @@ pub const PREFIXES: &[(&str, &str)] = &[
     ("power.", POWER_GUARD),
     ("energy.", DERIVE),
     ("settings.", SETTINGS),
+    ("pi.", SETTINGS), // the Pi's own load (settings/src/host.rs)
     ("ui.", SETTINGS),
     ("alerts.", ALERTS),
     ("history.", HISTORY),

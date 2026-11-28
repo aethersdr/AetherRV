@@ -15,6 +15,7 @@ import { askConfirm } from "../../logic/ui";
 import { useControl, useKey } from "../../state/hooks";
 import { K } from "../../state/store";
 import { kept, useFastPoll, useKept, type SettingsInfo, type Tailscale, type WifiNet } from "./data";
+import { PiChart } from "./PiChart";
 import { openKeyboard } from "./Keyboard";
 
 const fmtBytes = (b: number | null | undefined) => (b == null ? "—" : b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
@@ -78,6 +79,7 @@ export const DeviceTab = memo(function DeviceTab({ info }: { info: SettingsInfo 
       <button className="ctl-pill warn" data-act="reboot" disabled={!ctl} onClick={() => systemAction("reboot")}>Reboot</button>
       <button className="ctl-pill warn" data-act="poweroff" disabled={!ctl} onClick={() => systemAction("poweroff")}>Shut down</button>
     </div>
+    <PiChart />
   </>;
 });
 
