@@ -946,3 +946,27 @@ only), `cabin_rear_temp = "RCT"` added to the van's `[device.victron]` (backup `
 `aetherrv-migrate` OK), then the Victron and derive services and the panel restarted. The rear Ruuvi read 6.3 °C, and the
 cabin value became the mean of all three (front 5.0, rear 6.3, MCS7 5.5 → 5.6 °C). The Espar was not restarted and still
 reads the front Ruuvi. No failed unit, no warnings.
+
+## 53. The Espar on the cabin mean: bench test (2026-11-27, owner)
+
+Owner: the Espar regulates on the cabin mean of all three sensors, like the dial. `[device.espar] room_source =
+"average"` (3996f7a; the default "front" keeps the old behaviour): the live room value is the mean of the fresh front
+Ruuvi, rear Ruuvi and MCS7 sensor from `aetherrv_core::climate`, computed in the Espar service from the raw keys, so
+the derive service is not in its path. Each sensor's freshness is its own (Ruuvis 15 min and the Cerbo connected, the
+MCS7 60 s); a sensor that drops out leaves the mean of the others. With all of them gone during a heat run, the last
+mean is held for 5 min, then the intake sensor, as with the front Ruuvi. The hold is fed by a flag now, not by
+matching the label "cabin Ruuvi", which a label change would have silently broken. Control tests: the mean in every
+054, never the front value alone; a dropout of every sensor mid-run holds the last mean and never the hot intake;
+heat refused with nothing at all.
+
+On the bench (3996f7a cross-compiled; bench config as the van: rear Ruuvi, cabin average, room source average; the
+simulators give front 20.5, rear 19.5 and MCS7 7.2 °C), with every 054 recorded from the heater's bus:
+- `isolation.sh` (every service, the aux bus, admind and the broker killed or restarted in turn during a heat run):
+  **ISOLATION: PASS**. Of 909 HEAT frames, 897 carried the three-sensor mean (15.7), 6 the two Ruuvis (20.0) while the
+  Rixens service restarted, 6 the MCS7 alone (7.2) while the Victron service restarted: no other value and no FE FF.
+  Killing the derive service changed nothing. A kill of the Espar service itself resumed on the same value.
+- `espar-systemd.sh` (restart, kill -9, watchdog, broker restart; no cabin services, so the intake sensor): PASS,
+  max 054 gap 3.0 s, 0 controller-loss faults, 0 full-power frames.
+
+The bench simulator doesn't send a hot intake reading, so "never the intake mid-run" rests on the control tests. The
+van keeps "front" until the owner says yes.
