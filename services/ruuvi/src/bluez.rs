@@ -93,12 +93,14 @@ async fn session(tx: &mpsc::Sender<Advert>, scan: &watch::Sender<(Scan, f64)>) -
         }
         skipped.remove(&addr);
         let Ok(dev_events) = dev.events().await else { continue };
+        // RSSI is signalled only when it changes enough: start from the current value
+        let rssi0 = dev.rssi().await.ok().flatten();
         watched.lock().unwrap().insert(addr);
         let (tx, watched) = (tx.clone(), watched.clone());
         let a = norm_addr(&addr.to_string()).unwrap_or_else(|| addr.to_string());
         tokio::spawn(async move {
             let mut dev_events = std::pin::pin!(dev_events);
-            let mut rssi = None;
+            let mut rssi = rssi0;
             while let Some(DeviceEvent::PropertyChanged(p)) = dev_events.next().await {
                 match p {
                     DeviceProperty::Rssi(r) => rssi = Some(r),

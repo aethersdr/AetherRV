@@ -1013,3 +1013,12 @@ Next, with the owner's yes: run it in the van for about a day to measure whether
 alongside the four battery links (per-tag gaps from `ruuvi.tags`; battery reconnects from the journal, against the
 day before). Only then the switch: the climate roles from this service, the Victron roles off, one owner function for
 every reader (the Espar's follow list included), `victron.connected` no longer gating directly-read tags.
+
+Measurement started the same evening (owner: "Yes, start it"): 38828c0 installed (cross-compiled; installs only), the
+five tags added to the van's config as `[device.ruuvi]` (backup `*.pre-ruuvi-20261127`; the addresses stay on the
+van), and `aetherrv-ruuvi` started, not enabled (a reboot ends it). After 45 s: every tag heard, all data format 5, no
+decode errors, readings equal to the Cerbo's (the front tag 4.76 against 4.74 a moment apart, the others the same),
+tag batteries 2.89–3.18 V, longest gap 7.7 s; the four battery links still connected; no other service's PID changed.
+Baseline for the battery links: no reconnect in the 24 h before. Found and fixed for the next build (not deployed, to
+keep the measurement running): `aetherrv-migrate` didn't know the `ruuvi` kind (a harmless WARN), and RSSI showed
+only once BlueZ signalled a change (now read when a tag is first watched).

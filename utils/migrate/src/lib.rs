@@ -25,7 +25,7 @@ fn f(level: Level, what: impl Into<String>) -> Finding {
     Finding { level, what: what.into() }
 }
 
-pub const KINDS: [&str; 10] = ["espar", "n2k", "victron", "rixens_http", "rixens", "capture", "epoch_ble", "starlink", "peplink", "demo"];
+pub const KINDS: [&str; 11] = ["espar", "n2k", "victron", "rixens_http", "rixens", "capture", "epoch_ble", "ruuvi", "starlink", "peplink", "demo"];
 
 /// The config contract (`/etc/aetherrv/aetherrv.toml`).
 pub fn check_config(text: &str) -> Vec<Finding> {
