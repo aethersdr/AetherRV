@@ -3,7 +3,7 @@
 
 use aetherrv_core::cmdlog::CommandLog;
 use aetherrv_core::command::{Reply, ResultKind};
-use aetherrv_espar::control::{Begin, Control, Inputs, Pending, RunState, SendErr, Sink};
+use aetherrv_espar::control::{Begin, Control, Inputs, Pending, RoomSource, RunState, SendErr, Sink};
 use proto_espar::Frame;
 use proto_espar::decoder::{Decoder, Event};
 use serde_json::{Value, json};
@@ -439,4 +439,100 @@ fn a_cabin_dropout_mid_run_holds_the_last_cabin_value_not_the_intake() {
     idle.a.diag.insert("temps".into(), (json!({"intake_c": 12.5}), idle.now));
     let (room, src) = idle.c.room(&idle.a, &idle.inp, idle.now);
     assert_eq!((room, src.as_deref()), (Some(12.5), Some("heater intake sensor")));
+}
+
+/// `room_source = "average"` (owner, 2026-11-27): the Espar regulates on the cabin mean of the fresh front Ruuvi, rear
+/// Ruuvi and MCS7 sensor (the value the Climate dial shows), not the front Ruuvi alone.
+fn mean_rig(mean: Option<f64>) -> Rig {
+    let mut r = rig(true, true); // a front Ruuvi value is there too (18.0): it must not be used
+    r.c.room_source = RoomSource::Mean;
+    r.inp.cabin_mean = mean.map(|t| (t, "cabin mean (front, rear, MCS7)".to_string()));
+    r
+}
+
+#[test]
+fn the_cabin_mean_is_the_room_value_and_is_what_the_heater_gets() {
+    let room_word = |c: f64| (((c + 50.0) * 10.0).round() as u16).to_le_bytes();
+    let r = mean_rig(Some(19.6));
+    let (room, src) = r.c.room(&r.a, &r.inp, r.now);
+    assert_eq!((room, src.as_deref()), (Some(19.6), Some("cabin mean (front, rear, MCS7)")));
+    // a heat run: every 054 carries the mean
+    let mut r = mean_rig(Some(19.6));
+    let rep = r.command(json!({"mode": "heat", "setpoint_c": 21.5, "run_min": 30}), &heats_on_heat, 60);
+    assert!(rep.is_ok(), "{rep:?}");
+    for _ in 0..20 {
+        r.now += 0.1;
+        r.step();
+        r.heater_says("090400001C020000");
+    }
+    let cmds = r.bus.cmds();
+    assert!(!cmds.is_empty() && cmds.iter().all(|d| d[4..6] == room_word(19.6)), "the mean in every 054, never the front 18.0");
+    assert_eq!(r.c.last_room, Some(19.6));
+    // no cabin sensor fresh and not heating: the intake, as with the front Ruuvi
+    let mut quiet = mean_rig(None);
+    quiet.a.diag.insert("temps".into(), (json!({"intake_c": 12.5}), quiet.now));
+    let (room, src) = quiet.c.room(&quiet.a, &quiet.inp, quiet.now);
+    assert_eq!((room, src.as_deref()), (Some(12.5), Some("heater intake sensor")));
+    // and heat is refused with nothing at all
+    let mut none = mean_rig(None);
+    let rep = none.command(json!({"mode": "heat", "setpoint_c": 21}), &idle, 10);
+    assert!(!rep.is_ok() && rep.detail.contains("room temperature") && none.bus.sent.is_empty());
+}
+
+/// The 2026-11-24 lesson with the mean: when every cabin sensor drops out mid-run (e.g. the Cerbo and the MCS7 both
+/// gone), the last mean is held for CABIN_HOLD_S, never the heater's hot intake; then the intake, as before.
+#[test]
+fn a_cabin_mean_dropout_mid_run_holds_the_last_mean_not_the_intake() {
+    use aetherrv_espar::control::CABIN_HOLD_S;
+    let room_word = |c: f64| (((c + 50.0) * 10.0).round() as u16).to_le_bytes();
+    let mut r = mean_rig(Some(19.6));
+    let rep = r.command(json!({"mode": "heat", "setpoint_c": 21.5, "run_min": 30}), &heats_on_heat, 60);
+    assert!(rep.is_ok());
+    for _ in 0..10 {
+        r.now += 0.1;
+        r.step();
+        r.heater_says("090400001C020000");
+    }
+    assert_eq!(r.c.room_src.as_deref(), Some("cabin mean (front, rear, MCS7)"));
+    let hot = |r: &mut Rig| {
+        let now = r.now;
+        r.a.diag.insert("temps".into(), (json!({"flame_c": 185.0, "intake_c": 41.2, "outlet_c": 86.0}), now));
+    };
+    // fewer sensors: still a live mean (no hold), whatever it is now
+    r.inp.cabin_mean = Some((20.1, "cabin mean (front, MCS7)".into()));
+    r.now += 0.1;
+    r.step();
+    assert_eq!((r.c.last_room, r.c.room_src.as_deref()), (Some(20.1), Some("cabin mean (front, MCS7)")));
+    // all gone: the last mean held, never the hot intake
+    r.inp.cabin_mean = None;
+    r.inp.victron_connected = Some(false);
+    let sent_before = r.bus.cmds().len();
+    for _ in 0..50 {
+        r.now += 0.1;
+        hot(&mut r);
+        r.step();
+        r.heater_says("090400001C020000");
+    }
+    let during: Vec<Vec<u8>> = r.bus.cmds()[sent_before..].to_vec();
+    assert!(!during.is_empty() && during.iter().all(|d| d[4..6] == room_word(20.1)), "the last mean (20.1 °C), held");
+    assert_eq!(r.c.room_src.as_deref(), Some("cabin mean (last reading, held)"));
+    assert!(r.c.active && r.c.mode == "heat");
+    // back: live again, and the hold is fed again by the live value (the flag, not the label)
+    r.inp.cabin_mean = Some((20.4, "cabin mean (rear)".into()));
+    r.now += 0.1;
+    r.step();
+    assert_eq!((r.c.last_room, r.c.room_src.as_deref()), (Some(20.4), Some("cabin mean (rear)")));
+    r.inp.cabin_mean = None;
+    let until = r.now + CABIN_HOLD_S + 1.0;
+    while r.now < until {
+        r.now += 1.0;
+        hot(&mut r);
+        r.step();
+        r.heater_says("090400001C020000");
+        if r.now < until - 2.0 {
+            assert_eq!((r.c.last_room, r.c.room_src.as_deref()), (Some(20.4), Some("cabin mean (last reading, held)")));
+        }
+    }
+    assert_eq!((r.c.last_room, r.c.room_src.as_deref()), (Some(41.2), Some("heater intake sensor")));
+    assert!(r.c.active && r.c.mode == "heat");
 }

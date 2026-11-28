@@ -31,6 +31,7 @@ bus = "hat1"
 tx_enabled = true
 diag_tx = true
 diag_interval_s = 1
+room_source = "average"   # as the van (2026-11-27): the cabin mean of the front and rear Ruuvis and the MCS7 sensor
 
 [device.n2k]
 kind = "n2k"
@@ -58,9 +59,10 @@ cabin_temp = "IAT"
 outside_temp = "OAT"
 fridge_temp = "FRG"
 freezer_temp = "FRZ"
+cabin_rear_temp = "RCT"
 
 [climate]
-cabin_source = "victron"
+cabin_source = "average"
 
 [gps]
 enabled = true

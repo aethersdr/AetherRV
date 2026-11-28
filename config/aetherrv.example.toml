@@ -108,6 +108,11 @@ tx_enabled = false
 kind = "capture"       # Airtronic S2 D2L: capture-only until the frame map is verified
 bus = "hat0"           # placeholder
 tx_enabled = false
+# With kind = "espar" (AetherRV as the heater's controller), the room temperature it sends: "front" (default: the
+# cabin Ruuvi, [device.victron] cabin_temp) or "average" (the mean of the fresh cabin sensors: the cabin Ruuvi, the
+# rear one if cabin_rear_temp names it, and the MCS7's sensor). Either way a dropout during a heat run holds the
+# last value for 5 min before the heater's own intake sensor is used.
+# room_source = "front"
 
 [device.rixens]
 kind = "rixens"        # MCS7: decodes 0x724-0x726 per rixens-esphome (UNVERIFIED); 250 kbit/s

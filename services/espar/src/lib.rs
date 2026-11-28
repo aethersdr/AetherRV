@@ -16,7 +16,7 @@ use aetherrv_core::config::Cfg;
 use aetherrv_core::state::{StateExt, StateStore, StateView};
 use aetherrv_core::txgate::TxGate;
 use aetherrv_power::LockoutTracker;
-use control::{Begin, Control, Inputs, RunState, SendErr, Sink, DEVICE};
+use control::{Begin, Control, Inputs, RoomSource, RunState, SendErr, Sink, DEVICE};
 use proto_espar::Frame;
 use proto_espar::decoder::{Decoder, Event};
 use serde_json::{Value, json};
@@ -42,6 +42,8 @@ pub struct Espar {
     pub lockout: Mutex<LockoutTracker>,
     /// `[power] auto_shutdown`: the heat lockout runs only with the guard enabled (Python ties both together).
     pub lockout_enabled: bool,
+    /// `[device.espar] room_source`: the front Ruuvi (default) or the cabin mean.
+    pub room_source: RoomSource,
     pub run_path: PathBuf,
     pub boot: String,
     pub admin: AdminClient,
@@ -116,6 +118,17 @@ impl Espar {
         let gate = Arc::new(TxGate::from_config(cfg).only(&[DEVICE, DIAG]));
         let log = CommandLog::new(DEVICE, opts.db_path.clone());
         let mut ctl = Control::new(gate.is_enabled(DEVICE), log);
+        // an unknown value keeps the behaviour from before the setting existed (the front Ruuvi), loudly
+        let rs = dev.str("room_source", "front");
+        let room_source = RoomSource::parse(&rs).unwrap_or_else(|| {
+            tracing::error!("espar: [device.espar] room_source = {rs:?} is not \"front\" or \"average\"; using the front Ruuvi");
+            RoomSource::Front
+        });
+        ctl.room_source = room_source;
+        tracing::info!("espar: room temperature from {}", match room_source {
+            RoomSource::Front => "the front Ruuvi (climate.cabin_front.temp)",
+            RoomSource::Mean => "the cabin mean of the fresh front Ruuvi, rear Ruuvi and MCS7 sensor",
+        });
         ctl.t.blind_off_s = dev.f64("blind_off_s", 600.0);
         let dec = Decoder::new(DEVICE, dev.f64("diag_interval_s", 5.0), dev.bool("diag_scan", false));
         let p = cfg.at("power");
@@ -128,6 +141,7 @@ impl Espar {
             bus: None,
             lockout: Mutex::new(lockout),
             lockout_enabled: p.bool("auto_shutdown", false),
+            room_source,
             run_path: opts.run_path,
             boot: boot_id(),
             admin: AdminClient::new(opts.admin_socket),
@@ -172,6 +186,13 @@ impl Espar {
     /// Everything the loop needs from outside the heater bus.
     pub fn inputs(&self, view: &dyn StateView, now_boot: f64) -> Inputs {
         let cabin = view.num("climate.cabin_front.temp").zip(view.age("climate.cabin_front.temp"));
+        let cabin_mean = match self.room_source {
+            RoomSource::Front => None,
+            RoomSource::Mean => {
+                let (t, _, used) = aetherrv_core::climate::cabin(view, now_s());
+                t.map(|t| (t, mean_label(&used)))
+            }
+        };
         let victron_connected = match view.get("victron.connected") {
             Some(Value::Bool(b)) => Some(b),
             _ => None,
@@ -185,7 +206,7 @@ impl Espar {
             }
             c.ctl.last_contact
         };
-        Inputs { cabin, victron_connected, heat_lockout: own || guard, bus_contact_age: contact.map(|t| now_boot - t) }
+        Inputs { cabin, cabin_mean, victron_connected, heat_lockout: own || guard, bus_contact_age: contact.map(|t| now_boot - t) }
     }
 
     pub fn remote_view(&self) -> Arc<dyn StateView> {
@@ -404,10 +425,28 @@ impl CommandHandler for Handler {
     }
 }
 
-/// Keys this service reads from other services.
-use aetherrv_core::names::{BATTERIES, POWER_GUARD, VICTRON};
+/// How the cabin mean is labelled in `climate.espar.ctl.room_src`: the sensors in it.
+pub fn mean_label(used: &[aetherrv_core::climate::Reading]) -> String {
+    use aetherrv_core::climate::Sensor;
+    let names: Vec<&str> = used
+        .iter()
+        .map(|r| match r.sensor {
+            Sensor::Front => "front",
+            Sensor::Rear => "rear",
+            Sensor::Mcs7 => "MCS7",
+        })
+        .collect();
+    format!("cabin mean ({})", names.join(", "))
+}
+
+/// Keys this service reads from other services (the rear Ruuvi and the MCS7 sensor for `room_source = "average"`).
+use aetherrv_core::names::{BATTERIES, POWER_GUARD, RIXENS, VICTRON};
 pub const FOLLOW: &[(&str, &str)] = &[
     (VICTRON, "climate.cabin_front.temp"),
+    (VICTRON, "climate.cabin_rear.temp"),
+    (RIXENS, "climate.rixens.cabin_c"),
+    (RIXENS, "climate.rixens.live"),
+    (RIXENS, "climate.rixens.updated"),
     (VICTRON, "victron.connected"),
     (VICTRON, "victron.battery.soc"),
     (VICTRON, "victron.battery.current"),

@@ -298,6 +298,12 @@ From `aetherrv/v1/state/victron/climate.cabin_front.temp` under `climate.py`'s r
 connected), else the heater's intake sensor (`FD01`, read by this service's own UDS), else HEAT refused / OFF sent,
 exactly as today. With the bus down the intake sensor takes over by itself.
 
+With `[device.espar] room_source = "average"` (2026-11-27) the live value is instead the cabin mean of the fresh front
+Ruuvi, rear Ruuvi and MCS7 sensor, from `aetherrv_core::climate` (the same function `aetherrv-derive` uses for the
+dial), computed here from the raw keys: the derive service is not in the Espar's path. A dropout of every sensor
+during a heat run holds the last value for `CABIN_HOLD_S`, as with the front Ruuvi; the hold is fed by a flag, not
+by matching the source label.
+
 ### 7.6 UDS
 
 Read-only, ported as is: requests are built only by a function that refuses any service other than 0x22 and 0x19,
@@ -567,3 +573,4 @@ Each of these changes what a device is sent or what a user sees, so each is list
 | 2026-11-25 (later) | The rollback removed now, not after two weeks: `packaging/rollback.sh`, `harness/bench/rollback-test.sh` and `cutover.sh`'s Python half (it keeps staged transmit; `--read-only` restarts a running system after the heater check). The van's Python install goes in a separate step with the owner's OK | owner |
 | 2026-11-25 (later) | The van's Python install removed (owner): first 773090c deployed (the new update unit and `aetherrv-setup`; installs only), a full backup taken off the van, then `/opt/aetherrv`, the `aetherrv`/`-kiosk`/`-admin` units, `/usr/local/lib/aetherrv`, the kiosk PAM file and its shutdown-splash drop-ins deleted and systemd reloaded; no service restarted (same PIDs before and after) | owner |
 | 2026-11-27 | A rear cabin Ruuvi: `[device.victron] cabin_rear_temp` publishes `climate.cabin_rear.*` (only when named; no by-type stand-in). With `cabin_source = "average"` the cabin value is the mean of the fresh ones out of the front Ruuvi, the rear Ruuvi and the MCS7 sensor, from one shared function (`aetherrv_core::climate`); `climate.cabin.rear_ruuvi_temp` is new and `rear_temp` stays the MCS7. The Espar keeps the front Ruuvi until its own change is bench-tested and approved | owner |
+| 2026-11-27 (later) | `[device.espar] room_source = "average"`: the Espar regulates on the cabin mean (front Ruuvi, rear Ruuvi, MCS7 sensor; the fresh ones), computed in the Espar service from the raw keys with the shared function, never through `aetherrv-derive`; all sensors gone mid-run → the last mean held 5 min, then the intake. Default "front" (unchanged). Bench-tested before the van; the van needs the owner's yes | owner |

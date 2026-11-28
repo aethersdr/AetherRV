@@ -34,6 +34,35 @@ pub const FRONT_STALE: f64 = 15.0 * 60.0;
 /// for a moment) is held this long before the heater's intake sensor is used: the intake reads 40 °C and more while
 /// the heater burns, and sent as the room value it stops the burn (van, 2026-11-24; owner: hold the last cabin value).
 pub const CABIN_HOLD_S: f64 = 5.0 * 60.0;
+
+/// Which cabin value the room temperature comes from (`[device.espar] room_source`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RoomSource {
+    /// "front" (the default): the front Ruuvi, `climate.cabin_front.temp`.
+    #[default]
+    Front,
+    /// "average" (owner, 2026-11-27): the mean of the fresh cabin sensors, the front and rear Ruuvis and the MCS7's
+    /// sensor ([`aetherrv_core::climate`], the same value the Climate dial shows).
+    Mean,
+}
+
+impl RoomSource {
+    pub fn parse(s: &str) -> Option<RoomSource> {
+        match s {
+            "front" => Some(RoomSource::Front),
+            "average" => Some(RoomSource::Mean),
+            _ => None,
+        }
+    }
+
+    /// How the held value is labelled.
+    fn held(self) -> &'static str {
+        match self {
+            RoomSource::Front => "cabin Ruuvi (last reading, held)",
+            RoomSource::Mean => "cabin mean (last reading, held)",
+        }
+    }
+}
 pub const SETPOINT_RANGE: (f64, f64) = (10.0, 30.0);
 pub const RUN_STATE_VERSION: u32 = 1;
 
@@ -69,8 +98,11 @@ impl Default for Timing {
 /// What the loop knows from outside the heater bus.
 #[derive(Debug, Clone, Default)]
 pub struct Inputs {
-    /// `climate.cabin_front.temp` and its age (s), from the Victron service.
+    /// `climate.cabin_front.temp` and its age (s), from the Victron service (`RoomSource::Front`).
     pub cabin: Option<(f64, f64)>,
+    /// `RoomSource::Mean`: the mean of the fresh cabin sensors and which ones (freshness already judged per sensor
+    /// by `aetherrv_core::climate`); `None` when none is fresh.
+    pub cabin_mean: Option<(f64, String)>,
     /// `victron.connected` (`None` = unknown).
     pub victron_connected: Option<bool>,
     /// Locked out by our own tracker or a fresh guard (§8).
@@ -171,8 +203,10 @@ pub struct Control {
     pub reset_requested: bool,
     /// The room value saved before a restart: the last fallback after a resume, until live sources are back.
     saved_room: Option<(f64, f64)>,
-    /// The last cabin Ruuvi reading used, and when: held during a heat run while the Ruuvi drops out ([`CABIN_HOLD_S`]).
+    /// The last cabin reading used, and when: held during a heat run while the cabin drops out ([`CABIN_HOLD_S`]).
     last_cabin: Option<(f64, f64)>,
+    /// Where the cabin reading comes from.
+    pub room_source: RoomSource,
     pub resumes: Vec<f64>,
     /// Last broker contact (`CLOCK_BOOTTIME`), carried across restarts.
     pub last_contact: Option<f64>,
@@ -210,6 +244,7 @@ impl Control {
             reset_requested: false,
             saved_room: None,
             last_cabin: None,
+            room_source: RoomSource::Front,
             resumes: vec![],
             last_contact: None,
             suspended: false,
@@ -221,21 +256,42 @@ impl Control {
         self.log.log(cmd, value, outcome, detail, client);
     }
 
-    /// The cabin Ruuvi under climate.py's rule, else the heater's own intake reading (the decoder blanks it when
-    /// old), else (only after a resume) the value saved before the restart while it is younger than 15 min.
-    pub fn room(&self, dec: &Decoder, inp: &Inputs, now: f64) -> (Option<f64>, Option<String>) {
-        if let Some((t, age)) = inp.cabin
-            && age < FRONT_STALE
-            && inp.victron_connected != Some(false)
-        {
-            return (Some(t), Some("cabin Ruuvi".into()));
+    /// The live cabin value for [`Control::room_source`]: the front Ruuvi under climate.py's rule, or the mean of the
+    /// fresh cabin sensors.
+    fn live_cabin(&self, inp: &Inputs) -> Option<(f64, String)> {
+        match self.room_source {
+            RoomSource::Front => match inp.cabin {
+                Some((t, age)) if age < FRONT_STALE && inp.victron_connected != Some(false) => Some((t, "cabin Ruuvi".into())),
+                _ => None,
+            },
+            RoomSource::Mean => inp.cabin_mean.clone(),
         }
+    }
+
+    /// The live cabin value, else the heater's own intake reading (the decoder blanks it when old), else (only after
+    /// a resume) the value saved before the restart while it is younger than 15 min.
+    pub fn room(&self, dec: &Decoder, inp: &Inputs, now: f64) -> (Option<f64>, Option<String>) {
+        let (t, src, _) = self.room_and_kind(dec, inp, now);
+        (t, src)
+    }
+
+    /// [`Control::room`], and whether the value is a live cabin reading (what the hold keeps). A flag, not the label:
+    /// a hold fed by matching a label would stop being fed the day the label changes.
+    fn room_and_kind(&self, dec: &Decoder, inp: &Inputs, now: f64) -> (Option<f64>, Option<String>, bool) {
+        if let Some((t, src)) = self.live_cabin(inp) {
+            return (Some(t), Some(src), true);
+        }
+        let (t, src) = self.fallback_room(dec, now);
+        (t, src, false)
+    }
+
+    fn fallback_room(&self, dec: &Decoder, now: f64) -> (Option<f64>, Option<String>) {
         // heating: never the intake sensor while a recent cabin value exists (it reads the heater's own warm air)
         if self.active && self.mode == "heat" {
             if let Some((t, at)) = self.last_cabin
                 && now - at < CABIN_HOLD_S
             {
-                return (Some(t), Some("cabin Ruuvi (last reading, held)".into()));
+                return (Some(t), Some(self.room_source.held().into()));
             }
             if let Some((t, at)) = self.saved_room
                 && now - at < CABIN_HOLD_S
@@ -303,7 +359,7 @@ impl Control {
             self.stop(Some("lost the heater (no status for 3 s)"));
             return;
         }
-        let (room, src) = self.room(dec, inp, now);
+        let (room, src, live_cabin) = self.room_and_kind(dec, inp, now);
         if self.target.is_some()
             && heard
             && matches!(dec.st_name(), Some("idle") | Some("heating") | Some("fan"))
@@ -335,7 +391,7 @@ impl Control {
         if room.is_some() {
             self.room_t = Some(now);
         }
-        if let (Some(t), Some("cabin Ruuvi")) = (room, src.as_deref()) {
+        if let (Some(t), true) = (room, live_cabin) {
             self.last_cabin = Some((t, now));
         }
         self.last_room = room;
