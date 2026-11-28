@@ -81,20 +81,24 @@ test("device tab: helper status, preferences, and system actions only after a co
   await expect(page.locator(".set-about")).toContainText("21.5 GB of 64.0 GB");
   await expect(page.locator(".set-about")).toContainText("end0 10.99.0.5 · wlan0 10.99.1.7");
   await expect(page.locator('[data-off="10"]')).toHaveClass(/\bon\b/);
-  for (const [act, title, verb] of [["reboot", "Reboot AetherRV?", "reboot"], ["poweroff", "Shut down AetherRV?", "poweroff"],
-    ["restart_kiosk", "Restart the display?", "restart_kiosk"]] as const) {
-    await page.click(`.set-actions [data-act=${act}]`);
-    await expect(page.locator("#modal-t")).toHaveText(title);
-    await page.waitForTimeout(150);
-    expect(s.actions).toHaveLength(0);
-    await page.click("#modal-no");
-    await expect(page.locator("#modal")).toBeHidden();
-    expect(s.actions).toHaveLength(0);
-    await page.click(`.set-actions [data-act=${act}]`);
-    await page.click("#modal-yes");
-    await expect.poll(() => s.actions.map(a => a.verb)).toEqual([verb]);
-    s.actions.length = 0;
-  }
+  // Reboot only, in the header beside "Device & display" (owner, 2026-11-27: Restart display and Shut down removed)
+  await expect(page.locator('[data-act="restart_kiosk"], [data-act="poweroff"]')).toHaveCount(0);
+  const reboot = page.locator('#set-body .set-h [data-act="reboot"]');
+  await expect(reboot).toHaveText("Reboot");
+  const [hb, rb] = [(await page.locator("#set-body .set-h").first().boundingBox())!, (await reboot.boundingBox())!];
+  expect(rb.x + rb.width).toBeGreaterThan(hb.x + hb.width - 4);              // right-aligned in the header row
+  await page.locator("#set-body").screenshot({ path: "../harness/out/ui-pages/react-settings-device-top.png" });
+  await reboot.click();
+  await expect(page.locator("#modal-t")).toHaveText("Reboot AetherRV?");
+  await page.waitForTimeout(150);
+  expect(s.actions).toHaveLength(0);
+  await page.click("#modal-no");
+  await expect(page.locator("#modal")).toBeHidden();
+  expect(s.actions).toHaveLength(0);
+  await reboot.click();
+  await page.click("#modal-yes");
+  await expect.poll(() => s.actions.map(a => a.verb)).toEqual(["reboot"]);
+  s.actions.length = 0;
   await page.click('[data-off="30"]');                                         // no confirm (as app.js)
   await expect.poll(() => s.actions).toEqual([{ verb: "pref", args: { key: "screen_off_min", value: 30 } }]);
 });
@@ -324,7 +328,7 @@ test("view only: the note shows, every change is disabled and nothing is sent or
   const s = await stub(page, { control: false });
   await page.goto("/#settings");
   await expect(page.locator(".set-ro")).toContainText("View only");
-  for (const sel of ['[data-act="rename"]', '[data-act="reboot"]', '[data-act="poweroff"]', '[data-act="restart_kiosk"]', '[data-off="5"]'])
+  for (const sel of ['[data-act="rename"]', '[data-act="reboot"]', '[data-off="5"]'])
     await expect(page.locator(sel)).toBeDisabled();
   await expect(page.locator('[data-unit="C"]')).toBeEnabled();                 // this screen's own preferences
   await expect(page.locator('[data-night="1"]')).toBeEnabled();

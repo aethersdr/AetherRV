@@ -1221,7 +1221,7 @@ html.night .t-cold { color: var(--c-batt); }
 .sl-ev.out i { background: var(--critical); } .sl-ev.warning i { background: var(--warning); }
 .sl-ev .t { color: var(--muted); font-variant-numeric: tabular-nums; } .sl-ev .d { color: var(--muted); font-variant-numeric: tabular-nums; }
 .sl-ev b { font-weight: 600; }
-#set-body .set-h .sl-reboot { margin-left: auto; }
+#set-body .set-h .sl-reboot, #set-body .set-h .dev-reboot { margin-left: auto; }
 /* Home climate card: four evenly spread columns, consistent regular-weight labels, centred cabin reading */
 .climate-mini { justify-content: space-between; gap: 18px; padding: 0 6px; }
 .climate-mini .temp-big { align-items: center; }

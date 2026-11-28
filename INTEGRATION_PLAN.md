@@ -1095,3 +1095,7 @@ On the van (owner yes), heaters idle: b8bbd12 installed, then only settings, his
 restarted. Live: SoC 35.9, RP1 39.8, NVMe 17.8 °C. The first hour of the load history already tells something: with
 the screen dark the Pi idles at about 3 % CPU and 0 % GPU; each panel restart (which wakes the screen) brought the GPU
 to 32–44 % and the CPU to about 12 %, i.e. the touchscreen's drawing is what uses the GPU.
+
+**2026-11-27, Device tab (owner).** The "Restart display" and "Shut down" buttons are gone; Reboot (still with its
+confirmation) moved to the right of the "Device & display" heading. The admin helper keeps its `restart_kiosk` and
+`poweroff` actions (the low-battery shutdown doesn't use the page).

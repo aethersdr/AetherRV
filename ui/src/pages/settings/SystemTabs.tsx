@@ -1,7 +1,7 @@
 // Settings tabs backed by the root admin helper (GET /api/settings, changes through settingsAction): Device & display,
 // Network (wired + Wi-Fi), Tailscale, System updates. Ported from app.js renderSettings and its #set-body handlers.
 //
-// Confirmations kept exactly as app.js: Restart display, Reboot, Shut down, Forget a Wi-Fi network, Install Tailscale,
+// Confirmations kept exactly as app.js: Reboot (the only system action offered since 2026-11-27), Forget a Wi-Fi network, Install Tailscale,
 // Tailscale sign-out, Install updates; plus Wi-Fi OFF (owner, Q-U5: remote access over Wi-Fi drops). No confirm (as
 // app.js): rename, screen auto-off, Wi-Fi on, scan and join, Tailscale sign-in, update check. Every change is refused in view-only mode (buttons disabled, and settingsAction
 // itself refuses). The units and night mode are this screen's own preferences and work in view-only mode too.
@@ -30,10 +30,9 @@ export async function renameDevice(current: string | undefined): Promise<void> {
   const name = await openKeyboard({ title: "Device name (letters, digits, -)", value: current || "", maxlen: 63, pattern: HOST_RE });
   if (name && name !== current) await settingsAction("set_hostname", { name }, "Rename");
 }
+// Only Reboot is offered (owner, 2026-11-27: "Restart display" and "Shut down" removed from the Device tab).
 const SYS_ACTS = {
-  restart_kiosk: ["Restart the display?", "The touchscreen reloads in a few seconds. Nothing in the van changes.", "Restart display"],
   reboot: ["Reboot AetherRV?", "The console is offline for about a minute. The heater, inverter and switches keep running on their own.", "Reboot"],
-  poweroff: ["Shut down AetherRV?", "The console stays off until its power is cycled. The heater, inverter and switches keep running on their own.", "Shut down"],
 } as const;
 export function systemAction(act: keyof typeof SYS_ACTS): void {
   const [t, d, label] = SYS_ACTS[act];
@@ -48,7 +47,8 @@ export const DeviceTab = memo(function DeviceTab({ info }: { info: SettingsInfo 
   const off = (p.screen_off_min as number | undefined) ?? 10;
   const ifs = (a?.interfaces ?? []).filter(i => i.ipv4?.length).map(i => `${i.name} ${i.ipv4!.join(", ")}`).join(" · ") || "—";
   return <>
-    <div className="set-h"><h2>Device &amp; display</h2>{a && a.ok === false && <span className="pill bad-pill">{a.error || "helper unavailable"}</span>}</div>
+    <div className="set-h"><h2>Device &amp; display</h2>{a && a.ok === false && <span className="pill bad-pill">{a.error || "helper unavailable"}</span>}
+      <button className="ctl-pill warn dev-reboot" data-act="reboot" disabled={!ctl} onClick={() => systemAction("reboot")}>Reboot</button></div>
     <div className="set-rows">
       <div className="set-row"><div><b>Name</b><small>Shown on the network and in Tailscale</small></div>
         <div className="set-v"><span>{a?.hostname || "—"}</span>
@@ -73,11 +73,6 @@ export const DeviceTab = memo(function DeviceTab({ info }: { info: SettingsInfo 
       <div><small>Up</small><b>{fmtUp(a?.uptime_s)}</b></div>
       <div><small>Disk free</small><b>{`${fmtBytes(a?.disk?.free)} of ${fmtBytes(a?.disk?.total)}`}</b></div>
       <div className="wide"><small>Addresses</small><b>{ifs}</b></div>
-    </div>
-    <div className="set-actions">
-      <button className="ctl-pill" data-act="restart_kiosk" disabled={!ctl} onClick={() => systemAction("restart_kiosk")}>Restart display</button>
-      <button className="ctl-pill warn" data-act="reboot" disabled={!ctl} onClick={() => systemAction("reboot")}>Reboot</button>
-      <button className="ctl-pill warn" data-act="poweroff" disabled={!ctl} onClick={() => systemAction("poweroff")}>Shut down</button>
     </div>
     <PiChart />
   </>;
